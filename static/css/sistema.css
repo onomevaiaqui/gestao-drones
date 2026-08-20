@@ -87,3 +87,258 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,
 }
 
 .badge-soft.purple{background:#eee9ff;color:#6847d8;}
+
+.calendar-events-list{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    max-height:140px;
+    overflow-y:auto;
+    padding-right:2px;
+}
+
+.calendar-event{
+    display:block;
+    width:100%;
+    box-sizing:border-box;
+}
+
+
+.calendar-cell{
+    min-height:170px;
+    padding:8px;
+    overflow:hidden;
+}
+
+.calendar-day-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:6px;
+    margin-bottom:6px;
+}
+
+.calendar-count{
+    font-size:10px;
+    color:#6c7a89;
+    white-space:nowrap;
+}
+
+.calendar-events-list{
+    display:flex;
+    flex-direction:column;
+    gap:5px;
+    max-height:130px;
+    overflow-y:auto;
+    overflow-x:hidden;
+    padding-right:3px;
+}
+
+.calendar-event{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    width:100%;
+    min-height:68px;
+    box-sizing:border-box;
+    flex-shrink:0;
+}
+
+/* =========================================================
+   CALENDÁRIO COMPACTO
+   ========================================================= */
+
+.calendar-panel{
+    overflow:hidden;
+}
+
+.calendar-cell.compact{
+    min-height:118px;
+    padding:8px;
+    overflow:hidden;
+}
+
+.calendar-cell.compact .calendar-day-header{
+    min-height:22px;
+    margin-bottom:5px;
+}
+
+.calendar-compact-events{
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+}
+
+.calendar-compact-event{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    width:100%;
+    height:24px;
+    padding:0 7px;
+    border:0;
+    border-radius:5px;
+    text-align:left;
+    cursor:pointer;
+    overflow:hidden;
+    font-size:11px;
+    line-height:1;
+}
+
+.calendar-compact-event .event-time{
+    flex:0 0 auto;
+    font-variant-numeric:tabular-nums;
+    opacity:.9;
+}
+
+.calendar-compact-event .event-title{
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    font-weight:700;
+}
+
+.calendar-compact-event.event-reserved{
+    background:#dce8ff;
+    color:#184fa8;
+}
+
+.calendar-compact-event.event-done{
+    background:#dff4e8;
+    color:#21744f;
+}
+
+.calendar-compact-event.event-cancelled{
+    background:#ffe4e7;
+    color:#a73743;
+}
+
+.calendar-more{
+    width:100%;
+    height:24px;
+    border:0;
+    border-radius:5px;
+    background:#edf1f6;
+    color:#536273;
+    font-size:11px;
+    font-weight:700;
+    cursor:pointer;
+}
+
+.calendar-more:hover{
+    background:#e2e8f0;
+}
+
+.calendar-day-modal-backdrop{
+    position:fixed;
+    inset:0;
+    z-index:9999;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    background:rgba(10, 18, 30, .50);
+}
+
+.calendar-day-modal-backdrop.show{
+    display:flex;
+}
+
+.calendar-day-modal{
+    width:min(720px, 96vw);
+    max-height:82vh;
+    overflow:hidden;
+    background:#fff;
+    border-radius:14px;
+    box-shadow:0 22px 70px rgba(0, 0, 0, .22);
+}
+
+.calendar-day-modal-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    padding:18px 20px;
+    border-bottom:1px solid #e5eaf0;
+}
+
+.calendar-day-modal-header h3{
+    margin:0 0 3px;
+}
+
+.calendar-day-modal-header span{
+    color:#758397;
+    font-size:12px;
+}
+
+.calendar-modal-close{
+    width:34px;
+    height:34px;
+    border:0;
+    border-radius:8px;
+    background:#eef2f6;
+    color:#4c596a;
+    font-size:22px;
+    line-height:1;
+    cursor:pointer;
+}
+
+.calendar-day-modal-body{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    max-height:calc(82vh - 76px);
+    overflow-y:auto;
+    padding:14px 20px 20px;
+}
+
+.calendar-day-item{
+    padding:12px 14px;
+    border-radius:9px;
+    border:1px solid #dfe5ec;
+}
+
+.calendar-day-item.event-reserved{
+    border-left:4px solid #3976d9;
+}
+
+.calendar-day-item.event-done{
+    border-left:4px solid #359267;
+}
+
+.calendar-day-item.event-cancelled{
+    border-left:4px solid #c6535f;
+}
+
+.calendar-day-item-main{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin-bottom:7px;
+}
+
+.calendar-day-item-time{
+    min-width:88px;
+    font-weight:700;
+    font-variant-numeric:tabular-nums;
+}
+
+.calendar-day-item-meta{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px 14px;
+    color:#68778a;
+    font-size:12px;
+}
+
+.calendar-day-item-actions{
+    display:flex;
+    align-items:center;
+    gap:7px;
+    margin-top:10px;
+}
+
+.calendar-list-panel{
+    margin-top:18px;
+}

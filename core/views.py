@@ -487,6 +487,134 @@ def dashboard(request):
     )
 
 
+@login_required
+def minha_agenda(request):
+    _atualizar_reservas_vencidas()
+
+    if "_atualizar_status_drones_por_reserva" in globals():
+        _atualizar_status_drones_por_reserva()
+
+    hoje = timezone.localdate()
+
+    if usuario_e_admin(request.user):
+        reservas = (
+            Alocacao.objects
+            .select_related("piloto", "drone")
+            .filter(status="reservado", data__gte=hoje)
+            .order_by("data", "hora_inicio")[:20]
+        )
+        voos_recentes = (
+            Voo.objects
+            .select_related("piloto", "drone")
+            .order_by("-data", "-hora_inicio")[:10]
+        )
+        titulo = "Agenda Operacional"
+        subtitulo = "Próximas reservas e voos recentes do sistema"
+    else:
+        try:
+            piloto = request.user.piloto
+        except Piloto.DoesNotExist:
+            messages.error(request, "Seu usuário não está vinculado a um piloto.")
+            return redirect("dashboard")
+
+        reservas = (
+            Alocacao.objects
+            .select_related("piloto", "drone")
+            .filter(
+                piloto=piloto,
+                status="reservado",
+                data__gte=hoje,
+            )
+            .order_by("data", "hora_inicio")[:20]
+        )
+        voos_recentes = (
+            Voo.objects
+            .select_related("piloto", "drone")
+            .filter(piloto=piloto)
+            .order_by("-data", "-hora_inicio")[:10]
+        )
+        titulo = "Minha Agenda"
+        subtitulo = "Suas próximas reservas e seus voos recentes"
+
+    ctx = {
+        "reservas": reservas,
+        "voos_recentes": voos_recentes,
+        "total_reservas": reservas.count(),
+        "titulo": titulo,
+        "subtitulo": subtitulo,
+    }
+    ctx.update(_base_context(request))
+    return render(request, "agenda/minha_agenda.html", ctx)
+
+
+def _sincronizar_voo_com_calendario(voo, usuario):
+    agora = timezone.localtime()
+
+    inicio_voo = timezone.make_aware(
+        datetime.combine(voo.data, voo.hora_inicio),
+        timezone.get_current_timezone(),
+    )
+
+    fim_voo = timezone.make_aware(
+        datetime.combine(voo.data, voo.hora_fim),
+        timezone.get_current_timezone(),
+    )
+
+    if fim_voo <= inicio_voo:
+        fim_voo += timedelta(days=1)
+
+    status_calendario = "concluido" if fim_voo <= agora else "reservado"
+
+    finalidade_texto = (
+        voo.get_finalidade_display()
+        if hasattr(voo, "get_finalidade_display")
+        else str(voo.finalidade)
+    )
+
+    alocacao = (
+        Alocacao.objects
+        .filter(
+            piloto=voo.piloto,
+            drone=voo.drone,
+            data=voo.data,
+            hora_inicio=voo.hora_inicio,
+            hora_fim=voo.hora_fim,
+        )
+        .first()
+    )
+
+    if alocacao:
+        alocacao.finalidade = finalidade_texto
+        alocacao.local = voo.local or ""
+        alocacao.observacoes = voo.observacoes or ""
+
+        if alocacao.status != "cancelado":
+            alocacao.status = status_calendario
+
+        alocacao.save(
+            update_fields=[
+                "finalidade",
+                "local",
+                "observacoes",
+                "status",
+            ]
+        )
+        return alocacao
+
+    return Alocacao.objects.create(
+        data=voo.data,
+        hora_inicio=voo.hora_inicio,
+        hora_fim=voo.hora_fim,
+        piloto=voo.piloto,
+        drone=voo.drone,
+        finalidade=finalidade_texto,
+        local=voo.local or "",
+        observacoes=voo.observacoes or "",
+        status=status_calendario,
+        criado_por=usuario,
+    )
+
+
 # =========================================================
 # VOOS
 # =========================================================
@@ -644,9 +772,14 @@ def voo_novo(request):
 
         voo.save()
 
+        _sincronizar_voo_com_calendario(
+            voo,
+            request.user
+        )
+
         messages.success(
             request,
-            "Voo registrado com sucesso."
+            "Voo registrado e calendário atualizado com sucesso."
         )
 
         return redirect(
@@ -682,7 +815,12 @@ def voo_editar(request, pk):
     )
 
     if form.is_valid():
-        form.save()
+        voo = form.save()
+
+        _sincronizar_voo_com_calendario(
+            voo,
+            request.user
+        )
 
         messages.success(
             request,
@@ -1291,120 +1429,97 @@ def drone_excluir(request, pk):
 
 @login_required
 def calendario(request):
-    _atualizar_status_drones_por_reserva()
     _atualizar_reservas_vencidas()
 
-    hoje = date.today()
+    if "_atualizar_status_drones_por_reserva" in globals():
+        _atualizar_status_drones_por_reserva()
+
+    hoje = timezone.localdate()
 
     try:
-        ano = int(
-            request.GET.get(
-                "ano",
-                hoje.year
-            )
-        )
-
-        mes = int(
-            request.GET.get(
-                "mes",
-                hoje.month
-            )
-        )
-
-    except ValueError:
+        ano = int(request.GET.get("ano", hoje.year))
+        mes = int(request.GET.get("mes", hoje.month))
+    except (TypeError, ValueError):
         ano = hoje.year
         mes = hoje.month
 
-    mes = min(
-        max(mes, 1),
-        12
-    )
+    mes = max(1, min(12, mes))
 
-    cal = pycalendar.Calendar(
-        firstweekday=6
-    )
+    cal = pycalendar.Calendar(firstweekday=6)
+    semanas_datas = cal.monthdatescalendar(ano, mes)
 
-    semanas = (
-        cal.monthdatescalendar(
-            ano,
-            mes
-        )
-    )
-
-    inicio = semanas[0][0]
-    fim = semanas[-1][-1]
+    inicio_periodo = semanas_datas[0][0]
+    fim_periodo = semanas_datas[-1][-1]
 
     alocacoes = (
         Alocacao.objects
-        .select_related(
-            "piloto",
-            "drone"
-        )
+        .select_related("piloto", "drone")
         .filter(
-            data__gte=inicio,
-            data__lte=fim
+            data__gte=inicio_periodo,
+            data__lte=fim_periodo,
+        )
+        .order_by(
+            "data",
+            "hora_inicio",
+            "hora_fim",
+            "id",
         )
     )
 
     por_dia = defaultdict(list)
 
-    for a in alocacoes:
-        por_dia[a.data].append(a)
+    for reserva in alocacoes:
+        por_dia[reserva.data].append(reserva)
 
-    calendario_semanas = []
+    semanas = []
 
-    for semana in semanas:
-        linha = []
+    for semana_datas in semanas_datas:
+        semana = []
 
-        for dia in semana:
-            linha.append({
+        for dia in semana_datas:
+            reservas_do_dia = list(
+                por_dia.get(dia, [])
+            )
+
+            semana.append({
                 "data": dia,
-                "mes_atual": (
-                    dia.month == mes
-                ),
-                "alocacoes": (
-                    por_dia.get(
-                        dia,
-                        []
-                    )
-                ),
+                "mes_atual": dia.month == mes,
+                "alocacoes": reservas_do_dia,
+                "quantidade": len(reservas_do_dia),
             })
 
-        calendario_semanas.append(
-            linha
-        )
+        semanas.append(semana)
 
-    anterior = (
-        date(ano, mes, 1)
-        - timedelta(days=1)
-    )
+    primeiro_dia = date(ano, mes, 1)
+    anterior = primeiro_dia - timedelta(days=1)
 
     if mes == 12:
-        proximo = date(
-            ano + 1,
-            1,
-            1
-        )
+        proximo = date(ano + 1, 1, 1)
     else:
-        proximo = date(
-            ano,
-            mes + 1,
-            1
+        proximo = date(ano, mes + 1, 1)
+
+    lista_alocacoes = (
+        Alocacao.objects
+        .select_related("piloto", "drone")
+        .filter(
+            data__gte=inicio_periodo,
+            data__lte=fim_periodo,
         )
+        .order_by(
+            "data",
+            "hora_inicio",
+            "hora_fim",
+            "id",
+        )
+    )
 
     ctx = {
-        "semanas": calendario_semanas,
+        "semanas": semanas,
         "mes": mes,
         "ano": ano,
         "anterior": anterior,
         "proximo": proximo,
-        "lista_alocacoes": (
-            alocacoes
-            .order_by(
-                "data",
-                "hora_inicio"
-            )[:30]
-        ),
+        "lista_alocacoes": lista_alocacoes,
     }
 
     ctx.update(
@@ -1416,7 +1531,6 @@ def calendario(request):
         "calendario/calendario.html",
         ctx
     )
-
 
 @login_required
 def alocacao_nova(request):

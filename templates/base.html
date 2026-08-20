@@ -25,7 +25,17 @@
             <a href="{% url 'voos' %}" class="{% if request.resolver_match.url_name == 'voos' or request.resolver_match.url_name == 'voo_novo' %}active{% endif %}">✈ <span>Voos</span></a>
             <a href="{% url 'calendario' %}" class="{% if 'calendario' in request.resolver_match.url_name or 'alocacao' in request.resolver_match.url_name %}active{% endif %}">▣ <span>Calendário</span></a>
 
-            {% if eh_admin or user.is_superuser %}
+        <a href="{% url 'minha_agenda' %}" class="nav-link">
+            <span>Minha Agenda</span>
+        </a>
+
+
+            
+        <a href="{% url 'drones' %}" class="nav-link">
+            <span>Drones</span>
+        </a>
+
+{% if eh_admin or user.is_superuser %}
             <a href="{% url 'drones' %}" class="{% if 'drone' in request.resolver_match.url_name %}active{% endif %}">⌘ <span>Drones</span></a>
             <a href="{% url 'pilotos' %}" class="{% if 'piloto' in request.resolver_match.url_name %}active{% endif %}">♙ <span>Pilotos / Usuários</span></a>
             <a href="{% url 'relatorios' %}" class="{% if request.resolver_match.url_name == 'relatorios' %}active{% endif %}">▤ <span>Relatórios</span></a>
