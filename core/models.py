@@ -427,3 +427,39 @@ class Manutencao(models.Model):
             f"{self.get_tipo_display()} - "
             f"{self.data_inicio}"
         )
+
+# =========================================================
+# SOLICITAÇÕES DE VOO
+# =========================================================
+
+class SolicitacaoVoo(models.Model):
+    STATUS_CHOICES = [
+        ("solicitado", "Solicitado"),
+        ("aprovado", "Aprovado"),
+        ("rejeitado", "Rejeitado"),
+        ("cancelado", "Cancelado"),
+        ("concluido", "Concluído"),
+    ]
+
+    piloto = models.ForeignKey(Piloto, on_delete=models.PROTECT, related_name="solicitacoes_voo")
+    drone = models.ForeignKey(Drone, on_delete=models.PROTECT, related_name="solicitacoes_voo")
+    data = models.DateField()
+    hora_inicio = models.TimeField()
+    hora_fim = models.TimeField()
+    finalidade = models.CharField(max_length=100)
+    local = models.CharField(max_length=200, blank=True)
+    observacoes = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="solicitado")
+    motivo_rejeicao = models.TextField(blank=True)
+    criado_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="solicitacoes_voo_criadas")
+    analisado_por = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True, related_name="solicitacoes_voo_analisadas")
+    alocacao = models.OneToOneField(Alocacao, on_delete=models.SET_NULL, null=True, blank=True, related_name="solicitacao_voo")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-data", "-hora_inicio", "-criado_em"]
+
+    def __str__(self):
+        return f"{self.data} - {self.piloto} - {self.drone} - {self.get_status_display()}"
+

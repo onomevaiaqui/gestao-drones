@@ -1,8 +1,17 @@
 from django.urls import path
 from . import views
+from . import solicitacao_views
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
+
+    path("solicitacoes/", solicitacao_views.solicitacoes_voo, name="solicitacoes_voo"),
+    path("solicitacoes/nova/", solicitacao_views.solicitacao_voo_nova, name="solicitacao_voo_nova"),
+    path("solicitacoes/<int:pk>/editar/", solicitacao_views.solicitacao_voo_editar, name="solicitacao_voo_editar"),
+    path("solicitacoes/<int:pk>/aprovar/", solicitacao_views.solicitacao_voo_aprovar, name="solicitacao_voo_aprovar"),
+    path("solicitacoes/<int:pk>/rejeitar/", solicitacao_views.solicitacao_voo_rejeitar, name="solicitacao_voo_rejeitar"),
+    path("solicitacoes/<int:pk>/cancelar/", solicitacao_views.solicitacao_voo_cancelar, name="solicitacao_voo_cancelar"),
+
     path("minha-agenda/", views.minha_agenda, name="minha_agenda"),
 
     path("primeiro-acesso/", views.primeiro_acesso, name="primeiro_acesso"),
