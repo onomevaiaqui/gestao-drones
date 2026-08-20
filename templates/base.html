@@ -1,0 +1,71 @@
+{% load static %}
+<!doctype html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Gestão de Drones{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'css/sistema.css' %}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-icon">✈</div>
+            <div>
+                <strong>GESTÃO DE</strong>
+                <span>DRONES</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">⌂ <span>Dashboard</span></a>
+            <a href="{% url 'voos' %}" class="{% if request.resolver_match.url_name == 'voos' or request.resolver_match.url_name == 'voo_novo' %}active{% endif %}">✈ <span>Voos</span></a>
+            <a href="{% url 'calendario' %}" class="{% if 'calendario' in request.resolver_match.url_name or 'alocacao' in request.resolver_match.url_name %}active{% endif %}">▣ <span>Calendário</span></a>
+
+            {% if eh_admin or user.is_superuser %}
+            <a href="{% url 'drones' %}" class="{% if 'drone' in request.resolver_match.url_name %}active{% endif %}">⌘ <span>Drones</span></a>
+            <a href="{% url 'pilotos' %}" class="{% if 'piloto' in request.resolver_match.url_name %}active{% endif %}">♙ <span>Pilotos / Usuários</span></a>
+            <a href="{% url 'relatorios' %}" class="{% if request.resolver_match.url_name == 'relatorios' %}active{% endif %}">▤ <span>Relatórios</span></a>
+            <a href="{% url 'manutencoes' %}" class="{% if 'manutencao' in request.resolver_match.url_name %}active{% endif %}">⚒ <span>Manutenções</span></a>
+            {% endif %}
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-box">
+                <div class="avatar">{{ user.username|first|upper }}</div>
+                <div>
+                    <strong>{{ user.username }}</strong>
+                    <span>{% if eh_admin or user.is_superuser %}Administrador{% else %}Usuário{% endif %}</span>
+                </div>
+            </div>
+
+            <form method="post" action="{% url 'logout' %}">
+                {% csrf_token %}
+                <button class="logout-btn" type="submit">Sair</button>
+            </form>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="mobile-topbar">
+            <strong>Gestão de Drones</strong>
+        </div>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags|default:'info' }} shadow-sm">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+</div>
+<script src="{% static 'js/sistema.js' %}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

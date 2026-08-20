@@ -1,0 +1,435 @@
+from pathlib import Path
+import shutil, subprocess, sys, re
+from datetime import datetime
+
+ROOT = Path(__file__).resolve().parent
+VIEWS = ROOT / "core/views.py"
+DASH = ROOT / "templates/dashboard.html"
+
+def fail(msg):
+    print("\nERRO:", msg)
+    sys.exit(1)
+
+def backup():
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = ROOT / ("backup_patch_dashboard_" + stamp)
+
+    for p in (VIEWS, DASH):
+        if p.exists():
+            target = dest / p.relative_to(ROOT)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(p, target)
+
+    print("Backup criado em:", dest)
+
+def patch_views():
+    text = VIEWS.read_text(encoding="utf-8")
+
+    marker = 'ctx = {\n        "total_voos": total_voos,'
+
+    if marker not in text:
+        fail("Não encontrei o bloco ctx da função dashboard em views.py.")
+
+    if '"reservas_hoje"' in text and '"proximas_reservas"' in text:
+        print("views.py já possui os indicadores operacionais.")
+        return
+
+    bloco = '''
+    agora_dashboard = timezone.localtime()
+
+    reservas_hoje = Alocacao.objects.filter(
+        data=agora_dashboard.date(),
+        status="reservado",
+    ).count()
+
+    drones_em_campo = Drone.objects.filter(
+        status="em_campo"
+    ).count()
+
+    drones_em_manutencao = Drone.objects.filter(
+        status="manutencao"
+    ).count()
+
+    proximas_reservas = (
+        Alocacao.objects
+        .select_related("piloto", "drone")
+        .filter(
+            status="reservado",
+            data__gte=agora_dashboard.date(),
+        )
+        .order_by("data", "hora_inicio")[:8]
+    )
+
+'''
+
+    text = text.replace(marker, bloco + marker, 1)
+
+    insert_ctx = '''        "reservas_hoje": reservas_hoje,
+        "drones_em_campo": drones_em_campo,
+        "drones_em_manutencao": drones_em_manutencao,
+        "proximas_reservas": proximas_reservas,
+'''
+
+    text = text.replace(
+        '        "total_voos": total_voos,\n',
+        '        "total_voos": total_voos,\n' + insert_ctx,
+        1
+    )
+
+    VIEWS.write_text(text, encoding="utf-8")
+    print("views.py atualizado.")
+
+def patch_dashboard():
+    html = '''{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>Dashboard</h1>
+        <p>Visão geral das operações</p>
+    </div>
+
+    <form method="get" class="period-filter">
+        <input type="date" name="inicio" value="{{ inicio }}">
+        <span>até</span>
+        <input type="date" name="fim" value="{{ fim }}">
+        <button class="btn btn-primary">Aplicar</button>
+    </form>
+</div>
+
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div>
+            <span>Total de Voos</span>
+            <strong>{{ total_voos }}</strong>
+        </div>
+        <div class="kpi-icon">✈</div>
+    </div>
+
+    <div class="kpi-card">
+        <div>
+            <span>Horas de Voo</span>
+            <strong>{{ total_horas }}</strong>
+        </div>
+        <div class="kpi-icon green">◷</div>
+    </div>
+
+    <div class="kpi-card">
+        <div>
+            <span>Distância Total</span>
+            <strong>{{ distancia_total }} km</strong>
+        </div>
+        <div class="kpi-icon purple">⌖</div>
+    </div>
+
+    <div class="kpi-card">
+        <div>
+            <span>Tempo Médio</span>
+            <strong>{{ media_minutos }} min</strong>
+        </div>
+        <div class="kpi-icon orange">◉</div>
+    </div>
+</div>
+
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div>
+            <span>Reservas Hoje</span>
+            <strong>{{ reservas_hoje }}</strong>
+        </div>
+        <div class="kpi-icon">▣</div>
+    </div>
+
+    <div class="kpi-card">
+        <div>
+            <span>Drones em Campo</span>
+            <strong>{{ drones_em_campo }}</strong>
+        </div>
+        <div class="kpi-icon purple">⌖</div>
+    </div>
+
+    <div class="kpi-card">
+        <div>
+            <span>Em Manutenção</span>
+            <strong>{{ drones_em_manutencao }}</strong>
+        </div>
+        <div class="kpi-icon orange">⚒</div>
+    </div>
+
+    <div class="kpi-card">
+        <div>
+            <span>Drones Ativos</span>
+            <strong>{{ status_drones.ativos }}</strong>
+        </div>
+        <div class="kpi-icon green">✓</div>
+    </div>
+</div>
+
+<div class="chart-grid three">
+    <div class="panel">
+        <h3>Uso por Piloto</h3>
+        <canvas id="chartPilotos"></canvas>
+    </div>
+
+    <div class="panel">
+        <h3>Uso por Equipamento</h3>
+        <canvas id="chartDrones"></canvas>
+    </div>
+
+    <div class="panel">
+        <h3>Uso por Finalidade</h3>
+        <canvas id="chartFinalidades"></canvas>
+    </div>
+</div>
+
+<div class="chart-grid main">
+    <div class="panel">
+        <h3>Horas de Voo ao Longo do Tempo</h3>
+        <canvas id="chartTempo"></canvas>
+    </div>
+
+    <div class="panel">
+        <h3>Situação dos Drones</h3>
+
+        <div class="status-list">
+            <div>
+                <span class="status-dot ok"></span>
+                Ativos
+                <strong>{{ status_drones.ativos }}</strong>
+            </div>
+
+            <div>
+                <span class="status-dot warn"></span>
+                Em manutenção
+                <strong>{{ status_drones.manutencao }}</strong>
+            </div>
+
+            <div>
+                <span class="status-dot bad"></span>
+                Indisponíveis
+                <strong>{{ status_drones.indisponiveis }}</strong>
+            </div>
+        </div>
+
+        <a class="text-link" href="{% url 'drones' %}">
+            Ver equipamentos
+        </a>
+    </div>
+</div>
+
+<div class="chart-grid main">
+
+    <div class="panel">
+        <div class="panel-title-row">
+            <h3>Próximas Reservas</h3>
+            <a href="{% url 'calendario' %}">Ver calendário</a>
+        </div>
+
+        <div class="table-responsive">
+            <table class="modern-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Horário</th>
+                        <th>Piloto</th>
+                        <th>Drone</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                {% for reserva in proximas_reservas %}
+                    <tr>
+                        <td>{{ reserva.data|date:"d/m/Y" }}</td>
+                        <td>
+                            {{ reserva.hora_inicio|time:"H:i" }}
+                            -
+                            {{ reserva.hora_fim|time:"H:i" }}
+                        </td>
+                        <td>{{ reserva.piloto.nome }}</td>
+                        <td>{{ reserva.drone.nome }}</td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="4">
+                            Nenhuma reserva futura.
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-title-row">
+            <h3>Últimos Voos</h3>
+            <a href="{% url 'voos' %}">Ver todos</a>
+        </div>
+
+        <div class="table-responsive">
+            <table class="modern-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Piloto</th>
+                        <th>Drone</th>
+                        <th>Duração</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                {% for voo in ultimos_voos %}
+                    <tr>
+                        <td>{{ voo.data|date:"d/m/Y" }}</td>
+                        <td>{{ voo.piloto.nome }}</td>
+                        <td>{{ voo.drone.nome }}</td>
+                        <td>{{ voo.duracao_minutos }} min</td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="4">
+                            Nenhum voo cadastrado.
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+{{ pilotos_data|json_script:"pilotos-data" }}
+{{ drones_data|json_script:"drones-data" }}
+{{ finalidades_data|json_script:"finalidades-data" }}
+{{ tempo_data|json_script:"tempo-data" }}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const pilotos = JSON.parse(
+    document.getElementById("pilotos-data").textContent
+);
+
+const drones = JSON.parse(
+    document.getElementById("drones-data").textContent
+);
+
+const finalidades = JSON.parse(
+    document.getElementById("finalidades-data").textContent
+);
+
+const tempo = JSON.parse(
+    document.getElementById("tempo-data").textContent
+);
+
+const donutOpts = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: {
+            position: "right"
+        }
+    }
+};
+
+new Chart(
+    document.getElementById("chartPilotos"),
+    {
+        type: "doughnut",
+        data: {
+            labels: pilotos.map(x => x.nome),
+            datasets: [{
+                data: pilotos.map(x => x.horas)
+            }]
+        },
+        options: donutOpts
+    }
+);
+
+new Chart(
+    document.getElementById("chartDrones"),
+    {
+        type: "doughnut",
+        data: {
+            labels: drones.map(x => x.nome),
+            datasets: [{
+                data: drones.map(x => x.horas)
+            }]
+        },
+        options: donutOpts
+    }
+);
+
+new Chart(
+    document.getElementById("chartFinalidades"),
+    {
+        type: "doughnut",
+        data: {
+            labels: finalidades.map(x => x.nome),
+            datasets: [{
+                data: finalidades.map(x => x.horas)
+            }]
+        },
+        options: donutOpts
+    }
+);
+
+new Chart(
+    document.getElementById("chartTempo"),
+    {
+        type: "line",
+        data: {
+            labels: tempo.map(x => x.data),
+            datasets: [{
+                label: "Horas",
+                data: tempo.map(x => x.horas),
+                tension: .35,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    }
+);
+</script>
+{% endblock %}
+'''
+
+    DASH.write_text(html, encoding="utf-8")
+    print("dashboard.html atualizado.")
+
+def run_check():
+    result = subprocess.run(
+        [sys.executable, "manage.py", "check"],
+        cwd=ROOT
+    )
+
+    if result.returncode != 0:
+        fail("python manage.py check falhou.")
+
+def main():
+    if not (ROOT / "manage.py").exists():
+        fail(
+            "Copie este patch para a raiz do projeto, ao lado de manage.py."
+        )
+
+    print("=== PATCH - DASHBOARD OPERACIONAL ===")
+
+    backup()
+    patch_views()
+    patch_dashboard()
+    run_check()
+
+    print("\nPATCH CONCLUÍDO.")
+    print("Não há alteração no banco.")
+    print("Agora execute:")
+    print("python manage.py runserver")
+
+if __name__ == "__main__":
+    main()

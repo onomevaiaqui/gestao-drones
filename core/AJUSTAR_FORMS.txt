@@ -1,0 +1,41 @@
+NO ARQUIVO core/forms.py:
+
+1. Confirme que existe no topo:
+from django.db.models import Q
+
+2. Na classe VooForm, use este __init__:
+
+def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+
+    if "piloto" in self.fields:
+        self.fields["piloto"].queryset = Piloto.objects.filter(
+            ativo=True
+        )
+
+    if "drone" in self.fields:
+        self.fields["drone"].queryset = Drone.objects.filter(
+            status="ativo"
+        )
+
+    # Ao editar voo antigo, mantém o drone original visível,
+    # mesmo se hoje estiver indisponível.
+    if self.instance and self.instance.pk:
+        if "piloto" in self.fields and self.instance.piloto_id:
+            self.fields["piloto"].queryset = Piloto.objects.filter(
+                Q(ativo=True) |
+                Q(pk=self.instance.piloto_id)
+            ).distinct()
+
+        if "drone" in self.fields and self.instance.drone_id:
+            self.fields["drone"].queryset = Drone.objects.filter(
+                Q(status="ativo") |
+                Q(pk=self.instance.drone_id)
+            ).distinct()
+
+
+3. Na classe AlocacaoForm, mantenha exatamente a mesma regra:
+- nova reserva: somente drones Ativos
+- edição de reserva antiga: mantém o drone já vinculado visível
+
+Se sua classe AlocacaoForm já está como na última atualização, NÃO precisa alterar.

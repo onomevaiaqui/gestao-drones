@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Manutenções{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div><h1>Manutenções</h1><p>Histórico e acompanhamento dos equipamentos</p></div>
+    <a class="btn btn-primary" href="{% url 'manutencao_nova' %}">+ Nova Manutenção</a>
+</div>
+<div class="panel">
+<div class="table-responsive">
+<table class="modern-table">
+<thead><tr><th>Drone</th><th>Tipo</th><th>Início</th><th>Fim</th><th>Descrição</th><th>Status</th><th>Ações</th></tr></thead>
+<tbody>
+{% for m in manutencoes %}
+<tr>
+<td><strong>{{ m.drone.nome }}</strong><div class="text-muted small">{{ m.drone.modelo }}</div></td>
+<td>{{ m.get_tipo_display }}</td>
+<td>{{ m.data_inicio|date:"d/m/Y" }}</td>
+<td>{% if m.data_fim %}{{ m.data_fim|date:"d/m/Y" }}{% else %}-{% endif %}</td>
+<td>{{ m.descricao|truncatechars:70 }}</td>
+<td>{% if m.concluida %}<span class="badge-soft green">Concluída</span>{% else %}<span class="badge-soft orange">Em andamento</span>{% endif %}</td>
+<td class="actions">
+<a href="{% url 'manutencao_editar' m.pk %}" class="icon-btn">Editar</a>
+{% if not m.concluida %}
+<form method="post" action="{% url 'manutencao_concluir' m.pk %}" onsubmit="return confirm('Concluir esta manutenção?');">{% csrf_token %}<button type="submit" class="icon-btn">Concluir</button></form>
+{% endif %}
+<form method="post" action="{% url 'manutencao_excluir' m.pk %}" onsubmit="return confirm('Excluir esta manutenção?');">{% csrf_token %}<button type="submit" class="icon-btn danger">Excluir</button></form>
+</td>
+</tr>
+{% empty %}
+<tr><td colspan="7">Nenhuma manutenção registrada.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</div>
+{% endblock %}

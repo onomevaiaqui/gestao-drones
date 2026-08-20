@@ -1,0 +1,71 @@
+ADICIONE ESTA FUNÇÃO EM core/views.py, LOGO APÓS alocacao_excluir:
+
+
+@admin_required
+def alocacao_concluir(request, pk):
+    alocacao = get_object_or_404(Alocacao, pk=pk)
+
+    if alocacao.status == "concluido":
+        messages.warning(request, "Esta reserva já foi concluída.")
+        return redirect("calendario")
+
+    if request.method == "POST":
+        form = VooForm(request.POST)
+
+        if form.is_valid():
+            voo = form.save(commit=False)
+            voo.criado_por = request.user
+            voo.save()
+
+            alocacao.status = "concluido"
+            alocacao.save(update_fields=["status"])
+
+            messages.success(
+                request,
+                "Reserva concluída e voo registrado com sucesso."
+            )
+            return redirect("voos")
+
+    else:
+        dados_iniciais = {
+            "data": alocacao.data,
+            "piloto": alocacao.piloto,
+            "drone": alocacao.drone,
+            "local": alocacao.local,
+            "hora_inicio": alocacao.hora_inicio,
+            "hora_fim": alocacao.hora_fim,
+            "observacoes": alocacao.observacoes,
+        }
+
+        finalidade_map = {
+            "levantamento": "levantamento",
+            "monitoramento": "monitoramento",
+            "inspeção": "inspecao",
+            "inspecao": "inspecao",
+            "mapeamento": "mapeamento",
+            "treinamento": "treinamento",
+        }
+
+        finalidade_texto = (alocacao.finalidade or "").strip().lower()
+        dados_iniciais["finalidade"] = finalidade_map.get(
+            finalidade_texto,
+            "outro"
+        )
+
+        form = VooForm(initial=dados_iniciais)
+
+    ctx = {
+        "form": form,
+        "titulo": "Concluir reserva e registrar voo",
+        "alocacao": alocacao,
+    }
+    ctx.update(_base_context(request))
+    return render(request, "calendario/concluir.html", ctx)
+
+
+Essa função:
+- só pode ser usada por administrador;
+- traz piloto, drone, data e horários da reserva;
+- permite preencher bateria e distância;
+- cria o voo;
+- marca a reserva como Concluída.

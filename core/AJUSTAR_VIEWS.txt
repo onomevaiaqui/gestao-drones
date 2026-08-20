@@ -1,0 +1,264 @@
+NO ARQUIVO core/views.py:
+
+1. NO IMPORT DOS MODELS, altere de:
+
+from .models import Piloto, Drone, Voo, Alocacao, Manutencao
+
+para:
+
+from .models import (
+    Piloto,
+    Drone,
+    DroneHistorico,
+    Voo,
+    Alocacao,
+    Manutencao,
+)
+
+
+2. SUBSTITUA a função drone_status_atualizar por:
+
+@login_required
+@require_POST
+def drone_status_atualizar(request, pk):
+    drone = get_object_or_404(
+        Drone,
+        pk=pk
+    )
+
+    novo_status = request.POST.get(
+        "status"
+    )
+
+    status_validos = {
+        valor
+        for valor, _nome
+        in Drone.STATUS_CHOICES
+    }
+
+    if novo_status not in status_validos:
+        messages.error(
+            request,
+            "Status inválido."
+        )
+        return redirect("drones")
+
+    status_anterior = drone.status
+    localizacao_anterior = (
+        drone.localizacao
+    )
+
+    if novo_status == status_anterior:
+        return redirect("drones")
+
+    drone.status = novo_status
+    drone.save(
+        update_fields=["status"]
+    )
+
+    DroneHistorico.objects.create(
+        drone=drone,
+        status_anterior=status_anterior,
+        status_novo=novo_status,
+        localizacao_anterior=localizacao_anterior,
+        localizacao_nova=drone.localizacao,
+        alterado_por=request.user,
+        observacao="Alteração rápida de status",
+    )
+
+    messages.success(
+        request,
+        f"Status do drone {drone.nome} atualizado."
+    )
+
+    return redirect("drones")
+
+
+3. SUBSTITUA a função drone_editar por:
+
+@admin_required
+def drone_editar(request, pk):
+    drone = get_object_or_404(
+        Drone,
+        pk=pk
+    )
+
+    status_anterior = drone.status
+    localizacao_anterior = drone.localizacao
+
+    form = DroneForm(
+        request.POST or None,
+        instance=drone
+    )
+
+    if form.is_valid():
+        drone = form.save()
+
+        if (
+            drone.status != status_anterior
+            or drone.localizacao != localizacao_anterior
+        ):
+            DroneHistorico.objects.create(
+                drone=drone,
+                status_anterior=status_anterior,
+                status_novo=drone.status,
+                localizacao_anterior=localizacao_anterior,
+                localizacao_nova=drone.localizacao,
+                alterado_por=request.user,
+                observacao="Alteração pelo formulário de edição",
+            )
+
+        messages.success(
+            request,
+            "Drone atualizado com sucesso."
+        )
+
+        return redirect(
+            "drones"
+        )
+
+    ctx = {
+        "form": form,
+        "titulo": (
+            f"Editar drone - "
+            f"{drone.nome}"
+        ),
+    }
+
+    ctx.update(
+        _base_context(request)
+    )
+
+    return render(
+        request,
+        "form.html",
+        ctx
+    )
+
+
+4. SUBSTITUA a função drones por:
+
+@login_required
+def drones(request):
+    voos_all = (
+        Voo.objects
+        .select_related("drone")
+    )
+
+    drones_lista = []
+
+    for d in Drone.objects.all():
+        mins = sum(
+            v.duracao_minutos
+            for v in voos_all
+            if v.drone_id == d.id
+        )
+
+        ultimo_historico = (
+            DroneHistorico.objects
+            .filter(drone=d)
+            .select_related("alterado_por")
+            .first()
+        )
+
+        drones_lista.append({
+            "obj": d,
+            "horas": (
+                f"{mins // 60}h "
+                f"{mins % 60:02d}min"
+            ),
+            "ultimo_historico": ultimo_historico,
+        })
+
+    ctx = {
+        "drones_lista": drones_lista
+    }
+
+    ctx.update(
+        _base_context(request)
+    )
+
+    return render(
+        request,
+        "drones/lista.html",
+        ctx
+    )
+
+
+5. ADICIONE esta nova view:
+
+@login_required
+def drone_historico(request, pk):
+    drone = get_object_or_404(
+        Drone,
+        pk=pk
+    )
+
+    historico = (
+        DroneHistorico.objects
+        .filter(drone=drone)
+        .select_related("alterado_por")
+    )
+
+    ctx = {
+        "drone": drone,
+        "historico": historico,
+    }
+
+    ctx.update(
+        _base_context(request)
+    )
+
+    return render(
+        request,
+        "drones/historico.html",
+        ctx
+    )
+
+
+6. Na função voo_novo, ANTES do voo.save(), adicione:
+
+if voo.drone.status != "ativo":
+    form.add_error(
+        "drone",
+        "Este drone não está disponível para novos voos."
+    )
+
+    ctx = {
+        "form": form,
+        "titulo": "Registrar novo voo",
+    }
+
+    ctx.update(
+        _base_context(request)
+    )
+
+    return render(
+        request,
+        "voos/form.html",
+        ctx
+    )
+
+
+7. Na função alocacao_nova, ANTES de obj.save(), adicione:
+
+if obj.drone.status != "ativo":
+    form.add_error(
+        "drone",
+        "Este drone não está disponível para novas reservas."
+    )
+
+    ctx = {
+        "form": form,
+        "titulo": "Nova reserva / alocação",
+    }
+
+    ctx.update(
+        _base_context(request)
+    )
+
+    return render(
+        request,
+        "form.html",
+        ctx
+    )

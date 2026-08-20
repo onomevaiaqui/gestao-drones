@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Voos{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div><h1>Voos</h1><p>Histórico e consulta de operações</p></div>
+    <a href="{% url 'voo_novo' %}" class="btn btn-primary">+ Registrar Voo</a>
+</div>
+
+<div class="panel">
+    <form method="get" class="filter-grid">
+        <input class="form-control" name="q" placeholder="Buscar piloto, drone, local..." value="{{ filtros.q }}">
+        <input class="form-control" type="date" name="inicio" value="{{ filtros.inicio }}">
+        <input class="form-control" type="date" name="fim" value="{{ filtros.fim }}">
+
+        <select class="form-select" name="piloto">
+            <option value="">Todos os pilotos</option>
+            {% for p in pilotos %}
+            <option value="{{ p.id }}" {% if filtros.piloto == p.id|stringformat:"s" %}selected{% endif %}>{{ p.nome }}</option>
+            {% endfor %}
+        </select>
+
+        <select class="form-select" name="drone">
+            <option value="">Todos os drones</option>
+            {% for d in drones %}
+            <option value="{{ d.id }}" {% if filtros.drone == d.id|stringformat:"s" %}selected{% endif %}>{{ d.nome }}</option>
+            {% endfor %}
+        </select>
+
+        <select class="form-select" name="finalidade">
+            <option value="">Todas as finalidades</option>
+            {% for valor,nome in finalidades %}
+            <option value="{{ valor }}" {% if filtros.finalidade == valor %}selected{% endif %}>{{ nome }}</option>
+            {% endfor %}
+        </select>
+
+        <button class="btn btn-primary">Filtrar</button>
+        <a class="btn btn-light" href="{% url 'voos' %}">Limpar</a>
+    </form>
+</div>
+
+<div class="panel">
+    <div class="table-responsive">
+        <table class="modern-table">
+            <thead>
+            <tr>
+                <th>Data</th><th>Piloto</th><th>Drone</th><th>Finalidade</th>
+                <th>Início</th><th>Término</th><th>Duração</th><th>Distância</th>
+                {% if eh_admin or user.is_superuser %}<th>Ações</th>{% endif %}
+            </tr>
+            </thead>
+            <tbody>
+            {% for v in voos %}
+            <tr>
+                <td>{{ v.data|date:"d/m/Y" }}</td>
+                <td>{{ v.piloto }}</td>
+                <td>{{ v.drone }}</td>
+                <td>{{ v.get_finalidade_display }}</td>
+                <td>{{ v.hora_inicio|time:"H:i" }}</td>
+                <td>{{ v.hora_fim|time:"H:i" }}</td>
+                <td>{{ v.duracao_minutos }} min</td>
+                <td>{% if v.distancia_m %}{{ v.distancia_m }} m{% else %}-{% endif %}</td>
+
+                {% if eh_admin or user.is_superuser %}
+                <td class="actions">
+                    <a href="{% url 'voo_editar' v.pk %}" class="icon-btn">Editar</a>
+                    <form method="post" action="{% url 'voo_excluir' v.pk %}"
+                          onsubmit="return confirm('Deseja realmente excluir este voo? Esta ação não poderá ser desfeita.');">
+                        {% csrf_token %}
+                        <button type="submit" class="icon-btn danger">Excluir</button>
+                    </form>
+                </td>
+                {% endif %}
+            </tr>
+            {% empty %}
+            <tr><td colspan="9">Nenhum voo encontrado.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

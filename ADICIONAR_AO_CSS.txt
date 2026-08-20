@@ -1,0 +1,11 @@
+ADICIONE AO FINAL DE static/css/sistema.css:
+
+.calendar-event.event-done{
+    background:#e7f8ef;
+    color:#26875a;
+}
+
+.calendar-event.event-cancelled{
+    background:#ffe8ea;
+    color:#bd3945;
+}

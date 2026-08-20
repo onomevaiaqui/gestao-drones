@@ -1,0 +1,21 @@
+body {
+    background: #f4f7fb;
+}
+.card {
+    border: 0;
+}
+.navbar-brand {
+    letter-spacing: .2px;
+}
+
+
+
+.calendar-event.event-done{
+    background:#e7f8ef;
+    color:#26875a;
+}
+
+.calendar-event.event-cancelled{
+    background:#ffe8ea;
+    color:#bd3945;
+}

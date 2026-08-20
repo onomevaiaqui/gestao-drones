@@ -1,0 +1,31 @@
+NO ARQUIVO templates/base.html:
+
+Localize o menu lateral.
+
+O link Drones atualmente está dentro do bloco:
+
+{% if eh_admin or user.is_superuser %}
+
+Mova SOMENTE o link de Drones para fora desse bloco.
+
+A ordem recomendada fica:
+
+Dashboard
+Voos
+Calendário
+Drones
+
+{% if eh_admin or user.is_superuser %}
+Pilotos / Usuários
+Relatórios
+Manutenções
+{% endif %}
+
+Exemplo:
+
+<a href="{% url 'drones' %}" ...>
+    ⌘ <span>Drones</span>
+</a>
+
+Assim usuários comuns conseguem abrir a aba Drones,
+mas não verão Novo Drone, Editar ou Excluir.

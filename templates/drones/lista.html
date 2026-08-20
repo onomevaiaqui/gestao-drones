@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}Drones{% endblock %}
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>Drones</h1>
+        <p>Equipamentos, localização e disponibilidade operacional</p>
+    </div>
+
+    {% if eh_admin or user.is_superuser %}
+    <a class="btn btn-primary" href="{% url 'drone_novo' %}">
+        + Novo Drone
+    </a>
+    {% endif %}
+</div>
+
+<div class="panel">
+<div class="table-responsive">
+
+<table class="modern-table">
+<thead>
+<tr>
+    <th>Nome</th>
+    <th>Modelo</th>
+    <th>Localização</th>
+    <th>Status</th>
+    <th>Horas Totais</th>
+    <th>Última alteração</th>
+    <th>Ações</th>
+</tr>
+</thead>
+
+<tbody>
+{% for item in drones_lista %}
+{% with d=item.obj %}
+<tr>
+    <td>
+        <strong>{{ d.nome }}</strong>
+        <div class="text-muted small">
+            {{ d.numero_serie|default:"Sem nº de série" }}
+        </div>
+    </td>
+
+    <td>{{ d.modelo }}</td>
+
+    <td>
+        {% if d.localizacao %}
+            {{ d.localizacao }}
+        {% else %}
+            <span class="text-muted">
+                Não informada
+            </span>
+        {% endif %}
+    </td>
+
+    <td>
+        {% if d.status == "em_campo" %}
+            <span class="badge-soft purple">Em campo</span>
+            <div class="text-muted small mt-1">Atualização automática</div>
+        {% else %}
+        <form
+            method="post"
+            action="{% url 'drone_status_atualizar' d.pk %}"
+            class="status-inline-form"
+        >
+            {% csrf_token %}
+
+            <select
+                name="status"
+                class="form-select form-select-sm status-select
+                {% if d.status == 'ativo' %}status-ativo
+                {% elif d.status == 'manutencao' %}status-manutencao
+                {% else %}status-indisponivel{% endif %}"
+                onchange="this.form.submit()"
+            >
+                <option
+                    value="ativo"
+                    {% if d.status == "ativo" %}selected{% endif %}
+                >
+                    Ativo
+                </option>
+
+                <option
+                    value="manutencao"
+                    {% if d.status == "manutencao" %}selected{% endif %}
+                >
+                    Em manutenção
+                </option>
+
+                <option
+                    value="indisponivel"
+                    {% if d.status == "indisponivel" %}selected{% endif %}
+                >
+                    Indisponível
+                </option>
+            </select>
+        </form>
+        {% endif %}
+    </td>
+
+    <td>{{ item.horas }}</td>
+
+    <td>
+        {% if item.ultimo_historico %}
+            <div>
+                {{ item.ultimo_historico.alterado_em|date:"d/m/Y H:i" }}
+            </div>
+
+            <div class="text-muted small">
+                por
+                {% if item.ultimo_historico.alterado_por %}
+                    {{ item.ultimo_historico.alterado_por.username }}
+                {% else %}
+                    sistema
+                {% endif %}
+            </div>
+        {% else %}
+            <span class="text-muted">
+                Sem alterações
+            </span>
+        {% endif %}
+    </td>
+
+    <td class="actions">
+        <a
+            href="{% url 'drone_historico' d.pk %}"
+            class="icon-btn"
+        >
+            Histórico
+        </a>
+
+        {% if eh_admin or user.is_superuser %}
+        <a
+            href="{% url 'drone_editar' d.pk %}"
+            class="icon-btn"
+        >
+            Editar
+        </a>
+
+        <form
+            method="post"
+            action="{% url 'drone_excluir' d.pk %}"
+            onsubmit="return confirm('Excluir este drone?');"
+        >
+            {% csrf_token %}
+            <button
+                class="icon-btn danger"
+                type="submit"
+            >
+                Excluir
+            </button>
+        </form>
+        {% endif %}
+    </td>
+</tr>
+{% endwith %}
+
+{% empty %}
+<tr>
+    <td colspan="7">
+        Nenhum drone cadastrado.
+    </td>
+</tr>
+{% endfor %}
+</tbody>
+
+</table>
+
+</div>
+</div>
+
+{% endblock %}

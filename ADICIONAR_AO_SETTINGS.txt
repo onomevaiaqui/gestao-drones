@@ -1,0 +1,19 @@
+ADICIONE ESTAS LINHAS NO FINAL DE config/settings.py
+
+# =========================================================
+# E-MAIL - DESENVOLVIMENTO LOCAL
+# =========================================================
+
+# Durante os testes, o e-mail será mostrado no terminal do VS Code.
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+DEFAULT_FROM_EMAIL = "Gestão de Drones <nao-responda@gestaodrones.local>"
+
+# Link usado dentro do e-mail.
+# Quando publicar no servidor, troque pelo endereço real.
+SITE_URL = "http://127.0.0.1:8000"
+
+
+QUANDO FOR ENVIAR E-MAIL REAL POR SMTP, substitua EMAIL_BACKEND e configure
+as opções do seu provedor de e-mail. Não coloque senhas SMTP diretamente
+no código em produção; use variáveis de ambiente.

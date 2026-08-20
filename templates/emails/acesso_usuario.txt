@@ -1,0 +1,17 @@
+Olá, {{ piloto.nome }}.
+
+Seu acesso ao Sistema de Gestão de Drones foi cadastrado.
+
+Usuário: {{ usuario.username }}
+E-mail cadastrado: {{ usuario.email }}
+
+Acesse o sistema pelo link:
+{{ login_url }}
+
+No primeiro acesso, após entrar com a senha informada pelo administrador, você poderá:
+- alterar sua senha; ou
+- continuar utilizando a senha atual.
+
+Por segurança, sua senha não é enviada neste e-mail.
+
+Sistema de Gestão de Drones

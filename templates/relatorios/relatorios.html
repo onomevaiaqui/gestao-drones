@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}Relatórios{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>Relatórios</h1>
+        <p>Resumo consolidado das operações</p>
+    </div>
+</div>
+
+<div class="panel">
+    <form method="get" class="filter-grid">
+        <input
+            class="form-control"
+            type="date"
+            name="inicio"
+            value="{{ filtros.inicio }}"
+        >
+
+        <input
+            class="form-control"
+            type="date"
+            name="fim"
+            value="{{ filtros.fim }}"
+        >
+
+        <select
+            class="form-select"
+            name="piloto"
+        >
+            <option value="">
+                Todos os pilotos
+            </option>
+
+            {% for p in pilotos %}
+            <option
+                value="{{ p.id }}"
+                {% if filtros.piloto == p.id|stringformat:"s" %}
+                selected
+                {% endif %}
+            >
+                {{ p.nome }}
+            </option>
+            {% endfor %}
+        </select>
+
+        <select
+            class="form-select"
+            name="drone"
+        >
+            <option value="">
+                Todos os drones
+            </option>
+
+            {% for d in drones %}
+            <option
+                value="{{ d.id }}"
+                {% if filtros.drone == d.id|stringformat:"s" %}
+                selected
+                {% endif %}
+            >
+                {{ d.nome }}
+            </option>
+            {% endfor %}
+        </select>
+
+        <button class="btn btn-primary">
+            Aplicar filtros
+        </button>
+
+        <a
+            class="btn btn-light"
+            href="{% url 'relatorios' %}"
+        >
+            Limpar
+        </a>
+    </form>
+</div>
+
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div>
+            <span>Total de Voos</span>
+            <strong>{{ total_voos }}</strong>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div>
+            <span>Horas Totais</span>
+            <strong>{{ total_horas }} h</strong>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div>
+            <span>Distância Total</span>
+            <strong>{{ distancia_km }} km</strong>
+        </div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel-title-row">
+        <h3>Voos do período</h3>
+
+        <a
+            class="btn btn-primary btn-sm"
+            href="{% url 'relatorios_exportar_pdf' %}?{{ request.GET.urlencode }}"
+        >
+            Exportar PDF
+        </a>
+    </div>
+
+    <div class="table-responsive">
+        <table class="modern-table">
+            <thead>
+            <tr>
+                <th>Data</th>
+                <th>Piloto</th>
+                <th>Drone</th>
+                <th>Finalidade</th>
+                <th>Local</th>
+                <th>Duração</th>
+                <th>Distância</th>
+            </tr>
+            </thead>
+
+            <tbody>
+            {% for voo in voos_relatorio %}
+            <tr>
+                <td>{{ voo.data|date:"d/m/Y" }}</td>
+                <td>{{ voo.piloto.nome }}</td>
+                <td>{{ voo.drone.nome }}</td>
+                <td>{{ voo.get_finalidade_display }}</td>
+                <td>{{ voo.local }}</td>
+                <td>{{ voo.duracao_minutos }} min</td>
+                <td>
+                    {% if voo.distancia_m %}
+                        {{ voo.distancia_m }} m
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7">
+                    Nenhum voo encontrado.
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="chart-grid main">
+
+    <div class="panel">
+        <h3>Resumo por Piloto</h3>
+
+        <div class="table-responsive">
+            <table class="modern-table">
+                <thead>
+                <tr>
+                    <th>Piloto</th>
+                    <th>Voos</th>
+                    <th>Horas</th>
+                </tr>
+                </thead>
+
+                <tbody>
+                {% for p in por_piloto %}
+                <tr>
+                    <td>{{ p.nome }}</td>
+                    <td>{{ p.voos }}</td>
+                    <td>{{ p.horas }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="3">
+                        Sem dados.
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h3>Resumo por Drone</h3>
+
+        <div class="table-responsive">
+            <table class="modern-table">
+                <thead>
+                <tr>
+                    <th>Drone</th>
+                    <th>Voos</th>
+                    <th>Horas</th>
+                </tr>
+                </thead>
+
+                <tbody>
+                {% for d in por_drone %}
+                <tr>
+                    <td>{{ d.nome }}</td>
+                    <td>{{ d.voos }}</td>
+                    <td>{{ d.horas }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="3">
+                        Sem dados.
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

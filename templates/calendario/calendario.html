@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Calendário{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Calendário de Alocação</h1>
+        <p>Reservas de pilotos e equipamentos</p>
+    </div>
+    <a class="btn btn-primary" href="{% url 'alocacao_nova' %}">+ Reservar</a>
+</div>
+
+<div class="panel">
+    <div class="calendar-toolbar">
+        <a href="?ano={{ anterior.year }}&mes={{ anterior.month }}" class="btn btn-light">‹</a>
+        <h3>{{ mes }}/{{ ano }}</h3>
+        <a href="?ano={{ proximo.year }}&mes={{ proximo.month }}" class="btn btn-light">›</a>
+    </div>
+
+    <div class="calendar-grid calendar-head">
+        <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div>
+        <div>Qui</div><div>Sex</div><div>Sáb</div>
+    </div>
+
+    {% for semana in semanas %}
+    <div class="calendar-grid">
+        {% for dia in semana %}
+        <div class="calendar-cell {% if not dia.mes_atual %}muted{% endif %}">
+            <div class="day-number">{{ dia.data.day }}</div>
+            {% for a in dia.alocacoes %}
+            <div class="calendar-event {% if a.status == 'concluido' %}event-done{% endif %}">
+                <strong>{{ a.drone.nome }}</strong>
+                <span>{{ a.hora_inicio|time:"H:i" }} - {{ a.hora_fim|time:"H:i" }}</span>
+                <small>{{ a.piloto.nome }}</small>
+                <small>{{ a.get_status_display }}</small>
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
+
+<div class="panel">
+    <h3>Reservas</h3>
+    <div class="table-responsive">
+        <table class="modern-table">
+            <thead>
+                <tr>
+                    <th>Data</th><th>Horário</th><th>Piloto</th><th>Drone</th>
+                    <th>Finalidade</th><th>Status</th><th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for a in lista_alocacoes %}
+                <tr>
+                    <td>{{ a.data|date:"d/m/Y" }}</td>
+                    <td>{{ a.hora_inicio|time:"H:i" }} - {{ a.hora_fim|time:"H:i" }}</td>
+                    <td>{{ a.piloto }}</td>
+                    <td>{{ a.drone }}</td>
+                    <td>{{ a.finalidade }}</td>
+                    <td>{{ a.get_status_display }}</td>
+                    <td class="actions">
+                    {% if eh_admin or user.is_superuser %}
+                        <a href="{% url 'alocacao_editar' a.pk %}" class="icon-btn">Editar</a>
+                        <a href="{% url 'alocacao_concluir' a.pk %}" class="icon-btn">
+                            {% if a.status == "concluido" %}Registrar Voo{% else %}Concluir{% endif %}
+                        </a>
+                        <form method="post" action="{% url 'alocacao_excluir' a.pk %}"
+                              onsubmit="return confirm('Deseja excluir esta reserva?');">
+                            {% csrf_token %}
+                            <button class="icon-btn danger" type="submit">Excluir</button>
+                        </form>
+                    {% else %}
+                        {% if a.status == "reservado" and a.piloto.user_id == user.id %}
+                            <a href="{% url 'alocacao_editar' a.pk %}" class="icon-btn">Editar</a>
+                            <form method="post" action="{% url 'alocacao_excluir' a.pk %}"
+                                  onsubmit="return confirm('Deseja excluir esta reserva?');">
+                                {% csrf_token %}
+                                <button class="icon-btn danger" type="submit">Excluir</button>
+                            </form>
+                        {% else %}
+                            <span class="text-muted">Somente consulta</span>
+                        {% endif %}
+                    {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="7">Nenhuma reserva neste período.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

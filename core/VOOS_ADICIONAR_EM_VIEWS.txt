@@ -1,0 +1,31 @@
+ADICIONE ESTAS DUAS FUNÇÕES EM core/views.py, LOGO APÓS voo_novo:
+
+@admin_required
+def voo_editar(request, pk):
+    voo = get_object_or_404(Voo, pk=pk)
+    form = VooForm(request.POST or None, instance=voo)
+
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Voo atualizado com sucesso.")
+        return redirect("voos")
+
+    ctx = {
+        "form": form,
+        "titulo": f"Editar voo - {voo.data.strftime('%d/%m/%Y')}",
+        "voo": voo,
+    }
+    ctx.update(_base_context(request))
+    return render(request, "voos/form.html", ctx)
+
+
+@admin_required
+@require_POST
+def voo_excluir(request, pk):
+    voo = get_object_or_404(Voo, pk=pk)
+    voo.delete()
+    messages.success(request, "Voo excluído com sucesso.")
+    return redirect("voos")
+
+Essas funções usam @admin_required, então usuários comuns NÃO conseguem editar ou excluir,
+mesmo que tentem acessar a URL manualmente.

@@ -1,0 +1,7 @@
+Na seção do calendário em core/urls.py, deixe:
+
+path("calendario/", views.calendario, name="calendario"),
+path("calendario/nova/", views.alocacao_nova, name="alocacao_nova"),
+path("calendario/<int:pk>/editar/", views.alocacao_editar, name="alocacao_editar"),
+path("calendario/<int:pk>/excluir/", views.alocacao_excluir, name="alocacao_excluir"),
+path("calendario/<int:pk>/concluir/", views.alocacao_concluir, name="alocacao_concluir"),

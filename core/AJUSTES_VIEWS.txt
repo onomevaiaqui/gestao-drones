@@ -1,0 +1,184 @@
+NO ARQUIVO core/views.py:
+
+1) Garanta estes imports:
+from datetime import date, timedelta, datetime
+from django.utils import timezone
+from django.db.models import Q
+
+2) Adicione antes das views:
+
+def _reserva_pertence_ao_usuario(request, alocacao):
+    if usuario_e_admin(request.user):
+        return True
+    try:
+        return alocacao.piloto_id == request.user.piloto.id
+    except Piloto.DoesNotExist:
+        return False
+
+
+def _atualizar_reservas_vencidas():
+    agora = timezone.localtime()
+    abertas = Alocacao.objects.filter(
+        status="reservado",
+        data__lte=agora.date(),
+    )
+
+    ids_concluir = []
+
+    for reserva in abertas:
+        fim = timezone.make_aware(
+            datetime.combine(reserva.data, reserva.hora_fim),
+            timezone.get_current_timezone(),
+        )
+
+        if fim <= agora:
+            ids_concluir.append(reserva.pk)
+
+    if ids_concluir:
+        Alocacao.objects.filter(pk__in=ids_concluir).update(status="concluido")
+
+
+3) No início de calendario(request), adicione:
+    _atualizar_reservas_vencidas()
+
+
+4) Substitua alocacao_excluir por:
+
+@login_required
+@require_POST
+def alocacao_excluir(request, pk):
+    _atualizar_reservas_vencidas()
+    alocacao = get_object_or_404(Alocacao, pk=pk)
+
+    if usuario_e_admin(request.user):
+        alocacao.delete()
+        messages.success(request, "Reserva excluída.")
+        return redirect("calendario")
+
+    if alocacao.status != "reservado":
+        messages.error(request, "Reservas concluídas não podem ser excluídas por usuários.")
+        return redirect("calendario")
+
+    if not _reserva_pertence_ao_usuario(request, alocacao):
+        messages.error(request, "Você só pode excluir reservas vinculadas ao seu próprio piloto.")
+        return redirect("calendario")
+
+    alocacao.delete()
+    messages.success(request, "Reserva excluída.")
+    return redirect("calendario")
+
+
+5) Adicione:
+
+@login_required
+def alocacao_editar(request, pk):
+    _atualizar_reservas_vencidas()
+    alocacao = get_object_or_404(Alocacao, pk=pk)
+    eh_admin = usuario_e_admin(request.user)
+
+    if not eh_admin:
+        if alocacao.status != "reservado":
+            messages.error(request, "Reservas concluídas só podem ser alteradas por administradores.")
+            return redirect("calendario")
+
+        if not _reserva_pertence_ao_usuario(request, alocacao):
+            messages.error(request, "Você só pode editar reservas vinculadas ao seu próprio piloto.")
+            return redirect("calendario")
+
+    form = AlocacaoForm(request.POST or None, instance=alocacao)
+
+    if not eh_admin:
+        try:
+            form.fields["piloto"].queryset = Piloto.objects.filter(pk=request.user.piloto.pk)
+            form.fields["piloto"].initial = request.user.piloto
+            form.fields["piloto"].disabled = True
+        except Piloto.DoesNotExist:
+            pass
+
+    if form.is_valid():
+        reserva = form.save(commit=False)
+
+        if not eh_admin:
+            reserva.piloto = request.user.piloto
+
+        reserva.save()
+        messages.success(request, "Reserva atualizada com sucesso.")
+        return redirect("calendario")
+
+    ctx = {"form": form, "titulo": "Editar reserva", "alocacao": alocacao}
+    ctx.update(_base_context(request))
+    return render(request, "form.html", ctx)
+
+
+6) Substitua alocacao_concluir por:
+
+@admin_required
+def alocacao_concluir(request, pk):
+    _atualizar_reservas_vencidas()
+    alocacao = get_object_or_404(Alocacao, pk=pk)
+
+    if request.method == "POST":
+        form = VooForm(request.POST)
+
+        form.fields["drone"].queryset = Drone.objects.filter(
+            Q(status="ativo") | Q(pk=alocacao.drone_id)
+        ).distinct()
+
+        form.fields["piloto"].queryset = Piloto.objects.filter(
+            Q(ativo=True) | Q(pk=alocacao.piloto_id)
+        ).distinct()
+
+        if form.is_valid():
+            voo = form.save(commit=False)
+            voo.criado_por = request.user
+            voo.save()
+
+            alocacao.status = "concluido"
+            alocacao.save(update_fields=["status"])
+
+            messages.success(request, "Voo registrado e reserva concluída com sucesso.")
+            return redirect("voos")
+
+    else:
+        dados_iniciais = {
+            "data": alocacao.data,
+            "piloto": alocacao.piloto,
+            "drone": alocacao.drone,
+            "local": alocacao.local,
+            "hora_inicio": alocacao.hora_inicio,
+            "hora_fim": alocacao.hora_fim,
+            "observacoes": alocacao.observacoes,
+        }
+
+        finalidade_map = {
+            "levantamento": "levantamento",
+            "monitoramento": "monitoramento",
+            "inspeção": "inspecao",
+            "inspecao": "inspecao",
+            "mapeamento": "mapeamento",
+            "treinamento": "treinamento",
+        }
+
+        finalidade_texto = (alocacao.finalidade or "").strip().lower()
+        dados_iniciais["finalidade"] = finalidade_map.get(finalidade_texto, "outro")
+
+        form = VooForm(initial=dados_iniciais)
+
+        form.fields["drone"].queryset = Drone.objects.filter(
+            Q(status="ativo") | Q(pk=alocacao.drone_id)
+        ).distinct()
+
+        form.fields["piloto"].queryset = Piloto.objects.filter(
+            Q(ativo=True) | Q(pk=alocacao.piloto_id)
+        ).distinct()
+
+        form.fields["drone"].initial = alocacao.drone
+        form.fields["piloto"].initial = alocacao.piloto
+
+    ctx = {
+        "form": form,
+        "titulo": "Concluir reserva e registrar voo",
+        "alocacao": alocacao,
+    }
+    ctx.update(_base_context(request))
+    return render(request, "calendario/concluir.html", ctx)

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Registrar Voo{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div><h1>Registrar Novo Voo</h1><p>Preencha os dados da operação</p></div>
+</div>
+
+<form method="post">
+{% csrf_token %}
+<div class="form-layout">
+    <div class="panel">
+        <h3>Informações Gerais</h3>
+        <div class="mb-3"><label>Data</label>{{ form.data }}{{ form.data.errors }}</div>
+        <div class="mb-3"><label>Piloto</label>{{ form.piloto }}{{ form.piloto.errors }}</div>
+        <div class="mb-3"><label>Drone</label>{{ form.drone }}{{ form.drone.errors }}</div>
+        <div class="mb-3"><label>Finalidade</label>{{ form.finalidade }}{{ form.finalidade.errors }}</div>
+        <div class="mb-3"><label>Local / Projeto</label>{{ form.local }}{{ form.local.errors }}</div>
+    </div>
+
+    <div class="panel">
+        <h3>Horários</h3>
+        <div class="mb-3"><label>Hora de início</label>{{ form.hora_inicio }}{{ form.hora_inicio.errors }}</div>
+        <div class="mb-3"><label>Hora de término</label>{{ form.hora_fim }}{{ form.hora_fim.errors }}</div>
+        <div class="info-box">A duração será calculada automaticamente ao salvar o voo.</div>
+    </div>
+
+    <div class="panel">
+        <h3>Dados do Voo</h3>
+        <div class="mb-3"><label>Bateria inicial (%)</label>{{ form.bateria_inicial }}{{ form.bateria_inicial.errors }}</div>
+        <div class="mb-3"><label>Bateria final (%)</label>{{ form.bateria_final }}{{ form.bateria_final.errors }}</div>
+        <div class="mb-3"><label>Distância percorrida (m)</label>{{ form.distancia_m }}{{ form.distancia_m.errors }}</div>
+        <div class="mb-3"><label>Observações</label>{{ form.observacoes }}{{ form.observacoes.errors }}</div>
+    </div>
+</div>
+
+<div class="form-actions">
+    <a class="btn btn-light" href="{% url 'voos' %}">Cancelar</a>
+    <button class="btn btn-primary">Salvar Voo</button>
+</div>
+</form>
+{% endblock %}

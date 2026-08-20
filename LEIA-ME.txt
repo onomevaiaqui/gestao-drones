@@ -1,0 +1,24 @@
+PACOTE CONSOLIDADO - ARQUIVOS PRINCIPAIS
+
+Arquivos:
+- core/views.py
+- core/forms.py
+- core/urls.py
+- templates/calendario/calendario.html
+
+ANTES DE SUBSTITUIR:
+Faça backup dos seus arquivos atuais.
+
+Copie os arquivos mantendo a mesma estrutura de pastas.
+
+Depois execute:
+python manage.py check
+
+Se aparecer "System check identified no issues", execute:
+python manage.py runserver
+
+IMPORTANTE:
+Este pacote foi consolidado a partir da estrutura que construímos na conversa.
+Como seu models.py atual não foi anexado aqui, se o comando "python manage.py check"
+mostrar erro de campo inexistente, NÃO rode migrations. Envie o erro completo e o
+seu core/models.py atual para ajustarmos exatamente à sua estrutura.

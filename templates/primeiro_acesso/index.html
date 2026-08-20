@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Primeiro acesso{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Bem-vindo, {{ piloto.nome }}</h1>
+        <p>Este é o seu primeiro acesso ao Sistema de Gestão de Drones.</p>
+    </div>
+</div>
+
+<div class="chart-grid main">
+    <div class="panel form-panel">
+        <h3>Alterar minha senha agora</h3>
+        <p class="text-muted">
+            Se desejar, defina uma nova senha antes de continuar.
+        </p>
+
+        <form method="post">
+            {% csrf_token %}
+            {% for field in form %}
+            <div class="mb-3">
+                <label class="form-label">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<div class="form-text">{{ field.help_text|safe }}</div>{% endif %}
+                {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            {% endfor %}
+            <button class="btn btn-primary" name="alterar_senha" value="1">
+                Alterar senha e continuar
+            </button>
+        </form>
+    </div>
+
+    <div class="panel">
+        <h3>Manter a senha atual</h3>
+        <p class="text-muted">
+            Você também pode continuar usando a senha informada no seu cadastro.
+            Esta escolha será solicitada apenas neste primeiro acesso.
+        </p>
+
+        <form method="post" action="{% url 'primeiro_acesso_continuar' %}">
+            {% csrf_token %}
+            <button class="btn btn-light">
+                Continuar com a senha atual
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

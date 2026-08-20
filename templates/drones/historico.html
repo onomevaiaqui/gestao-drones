@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Histórico do Drone{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>Histórico do Drone</h1>
+        <p>{{ drone.nome }} - {{ drone.modelo }}</p>
+    </div>
+
+    <a
+        href="{% url 'drones' %}"
+        class="btn btn-light"
+    >
+        Voltar
+    </a>
+</div>
+
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div>
+            <span>Status atual</span>
+            <strong>
+                {{ drone.get_status_display }}
+            </strong>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div>
+            <span>Localização atual</span>
+            <strong style="font-size:18px;">
+                {{ drone.localizacao|default:"Não informada" }}
+            </strong>
+        </div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="table-responsive">
+
+        <table class="modern-table">
+            <thead>
+            <tr>
+                <th>Data</th>
+                <th>Status anterior</th>
+                <th>Novo status</th>
+                <th>Local anterior</th>
+                <th>Novo local</th>
+                <th>Alterado por</th>
+                <th>Observação</th>
+            </tr>
+            </thead>
+
+            <tbody>
+            {% for h in historico %}
+            <tr>
+                <td>
+                    {{ h.alterado_em|date:"d/m/Y H:i" }}
+                </td>
+
+                <td>
+                    {{ h.status_anterior|default:"-" }}
+                </td>
+
+                <td>
+                    {{ h.status_novo }}
+                </td>
+
+                <td>
+                    {{ h.localizacao_anterior|default:"-" }}
+                </td>
+
+                <td>
+                    {{ h.localizacao_nova|default:"-" }}
+                </td>
+
+                <td>
+                    {% if h.alterado_por %}
+                        {{ h.alterado_por.username }}
+                    {% else %}
+                        Sistema
+                    {% endif %}
+                </td>
+
+                <td>
+                    {{ h.observacao|default:"-" }}
+                </td>
+            </tr>
+
+            {% empty %}
+            <tr>
+                <td colspan="7">
+                    Nenhuma alteração registrada.
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+
+        </table>
+
+    </div>
+</div>
+
+{% endblock %}

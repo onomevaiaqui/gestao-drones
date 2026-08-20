@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="pt-br">
+<body style="margin:0;background:#f4f7fb;font-family:Arial,sans-serif;color:#152238;">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:30px 15px;background:#f4f7fb;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;">
+<tr>
+<td style="background:#0c2238;padding:24px 30px;color:#ffffff;">
+    <div style="font-size:22px;font-weight:bold;">Gestão de Drones</div>
+</td>
+</tr>
+<tr>
+<td style="padding:30px;">
+    <h2 style="margin-top:0;">Olá, {{ piloto.nome }}!</h2>
+    <p>Seu acesso ao Sistema de Gestão de Drones foi cadastrado.</p>
+
+    <div style="background:#f4f7fb;border-radius:10px;padding:16px;margin:20px 0;">
+        <strong>Usuário:</strong> {{ usuario.username }}<br>
+        <strong>E-mail:</strong> {{ usuario.email }}
+    </div>
+
+    <p>Use a senha informada pelo administrador para entrar. No primeiro acesso, você poderá trocar essa senha ou continuar utilizando a senha atual.</p>
+
+    <p style="margin:28px 0;">
+        <a href="{{ login_url }}" style="background:#2f6df6;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold;">
+            Acessar o sistema
+        </a>
+    </p>
+
+    <p style="font-size:13px;color:#6f7f92;">
+        Por segurança, sua senha não é enviada por e-mail.
+    </p>
+</td>
+</tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>
