@@ -241,33 +241,3 @@ class ManutencaoForm(forms.ModelForm):
             "drone": forms.Select(attrs={"class": "form-select"}),
             "concluida": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
-# PATCH REGISTRO POS-VOO: FORMULARIO
-from django import forms as pos_voo_forms
-from .models import RegistroPosVoo
-
-class RegistroPosVooForm(pos_voo_forms.ModelForm):
-    class Meta:
-        model = RegistroPosVoo
-        fields = [
-            "hora_inicio_real", "hora_fim_real", "resultado",
-            "baterias_utilizadas", "bateria_inicial", "bateria_final",
-            "distancia_m", "ocorrencias", "danos", "necessita_manutencao",
-            "observacoes", "concluido",
-        ]
-        widgets = {
-            "hora_inicio_real": pos_voo_forms.TimeInput(attrs={"type": "time"}),
-            "hora_fim_real": pos_voo_forms.TimeInput(attrs={"type": "time"}),
-            "ocorrencias": pos_voo_forms.Textarea(attrs={"rows": 3}),
-            "danos": pos_voo_forms.Textarea(attrs={"rows": 3}),
-            "observacoes": pos_voo_forms.Textarea(attrs={"rows": 3}),
-        }
-
-    def clean(self):
-        dados = super().clean()
-        for campo in ("bateria_inicial", "bateria_final"):
-            valor = dados.get(campo)
-            if valor is not None and not 0 <= valor <= 100:
-                self.add_error(campo, "Informe um percentual entre 0 e 100.")
-        if dados.get("baterias_utilizadas") == 0:
-            self.add_error("baterias_utilizadas", "Informe ao menos uma bateria.")
-        return dados

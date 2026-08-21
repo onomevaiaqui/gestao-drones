@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Checklist Pré-Voo{% endblock %}
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>Checklist Pré-Voo</h1>
+        <p>{{ alocacao.data|date:"d/m/Y" }} · {{ alocacao.hora_inicio|time:"H:i" }} - {{ alocacao.hora_fim|time:"H:i" }}</p>
+    </div>
+    <a class="btn btn-light" href="{% url 'calendario' %}">Voltar</a>
+</div>
+
+<div class="panel">
+    <div class="checklist-summary">
+        <div><span>Drone</span><strong>{{ alocacao.drone.nome }}</strong></div>
+        <div><span>Piloto</span><strong>{{ alocacao.piloto.nome }}</strong></div>
+        <div><span>Local</span><strong>{{ alocacao.local|default:"-" }}</strong></div>
+        <div>
+            <span>Status</span>
+            {% if checklist.concluido %}
+            <strong>Concluído</strong>
+            {% else %}
+            <strong>Pendente</strong>
+            {% endif %}
+        </div>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="checklist-grid">
+            {% for field in form %}
+                {% if field.name != "observacoes" %}
+                <label class="checklist-item">
+                    {{ field }}
+                    <span>{{ field.label }}</span>
+                </label>
+                {% endif %}
+            {% endfor %}
+        </div>
+
+        <div class="mb-3">
+            <label>{{ form.observacoes.label }}</label>
+            {{ form.observacoes }}
+        </div>
+
+        <div class="form-actions">
+            <a class="btn btn-light" href="{% url 'calendario' %}">Cancelar</a>
+            <button type="submit" class="btn btn-primary">Salvar Checklist</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

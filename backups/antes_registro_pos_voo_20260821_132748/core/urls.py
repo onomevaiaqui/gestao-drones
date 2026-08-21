@@ -51,8 +51,3 @@ urlpatterns = [
     path("manutencoes/<int:pk>/excluir/", views.manutencao_excluir, name="manutencao_excluir"),
     path("manutencoes/<int:pk>/concluir/", views.manutencao_concluir, name="manutencao_concluir"),
 ]
-# PATCH REGISTRO POS-VOO: ROTA
-from . import views as pos_voo_views
-urlpatterns += [
-    path("alocacoes/<int:alocacao_id>/pos-voo/", pos_voo_views.registro_pos_voo, name="registro_pos_voo"),
-]
