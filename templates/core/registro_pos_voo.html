@@ -1,13 +1,56 @@
 {% extends "base.html" %}
+{% block title %}Registro Pós-Voo{% endblock %}
 {% block content %}
-<div class="container py-4">
-  <h2>Registro pós-voo</h2>
-  <p><strong>Drone:</strong> {{ alocacao.drone }} &nbsp; <strong>Piloto:</strong> {{ alocacao.piloto }}</p>
-  <p><strong>Data:</strong> {{ alocacao.data|date:"d/m/Y" }} &nbsp; <strong>Previsto:</strong> {{ alocacao.hora_inicio|time:"H:i" }}–{{ alocacao.hora_fim|time:"H:i" }}</p>
-  {% if somente_leitura %}<div class="alert alert-info">Registro concluído. Apenas administradores podem alterá-lo.</div>{% endif %}
-  <form method="post">{% csrf_token %}
-    <fieldset {% if somente_leitura %}disabled{% endif %}>{{ form.as_p }}</fieldset>
-    {% if not somente_leitura %}<button class="btn btn-primary" type="submit">Salvar registro</button>{% endif %}
-  </form>
+<div class="page-header">
+    <div><h1>Registro Pós-Voo</h1><p>Registre os dados reais e encerre a operação</p></div>
+    <a class="btn btn-light" href="{% url 'calendario' %}">Voltar</a>
 </div>
+<div class="panel">
+    <div class="checklist-summary">
+        <div><span>Drone</span><strong>{{ alocacao.drone.nome }}</strong></div>
+        <div><span>Piloto</span><strong>{{ alocacao.piloto.nome }}</strong></div>
+        <div><span>Data</span><strong>{{ alocacao.data|date:"d/m/Y" }}</strong></div>
+        <div><span>Horário previsto</span><strong>{{ alocacao.hora_inicio|time:"H:i" }} - {{ alocacao.hora_fim|time:"H:i" }}</strong></div>
+    </div>
+    {% if alocacao.local %}<div class="info-box"><strong>Local / Projeto:</strong> {{ alocacao.local }}</div>{% endif %}
+</div>
+{% if somente_leitura %}<div class="alert alert-info">Este registro está concluído. Apenas administradores podem alterá-lo.</div>{% endif %}
+<form method="post">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    <fieldset {% if somente_leitura %}disabled{% endif %}>
+        <div class="form-layout">
+            <div class="panel">
+                <h3>Operação realizada</h3>
+                <div class="mb-3"><label class="form-label">Hora real de início</label>{{ form.hora_inicio_real }}{{ form.hora_inicio_real.errors }}</div>
+                <div class="mb-3"><label class="form-label">Hora real de término</label>{{ form.hora_fim_real }}{{ form.hora_fim_real.errors }}</div>
+                <div class="mb-3"><label class="form-label">Resultado da operação</label>{{ form.resultado }}{{ form.resultado.errors }}</div>
+                <div class="mb-3"><label class="form-label">Baterias utilizadas</label>{{ form.baterias_utilizadas }}{{ form.baterias_utilizadas.errors }}</div>
+            </div>
+            <div class="panel">
+                <h3>Bateria e telemetria</h3>
+                <div class="mb-3"><label class="form-label">Bateria inicial (%)</label>{{ form.bateria_inicial }}{{ form.bateria_inicial.errors }}</div>
+                <div class="mb-3"><label class="form-label">Bateria final (%)</label>{{ form.bateria_final }}{{ form.bateria_final.errors }}</div>
+                <div class="mb-3"><label class="form-label">Distância percorrida (m)</label>{{ form.distancia_m }}{{ form.distancia_m.errors }}</div>
+                <div class="info-box">Informe percentuais entre 0 e 100. A duração será calculada pelos horários reais.</div>
+            </div>
+            <div class="panel">
+                <h3>Ocorrências e observações</h3>
+                <div class="mb-3"><label class="form-label">Ocorrências / anomalias</label>{{ form.ocorrencias }}{{ form.ocorrencias.errors }}</div>
+                <div class="mb-3"><label class="form-label">Danos identificados</label>{{ form.danos }}{{ form.danos.errors }}</div>
+                <div class="mb-3"><label class="form-label">Observações gerais</label>{{ form.observacoes }}{{ form.observacoes.errors }}</div>
+            </div>
+        </div>
+        <div class="panel pos-voo-confirmacoes">
+            <h3>Encerramento</h3>
+            <label class="checklist-item">{{ form.necessita_manutencao }}<span><strong>Necessita manutenção</strong><small>Coloca o drone em manutenção e abre uma inspeção.</small></span></label>
+            <label class="checklist-item">{{ form.concluido }}<span><strong>Concluir registro</strong><small>Conclui a reserva e a solicitação e cria ou atualiza o voo.</small></span></label>
+            {{ form.necessita_manutencao.errors }}{{ form.concluido.errors }}
+        </div>
+    </fieldset>
+    <div class="form-actions">
+        <a class="btn btn-light" href="{% url 'calendario' %}">{% if somente_leitura %}Voltar{% else %}Cancelar{% endif %}</a>
+        {% if not somente_leitura %}<button class="btn btn-primary" type="submit">Salvar registro pós-voo</button>{% endif %}
+    </div>
+</form>
 {% endblock %}

@@ -255,11 +255,18 @@ class RegistroPosVooForm(pos_voo_forms.ModelForm):
             "observacoes", "concluido",
         ]
         widgets = {
-            "hora_inicio_real": pos_voo_forms.TimeInput(attrs={"type": "time"}),
-            "hora_fim_real": pos_voo_forms.TimeInput(attrs={"type": "time"}),
-            "ocorrencias": pos_voo_forms.Textarea(attrs={"rows": 3}),
-            "danos": pos_voo_forms.Textarea(attrs={"rows": 3}),
-            "observacoes": pos_voo_forms.Textarea(attrs={"rows": 3}),
+            "hora_inicio_real": pos_voo_forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
+            "hora_fim_real": pos_voo_forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
+            "resultado": pos_voo_forms.Select(attrs={"class": "form-select"}),
+            "baterias_utilizadas": pos_voo_forms.NumberInput(attrs={"class": "form-control", "min": 1}),
+            "bateria_inicial": pos_voo_forms.NumberInput(attrs={"class": "form-control", "min": 0, "max": 100}),
+            "bateria_final": pos_voo_forms.NumberInput(attrs={"class": "form-control", "min": 0, "max": 100}),
+            "distancia_m": pos_voo_forms.NumberInput(attrs={"class": "form-control", "min": 0, "step": "0.01"}),
+            "ocorrencias": pos_voo_forms.Textarea(attrs={"rows": 4, "class": "form-control"}),
+            "danos": pos_voo_forms.Textarea(attrs={"rows": 4, "class": "form-control"}),
+            "observacoes": pos_voo_forms.Textarea(attrs={"rows": 4, "class": "form-control"}),
+            "necessita_manutencao": pos_voo_forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "concluido": pos_voo_forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
 
     def clean(self):
