@@ -99,6 +99,10 @@ def solicitacao_voo_aprovar(request, pk):
     if obj.status != "solicitado":
         messages.warning(request, "Esta solicitação já foi analisada.")
         return redirect("solicitacoes_voo")
+    avaliacao = getattr(obj, "avaliacao_risco", None)
+    if not avaliacao or avaliacao.status != "aprovada":
+        messages.error(request, "A avaliação de risco precisa ser preenchida e aprovada antes do voo.")
+        return redirect("avaliacao_risco", solicitacao_id=obj.pk)
     if obj.drone.status != "ativo":
         messages.error(request, "O drone selecionado não está disponível.")
         return redirect("solicitacoes_voo")

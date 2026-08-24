@@ -29,6 +29,7 @@
             <span>Minha Agenda</span>
         </a>
         <a href="{% url 'solicitacoes_voo' %}" class="nav-link"><span>Solicitações de Voo</span></a>
+        <a href="{% url 'incidentes' %}" class="{% if 'incidente' in request.resolver_match.url_name %}active{% endif %}">⚠ <span>Incidentes</span></a>
 
 
 

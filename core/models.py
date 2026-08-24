@@ -777,3 +777,95 @@ class Documento(models.Model):
         if self.dias_para_vencer <= 30:
             return "vencendo"
         return "valido"
+
+
+# =========================================================
+# AVALIAÇÃO DE RISCO E INCIDENTES
+# =========================================================
+
+class AvaliacaoRisco(models.Model):
+    STATUS_CHOICES = [
+        ("rascunho", "Rascunho"),
+        ("submetida", "Aguardando análise"),
+        ("aprovada", "Aprovada"),
+        ("revisao", "Requer revisão"),
+    ]
+    NIVEL_CHOICES = [(1, "1 - Muito baixo"), (2, "2 - Baixo"), (3, "3 - Moderado"), (4, "4 - Alto"), (5, "5 - Muito alto")]
+
+    solicitacao = models.OneToOneField(SolicitacaoVoo, on_delete=models.CASCADE, related_name="avaliacao_risco")
+    perigos_identificados = models.TextField()
+    probabilidade_inicial = models.PositiveSmallIntegerField(choices=NIVEL_CHOICES)
+    impacto_inicial = models.PositiveSmallIntegerField(choices=NIVEL_CHOICES)
+    medidas_mitigadoras = models.TextField()
+    probabilidade_residual = models.PositiveSmallIntegerField(choices=NIVEL_CHOICES)
+    impacto_residual = models.PositiveSmallIntegerField(choices=NIVEL_CHOICES)
+    condicoes_meteorologicas = models.TextField(blank=True)
+    pessoas_expostas = models.BooleanField(default=False)
+    area_controlada = models.BooleanField(default=False)
+    observacoes = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="rascunho")
+    preenchido_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="avaliacoes_risco_preenchidas")
+    analisado_por = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True, related_name="avaliacoes_risco_analisadas")
+    analisado_em = models.DateTimeField(null=True, blank=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Risco - {self.solicitacao}"
+
+    @property
+    def risco_inicial(self):
+        return self.probabilidade_inicial * self.impacto_inicial
+
+    @property
+    def risco_residual(self):
+        return self.probabilidade_residual * self.impacto_residual
+
+    @staticmethod
+    def classificar(pontuacao):
+        if pontuacao >= 17:
+            return "critico"
+        if pontuacao >= 10:
+            return "alto"
+        if pontuacao >= 5:
+            return "medio"
+        return "baixo"
+
+    @property
+    def nivel_residual(self):
+        return self.classificar(self.risco_residual)
+
+
+class Incidente(models.Model):
+    GRAVIDADE_CHOICES = [("leve", "Leve"), ("moderado", "Moderado"), ("grave", "Grave"), ("critico", "Crítico")]
+    STATUS_CHOICES = [("aberto", "Aberto"), ("investigacao", "Em investigação"), ("encerrado", "Encerrado")]
+    TIPO_CHOICES = [
+        ("falha_equipamento", "Falha de equipamento"), ("perda_sinal", "Perda de sinal"),
+        ("queda", "Queda / colisão"), ("violacao_espaco", "Violação de espaço aéreo"),
+        ("lesao", "Lesão a pessoa"), ("dano_terceiro", "Dano a terceiro"),
+        ("quase_acidente", "Quase acidente"), ("outro", "Outro"),
+    ]
+
+    alocacao = models.ForeignKey(Alocacao, on_delete=models.PROTECT, related_name="incidentes")
+    tipo = models.CharField(max_length=30, choices=TIPO_CHOICES)
+    gravidade = models.CharField(max_length=20, choices=GRAVIDADE_CHOICES)
+    data_hora = models.DateTimeField()
+    descricao = models.TextField()
+    acoes_imediatas = models.TextField(blank=True)
+    danos = models.TextField(blank=True)
+    houve_lesao = models.BooleanField(default=False)
+    houve_dano_terceiro = models.BooleanField(default=False)
+    notificacao_obrigatoria = models.BooleanField(default=False)
+    anexo = models.FileField(upload_to="incidentes/%Y/%m/", null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="aberto")
+    causa_raiz = models.TextField(blank=True)
+    acoes_corretivas = models.TextField(blank=True)
+    registrado_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="incidentes_registrados")
+    responsavel_investigacao = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True, related_name="incidentes_investigados")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-data_hora"]
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} - {self.alocacao}"

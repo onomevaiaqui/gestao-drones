@@ -7,7 +7,10 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .alerta_service import gerar_alertas, resumo_alertas
-from .models import Bateria, Documento, Drone, ExecucaoInspecao, PlanoInspecao
+from .models import (
+    Alocacao, AvaliacaoRisco, Bateria, Documento, Drone, ExecucaoInspecao,
+    Incidente, Piloto, PlanoInspecao, SolicitacaoVoo,
+)
 
 
 class BateriaTests(TestCase):
@@ -126,3 +129,49 @@ class CentralAlertasTests(TestCase):
         self.assertEqual(resposta.status_code, 200)
         self.assertContains(resposta, "Documento vencido")
         self.assertContains(resposta, "BAT-ALERTA")
+
+
+class SegurancaOperacionalTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username="admin_seguranca", password="teste123")
+        self.usuario = User.objects.create_user(username="piloto_seguranca", password="teste123")
+        self.piloto = Piloto.objects.create(user=self.usuario, nome="Piloto Segurança", primeiro_acesso=False)
+        self.drone = Drone.objects.create(nome="Drone Segurança", modelo="Modelo", status="ativo")
+        self.solicitacao = SolicitacaoVoo.objects.create(
+            piloto=self.piloto, drone=self.drone, data=timezone.localdate() + timedelta(days=3),
+            hora_inicio="10:00", hora_fim="11:00", finalidade="Inspeção",
+            local="Área teste", criado_por=self.usuario,
+        )
+
+    def test_calcula_risco_residual(self):
+        avaliacao = AvaliacaoRisco.objects.create(
+            solicitacao=self.solicitacao, perigos_identificados="Pessoas próximas",
+            probabilidade_inicial=4, impacto_inicial=5, medidas_mitigadoras="Isolar área",
+            probabilidade_residual=2, impacto_residual=3, preenchido_por=self.usuario,
+        )
+        self.assertEqual(avaliacao.risco_inicial, 20)
+        self.assertEqual(avaliacao.risco_residual, 6)
+        self.assertEqual(avaliacao.nivel_residual, "medio")
+
+    def test_aprovacao_exige_risco_aprovado(self):
+        self.client.force_login(self.admin)
+        resposta = self.client.post(reverse("solicitacao_voo_aprovar", args=[self.solicitacao.pk]))
+        self.assertRedirects(resposta, reverse("avaliacao_risco", kwargs={"solicitacao_id": self.solicitacao.pk}))
+        self.solicitacao.refresh_from_db()
+        self.assertEqual(self.solicitacao.status, "solicitado")
+
+    def test_incidente_do_piloto_aparece_na_central(self):
+        alocacao = Alocacao.objects.create(
+            data=timezone.localdate(), hora_inicio="09:00", hora_fim="10:00",
+            piloto=self.piloto, drone=self.drone, finalidade="Teste", local="Área",
+            status="concluido", criado_por=self.admin,
+        )
+        incidente = Incidente.objects.create(
+            alocacao=alocacao, tipo="queda", gravidade="grave", data_hora=timezone.now(),
+            descricao="Colisão controlada", registrado_por=self.usuario,
+        )
+        alertas = gerar_alertas()
+        self.assertTrue(any(a["chave"] == f"incidente-{incidente.pk}" and a["prioridade"] == "critico" for a in alertas))
+        self.client.force_login(self.usuario)
+        resposta = self.client.get(reverse("incidentes"))
+        self.assertContains(resposta, "Colisão controlada")

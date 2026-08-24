@@ -6,6 +6,7 @@ from . import bateria_views
 from . import inspecao_views
 from . import documento_views
 from . import alerta_views
+from . import seguranca_views
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
@@ -68,6 +69,10 @@ urlpatterns = [
     path("documentos/<int:pk>/editar/", documento_views.documento_editar, name="documento_editar"),
     path("documentos/<int:pk>/excluir/", documento_views.documento_excluir, name="documento_excluir"),
     path("alertas/", alerta_views.alertas, name="alertas"),
+    path("solicitacoes/<int:solicitacao_id>/risco/", seguranca_views.avaliacao_risco, name="avaliacao_risco"),
+    path("incidentes/", seguranca_views.incidentes, name="incidentes"),
+    path("incidentes/novo/", seguranca_views.incidente_novo, name="incidente_novo"),
+    path("incidentes/<int:pk>/editar/", seguranca_views.incidente_editar, name="incidente_editar"),
 ]
 # PATCH REGISTRO POS-VOO: ROTA
 from . import views as pos_voo_views

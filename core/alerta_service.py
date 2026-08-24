@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Alocacao, Bateria, Documento, Drone, Manutencao, PlanoInspecao
+from .models import Alocacao, AvaliacaoRisco, Bateria, Documento, Drone, Incidente, Manutencao, PlanoInspecao
 
 
 ORDEM_PRIORIDADE = {"critico": 0, "alto": 1, "medio": 2, "baixo": 3}
@@ -57,6 +57,14 @@ def gerar_alertas():
         checklist = getattr(alocacao, "checklist_pre_voo", None)
         if not checklist or not checklist.concluido:
             adicionar("Checklist", "alto" if alocacao.data == hoje else "medio", f"Checklist pendente: {alocacao.drone.nome}", f"{alocacao.piloto.nome} · {alocacao.data.strftime('%d/%m/%Y')} às {alocacao.hora_inicio.strftime('%H:%M')}", reverse("checklist_pre_voo", args=[alocacao.pk]), f"checklist-{alocacao.pk}", alocacao.data)
+
+    for avaliacao in AvaliacaoRisco.objects.select_related("solicitacao__drone", "solicitacao__piloto").filter(status="submetida"):
+        prioridade = "alto" if avaliacao.solicitacao.data <= hoje + timedelta(days=2) else "medio"
+        adicionar("Risco", prioridade, f"Avaliação aguardando análise: {avaliacao.solicitacao.drone.nome}", f"{avaliacao.solicitacao.piloto.nome} · risco residual {avaliacao.risco_residual}", reverse("avaliacao_risco", kwargs={"solicitacao_id": avaliacao.solicitacao_id}), f"risco-{avaliacao.pk}", avaliacao.solicitacao.data)
+
+    for incidente in Incidente.objects.select_related("alocacao__drone", "alocacao__piloto").exclude(status="encerrado"):
+        prioridade = "critico" if incidente.gravidade in ["grave", "critico"] else "alto"
+        adicionar("Incidentes", prioridade, f"Incidente {incidente.get_gravidade_display().lower()}: {incidente.alocacao.drone.nome}", f"{incidente.get_tipo_display()} · {incidente.get_status_display()}", reverse("incidente_editar", args=[incidente.pk]), f"incidente-{incidente.pk}", incidente.data_hora.date())
 
     alertas.sort(key=lambda a: (ORDEM_PRIORIDADE[a["prioridade"]], a["data"] or hoje, a["titulo"]))
     return alertas
