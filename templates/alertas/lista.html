@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Central de Alertas{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Central de Alertas</h1><p>Pendências operacionais e itens que exigem atenção</p></div></div>
+<div class="kpi-grid">
+    <div class="kpi-card"><div><span>Total</span><strong>{{ resumo.total }}</strong></div><div class="kpi-icon">⚠</div></div>
+    <div class="kpi-card"><div><span>Críticos</span><strong>{{ resumo.criticos }}</strong></div><div class="kpi-icon alert-critical">!</div></div>
+    <div class="kpi-card"><div><span>Alta prioridade</span><strong>{{ resumo.altos }}</strong></div><div class="kpi-icon orange">⌛</div></div>
+    <div class="kpi-card"><div><span>Média prioridade</span><strong>{{ resumo.medios }}</strong></div><div class="kpi-icon">•</div></div>
+</div>
+<div class="panel"><form method="get" class="alert-filter"><div><label class="form-label">Prioridade</label><select class="form-select" name="prioridade"><option value="">Todas</option><option value="critico" {% if prioridade_filtro == 'critico' %}selected{% endif %}>Crítica</option><option value="alto" {% if prioridade_filtro == 'alto' %}selected{% endif %}>Alta</option><option value="medio" {% if prioridade_filtro == 'medio' %}selected{% endif %}>Média</option></select></div><div><label class="form-label">Categoria</label><select class="form-select" name="categoria"><option value="">Todas</option>{% for item in categorias %}<option value="{{ item }}" {% if categoria_filtro == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></div><button class="btn btn-primary">Filtrar</button><a class="btn btn-light" href="{% url 'alertas' %}">Limpar</a></form></div>
+<div class="alert-list">{% for alerta in alertas %}<a class="alert-card priority-{{ alerta.prioridade }}" href="{{ alerta.url }}"><div class="alert-symbol">{% if alerta.prioridade == 'critico' %}!{% elif alerta.prioridade == 'alto' %}⌛{% else %}•{% endif %}</div><div class="alert-content"><div><span class="alert-category">{{ alerta.categoria }}</span><span class="badge-soft {% if alerta.prioridade == 'critico' %}red{% elif alerta.prioridade == 'alto' %}orange{% else %}blue{% endif %}">{% if alerta.prioridade == 'critico' %}Crítico{% elif alerta.prioridade == 'alto' %}Alta prioridade{% else %}Média prioridade{% endif %}</span></div><strong>{{ alerta.titulo }}</strong><p>{{ alerta.descricao }}</p></div><span class="alert-action">Resolver →</span></a>{% empty %}<div class="panel empty-state"><strong>Nenhuma pendência encontrada</strong><p>Os equipamentos, documentos e operações estão em dia.</p></div>{% endfor %}</div>
+{% endblock %}

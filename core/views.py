@@ -79,9 +79,12 @@ def admin_required(view_func):
 
 
 def _base_context(request):
-    return {
-        "eh_admin": usuario_e_admin(request.user)
-    }
+    eh_admin = usuario_e_admin(request.user)
+    contexto = {"eh_admin": eh_admin}
+    if eh_admin:
+        from .alerta_service import resumo_alertas
+        contexto["alertas_resumo_global"] = resumo_alertas()
+    return contexto
 
 
 # =========================================================

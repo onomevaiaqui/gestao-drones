@@ -6,6 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from .alerta_service import gerar_alertas, resumo_alertas
 from .models import Bateria, Documento, Drone, ExecucaoInspecao, PlanoInspecao
 
 
@@ -97,3 +98,31 @@ class DocumentoTests(TestCase):
         self.assertEqual(resposta.status_code, 200)
         self.assertContains(resposta, "Seguro da frota")
         self.assertContains(resposta, "20 dias")
+
+
+class CentralAlertasTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username="admin_alertas", password="teste123")
+        self.drone = Drone.objects.create(nome="Drone alerta", modelo="Modelo", status="indisponivel")
+        self.bateria = Bateria.objects.create(
+            codigo="BAT-ALERTA", numero_serie="SERIE-ALERTA",
+            saude_percentual=55, criado_em=timezone.now(),
+        )
+        Documento.objects.create(
+            titulo="Documento vencido", tipo="seguro", organizacional=True,
+            data_validade=timezone.localdate() - timedelta(days=2), criado_por=self.admin,
+        )
+
+    def test_agrega_alertas_criticos(self):
+        alertas = gerar_alertas()
+        resumo = resumo_alertas(alertas)
+        self.assertGreaterEqual(resumo["criticos"], 3)
+        self.assertEqual(alertas[0]["prioridade"], "critico")
+        self.assertTrue(any(a["categoria"] == "Baterias" for a in alertas))
+
+    def test_admin_acessa_central(self):
+        self.client.force_login(self.admin)
+        resposta = self.client.get(reverse("alertas"))
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "Documento vencido")
+        self.assertContains(resposta, "BAT-ALERTA")

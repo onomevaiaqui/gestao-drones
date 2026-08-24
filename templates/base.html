@@ -45,6 +45,7 @@
             <a href="{% url 'manutencoes' %}" class="{% if 'manutencao' in request.resolver_match.url_name %}active{% endif %}">⚒ <span>Manutenções</span></a>
             <a href="{% url 'planos_inspecao' %}" class="{% if 'inspecao' in request.resolver_match.url_name %}active{% endif %}">◷ <span>Planos de inspeção</span></a>
             <a href="{% url 'documentos' %}" class="{% if 'documento' in request.resolver_match.url_name %}active{% endif %}">▤ <span>Documentos</span></a>
+            <a href="{% url 'alertas' %}" class="{% if request.resolver_match.url_name == 'alertas' %}active{% endif %}">⚠ <span>Alertas{% if alertas_resumo_global.total %}<b class="nav-count">{{ alertas_resumo_global.total }}</b>{% endif %}</span></a>
             {% endif %}
         </nav>
 

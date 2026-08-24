@@ -17,6 +17,13 @@
     </form>
 </div>
 
+{% if eh_admin and alertas_resumo_global.total %}
+<a class="dashboard-alert-summary" href="{% url 'alertas' %}">
+    <div><strong>⚠ {{ alertas_resumo_global.total }} alerta{{ alertas_resumo_global.total|pluralize }}</strong><span>{{ alertas_resumo_global.criticos }} crítico{{ alertas_resumo_global.criticos|pluralize }} · {{ alertas_resumo_global.altos }} de alta prioridade</span></div>
+    <span>Ver central →</span>
+</a>
+{% endif %}
+
 <div class="kpi-grid">
     <div class="kpi-card">
         <div>
