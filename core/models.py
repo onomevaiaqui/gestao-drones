@@ -539,6 +539,12 @@ class RegistroPosVoo(models.Model):
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
 
+    baterias = models.ManyToManyField(
+        "Bateria",
+        blank=True,
+        related_name="registros_pos_voo",
+    )
+
     class Meta:
         ordering = ["-alocacao__data", "-hora_inicio_real"]
         verbose_name = "Registro pós-voo"
@@ -554,3 +560,50 @@ class RegistroPosVoo(models.Model):
         if fim < inicio:
             fim += timedelta(days=1)
         return int((fim - inicio).total_seconds() // 60)
+
+
+# =========================================================
+# BATERIAS
+# =========================================================
+
+class Bateria(models.Model):
+    STATUS_CHOICES = [
+        ("disponivel", "Disponível"),
+        ("em_uso", "Em uso"),
+        ("manutencao", "Em manutenção"),
+        ("descartada", "Descartada"),
+    ]
+
+    codigo = models.CharField(max_length=50, unique=True)
+    numero_serie = models.CharField(max_length=100, unique=True)
+    fabricante = models.CharField(max_length=100, blank=True)
+    modelo = models.CharField(max_length=100, blank=True)
+    capacidade_mah = models.PositiveIntegerField(null=True, blank=True)
+    drone = models.ForeignKey(
+        Drone, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="baterias",
+    )
+    data_aquisicao = models.DateField(null=True, blank=True)
+    ciclos_informados = models.PositiveIntegerField(default=0)
+    saude_percentual = models.PositiveIntegerField(default=100)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="disponivel")
+    localizacao = models.CharField(max_length=150, blank=True)
+    observacoes = models.TextField(blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["codigo"]
+        verbose_name = "Bateria"
+        verbose_name_plural = "Baterias"
+
+    def __str__(self):
+        return f"{self.codigo} - {self.numero_serie}"
+
+    @property
+    def voos_registrados(self):
+        return self.registros_pos_voo.filter(concluido=True).count()
+
+    @property
+    def ciclos_totais(self):
+        return self.ciclos_informados + self.voos_registrados

@@ -2575,6 +2575,11 @@ def registro_pos_voo(request, alocacao_id):
             if not registro.pk:
                 registro.preenchido_por = request.user
             registro.save()
+            form.save_m2m()
+            total_baterias = registro.baterias.count()
+            if total_baterias and registro.baterias_utilizadas != total_baterias:
+                registro.baterias_utilizadas = total_baterias
+                registro.save(update_fields=["baterias_utilizadas", "atualizado_em"])
 
             if registro.concluido:
                 voo_defaults = {

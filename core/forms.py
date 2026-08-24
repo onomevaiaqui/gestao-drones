@@ -243,7 +243,7 @@ class ManutencaoForm(forms.ModelForm):
         }
 # PATCH REGISTRO POS-VOO: FORMULARIO
 from django import forms as pos_voo_forms
-from .models import RegistroPosVoo
+from .models import Bateria, RegistroPosVoo
 
 class RegistroPosVooForm(pos_voo_forms.ModelForm):
     class Meta:
@@ -251,6 +251,7 @@ class RegistroPosVooForm(pos_voo_forms.ModelForm):
         fields = [
             "hora_inicio_real", "hora_fim_real", "resultado",
             "baterias_utilizadas", "bateria_inicial", "bateria_final",
+            "baterias",
             "distancia_m", "ocorrencias", "danos", "necessita_manutencao",
             "observacoes", "concluido",
         ]
@@ -259,6 +260,7 @@ class RegistroPosVooForm(pos_voo_forms.ModelForm):
             "hora_fim_real": pos_voo_forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
             "resultado": pos_voo_forms.Select(attrs={"class": "form-select"}),
             "baterias_utilizadas": pos_voo_forms.NumberInput(attrs={"class": "form-control", "min": 1}),
+            "baterias": pos_voo_forms.CheckboxSelectMultiple(),
             "bateria_inicial": pos_voo_forms.NumberInput(attrs={"class": "form-control", "min": 0, "max": 100}),
             "bateria_final": pos_voo_forms.NumberInput(attrs={"class": "form-control", "min": 0, "max": 100}),
             "distancia_m": pos_voo_forms.NumberInput(attrs={"class": "form-control", "min": 0, "step": "0.01"}),
@@ -268,6 +270,15 @@ class RegistroPosVooForm(pos_voo_forms.ModelForm):
             "necessita_manutencao": pos_voo_forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "concluido": pos_voo_forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        selecionadas = self.instance.baterias.all() if self.instance and self.instance.pk else Bateria.objects.none()
+        self.fields["baterias"].queryset = (
+            Bateria.objects.filter(status="disponivel") | selecionadas
+        ).distinct().order_by("codigo")
+        self.fields["baterias"].required = False
+        self.fields["baterias"].label = "Baterias utilizadas"
 
     def clean(self):
         dados = super().clean()

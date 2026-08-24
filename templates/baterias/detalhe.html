@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ bateria.codigo }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>{{ bateria.codigo }}</h1><p>Número de série {{ bateria.numero_serie }}</p></div><div class="actions"><a class="btn btn-light" href="{% url 'baterias' %}">Voltar</a>{% if eh_admin or user.is_superuser %}<a class="btn btn-primary" href="{% url 'bateria_editar' bateria.pk %}">Editar</a>{% endif %}</div></div>
+<div class="checklist-summary">
+    <div><span>Status</span><strong>{{ bateria.get_status_display }}</strong></div><div><span>Saúde estimada</span><strong>{{ bateria.saude_percentual }}%</strong></div><div><span>Ciclos totais estimados</span><strong>{{ bateria.ciclos_totais }}</strong></div><div><span>Drone vinculado</span><strong>{{ bateria.drone.nome|default:"Livre" }}</strong></div>
+</div>
+<div class="panel"><h3>Histórico de utilização</h3><div class="table-responsive"><table class="modern-table"><thead><tr><th>Data</th><th>Drone</th><th>Piloto</th><th>Horário real</th><th>Resultado</th></tr></thead><tbody>{% for uso in usos %}<tr><td>{{ uso.alocacao.data|date:"d/m/Y" }}</td><td>{{ uso.alocacao.drone.nome }}</td><td>{{ uso.alocacao.piloto.nome }}</td><td>{{ uso.hora_inicio_real|time:"H:i" }} - {{ uso.hora_fim_real|time:"H:i" }}</td><td>{{ uso.get_resultado_display }}</td></tr>{% empty %}<tr><td colspan="5">Nenhuma utilização registrada.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from . import checklist_views
 from . import solicitacao_views
+from . import bateria_views
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
@@ -34,6 +35,11 @@ urlpatterns = [
     path("drones/<int:pk>/status/", views.drone_status_atualizar, name="drone_status_atualizar"),
     path("drones/<int:pk>/historico/", views.drone_historico, name="drone_historico"),
     path("drones/<int:pk>/excluir/", views.drone_excluir, name="drone_excluir"),
+
+    path("baterias/", bateria_views.baterias, name="baterias"),
+    path("baterias/nova/", bateria_views.bateria_nova, name="bateria_nova"),
+    path("baterias/<int:pk>/", bateria_views.bateria_detalhe, name="bateria_detalhe"),
+    path("baterias/<int:pk>/editar/", bateria_views.bateria_editar, name="bateria_editar"),
 
     path("calendario/", views.calendario, name="calendario"),
     path("calendario/<int:pk>/checklist/", checklist_views.checklist_pre_voo, name="checklist_pre_voo"),

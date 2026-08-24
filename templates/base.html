@@ -36,6 +36,7 @@
         <a href="{% url 'drones' %}" class="nav-link">
             <span>Drones</span>
         </a>
+        <a href="{% url 'baterias' %}" class="{% if 'bateria' in request.resolver_match.url_name %}active{% endif %}">▰ <span>Baterias</span></a>
 
 {% if eh_admin or user.is_superuser %}
             <a href="{% url 'drones' %}" class="{% if 'drone' in request.resolver_match.url_name %}active{% endif %}">⌘ <span>Drones</span></a>

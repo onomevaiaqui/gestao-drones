@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Baterias{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div><h1>Baterias</h1><p>Inventário, utilização e condição operacional</p></div>
+    {% if eh_admin or user.is_superuser %}<a class="btn btn-primary" href="{% url 'bateria_nova' %}">+ Nova bateria</a>{% endif %}
+</div>
+<div class="kpi-grid">
+    <div class="kpi-card"><div><span>Total</span><strong>{{ resumo.total }}</strong></div><div class="kpi-icon">▰</div></div>
+    <div class="kpi-card"><div><span>Disponíveis</span><strong>{{ resumo.disponiveis }}</strong></div><div class="kpi-icon green">✓</div></div>
+    <div class="kpi-card"><div><span>Precisam de atenção</span><strong>{{ resumo.atencao }}</strong></div><div class="kpi-icon orange">!</div></div>
+    <div class="kpi-card"><div><span>Descartadas</span><strong>{{ resumo.descartadas }}</strong></div><div class="kpi-icon">×</div></div>
+</div>
+<div class="panel">
+    <form method="get" class="battery-filter">
+        <div><label class="form-label">Pesquisar</label><input class="form-control" name="q" value="{{ busca }}" placeholder="Código, série, fabricante ou modelo"></div>
+        <div><label class="form-label">Status</label><select class="form-select" name="status"><option value="">Todos</option>{% for valor, nome in status_choices %}<option value="{{ valor }}" {% if status_filtro == valor %}selected{% endif %}>{{ nome }}</option>{% endfor %}</select></div>
+        <button class="btn btn-primary" type="submit">Filtrar</button>
+        <a class="btn btn-light" href="{% url 'baterias' %}">Limpar</a>
+    </form>
+</div>
+<div class="panel"><div class="table-responsive"><table class="modern-table">
+    <thead><tr><th>Bateria</th><th>Drone</th><th>Status</th><th>Saúde</th><th>Ciclos/voos</th><th>Localização</th><th>Ações</th></tr></thead>
+    <tbody>{% for bateria in baterias %}<tr>
+        <td><strong>{{ bateria.codigo }}</strong><div class="text-muted small">{{ bateria.numero_serie }}</div><div class="text-muted small">{{ bateria.fabricante }} {{ bateria.modelo }}</div></td>
+        <td>{{ bateria.drone.nome|default:"Compatibilidade livre" }}</td>
+        <td><span class="badge-soft {% if bateria.status == 'disponivel' %}green{% elif bateria.status == 'manutencao' %}orange{% elif bateria.status == 'descartada' %}red{% else %}purple{% endif %}">{{ bateria.get_status_display }}</span></td>
+        <td><div class="battery-health"><span style="width:{{ bateria.saude_percentual }}%"></span></div><small>{{ bateria.saude_percentual }}%</small></td>
+        <td>{{ bateria.ciclos_informados }} anteriores + {{ bateria.total_voos }} voos</td>
+        <td>{{ bateria.localizacao|default:"-" }}</td>
+        <td class="actions"><a class="icon-btn" href="{% url 'bateria_detalhe' bateria.pk %}">Histórico</a>{% if eh_admin or user.is_superuser %}<a class="icon-btn" href="{% url 'bateria_editar' bateria.pk %}">Editar</a>{% endif %}</td>
+    </tr>{% empty %}<tr><td colspan="7">Nenhuma bateria cadastrada.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}
