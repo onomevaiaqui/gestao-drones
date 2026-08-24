@@ -706,3 +706,74 @@ class ExecucaoInspecao(models.Model):
 
     def __str__(self):
         return f"{self.plano} - {self.data}"
+
+
+# =========================================================
+# DOCUMENTOS E VENCIMENTOS
+# =========================================================
+
+class Documento(models.Model):
+    TIPO_CHOICES = [
+        ("habilitacao", "Habilitação / certificado de piloto"),
+        ("registro_drone", "Registro do drone"),
+        ("seguro", "Seguro"),
+        ("autorizacao", "Autorização"),
+        ("treinamento", "Treinamento"),
+        ("manual", "Manual"),
+        ("nota_fiscal", "Nota fiscal"),
+        ("outro", "Outro"),
+    ]
+
+    titulo = models.CharField(max_length=180)
+    tipo = models.CharField(max_length=30, choices=TIPO_CHOICES)
+    numero = models.CharField(max_length=100, blank=True)
+    piloto = models.ForeignKey(Piloto, on_delete=models.CASCADE, null=True, blank=True, related_name="documentos")
+    drone = models.ForeignKey(Drone, on_delete=models.CASCADE, null=True, blank=True, related_name="documentos")
+    bateria = models.ForeignKey(Bateria, on_delete=models.CASCADE, null=True, blank=True, related_name="documentos")
+    organizacional = models.BooleanField(default=False)
+    data_emissao = models.DateField(null=True, blank=True)
+    data_validade = models.DateField(null=True, blank=True)
+    arquivo = models.FileField(upload_to="documentos/%Y/%m/", null=True, blank=True)
+    observacoes = models.TextField(blank=True)
+    ativo = models.BooleanField(default=True)
+    criado_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="documentos_criados")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["data_validade", "titulo"]
+
+    def __str__(self):
+        return self.titulo
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        alvos = sum(bool(valor) for valor in [self.piloto_id, self.drone_id, self.bateria_id, self.organizacional])
+        if alvos != 1:
+            raise ValidationError("Selecione exatamente um vínculo: piloto, drone, bateria ou organização.")
+        if self.data_emissao and self.data_validade and self.data_validade < self.data_emissao:
+            raise ValidationError("A validade não pode ser anterior à emissão.")
+
+    @property
+    def alvo(self):
+        if self.organizacional:
+            return "Organização"
+        return self.piloto or self.drone or self.bateria
+
+    @property
+    def dias_para_vencer(self):
+        if not self.data_validade:
+            return None
+        return (self.data_validade - date.today()).days
+
+    @property
+    def situacao(self):
+        if not self.ativo:
+            return "inativo"
+        if self.dias_para_vencer is None:
+            return "sem_validade"
+        if self.dias_para_vencer < 0:
+            return "vencido"
+        if self.dias_para_vencer <= 30:
+            return "vencendo"
+        return "valido"

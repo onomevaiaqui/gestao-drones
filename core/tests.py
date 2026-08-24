@@ -1,11 +1,12 @@
 from datetime import timedelta
 
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Bateria, Drone, ExecucaoInspecao, PlanoInspecao
+from .models import Bateria, Documento, Drone, ExecucaoInspecao, PlanoInspecao
 
 
 class BateriaTests(TestCase):
@@ -63,3 +64,36 @@ class PlanoInspecaoTests(TestCase):
         self.assertEqual(self.plano.ultima_execucao, hoje)
         self.assertEqual(self.plano.situacao, "em_dia")
         self.assertTrue(ExecucaoInspecao.objects.filter(plano=self.plano).exists())
+
+
+class DocumentoTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username="admin_documentos", password="teste123")
+        self.drone = Drone.objects.create(nome="Drone documento", modelo="Modelo teste")
+
+    def test_documento_identifica_vencimento(self):
+        documento = Documento.objects.create(
+            titulo="Registro vencido", tipo="registro_drone", drone=self.drone,
+            data_validade=timezone.localdate() - timedelta(days=1), criado_por=self.admin,
+        )
+        self.assertEqual(documento.situacao, "vencido")
+        self.assertEqual(documento.dias_para_vencer, -1)
+
+    def test_documento_exige_um_unico_vinculo(self):
+        documento = Documento(
+            titulo="Vínculo inválido", tipo="outro", drone=self.drone,
+            organizacional=True, criado_por=self.admin,
+        )
+        with self.assertRaises(ValidationError):
+            documento.full_clean()
+
+    def test_admin_visualiza_documentos(self):
+        Documento.objects.create(
+            titulo="Seguro da frota", tipo="seguro", organizacional=True,
+            data_validade=timezone.localdate() + timedelta(days=20), criado_por=self.admin,
+        )
+        self.client.force_login(self.admin)
+        resposta = self.client.get(reverse("documentos"))
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "Seguro da frota")
+        self.assertContains(resposta, "20 dias")
