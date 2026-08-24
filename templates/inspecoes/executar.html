@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Executar {{ plano.nome }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Registrar execução</h1><p>{{ plano.nome }} · {{ plano.alvo }}</p></div><a class="btn btn-light" href="{% url 'planos_inspecao' %}">Voltar</a></div>
+<div class="form-layout inspection-execution-layout">
+<div class="panel"><h3>Nova execução</h3><form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary" type="submit">Concluir e reiniciar contadores</button></form></div>
+<div class="panel"><h3>Histórico</h3><div class="inspection-history">{% for item in execucoes %}<div><strong>{{ item.data|date:"d/m/Y" }}</strong><span>{{ item.executado_por.username }}</span><p>{{ item.observacoes|default:"Sem observações" }}</p></div>{% empty %}<p class="text-muted">Nenhuma execução anterior.</p>{% endfor %}</div></div>
+</div>
+{% endblock %}

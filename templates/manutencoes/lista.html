@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-header">
     <div><h1>Manutenções</h1><p>Histórico e acompanhamento dos equipamentos</p></div>
-    <a class="btn btn-primary" href="{% url 'manutencao_nova' %}">+ Nova Manutenção</a>
+    <div class="actions"><a class="btn btn-light" href="{% url 'planos_inspecao' %}">Planos de inspeção</a><a class="btn btn-primary" href="{% url 'manutencao_nova' %}">+ Nova Manutenção</a></div>
 </div>
 <div class="panel">
 <div class="table-responsive">

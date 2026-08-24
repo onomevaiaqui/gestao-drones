@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Planos de inspeção{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Planos de inspeção</h1><p>Manutenções preventivas por prazo e utilização</p></div><a class="btn btn-primary" href="{% url 'plano_inspecao_novo' %}">+ Novo plano</a></div>
+<div class="kpi-grid">
+    <div class="kpi-card"><div><span>Total de planos</span><strong>{{ resumo.total }}</strong></div><div class="kpi-icon">◷</div></div>
+    <div class="kpi-card"><div><span>Vencidos</span><strong>{{ resumo.vencidos }}</strong></div><div class="kpi-icon orange">!</div></div>
+    <div class="kpi-card"><div><span>Próximos</span><strong>{{ resumo.proximos }}</strong></div><div class="kpi-icon orange">⌛</div></div>
+    <div class="kpi-card"><div><span>Em dia</span><strong>{{ resumo.em_dia }}</strong></div><div class="kpi-icon green">✓</div></div>
+</div>
+<div class="panel"><div class="table-responsive"><table class="modern-table">
+<thead><tr><th>Plano</th><th>Equipamento</th><th>Periodicidade</th><th>Última execução</th><th>Progresso</th><th>Situação</th><th>Ações</th></tr></thead>
+<tbody>{% for plano in planos %}<tr>
+    <td><strong>{{ plano.nome }}</strong><div class="text-muted small">{{ plano.get_tipo_display }}</div></td>
+    <td>{{ plano.alvo }}</td>
+    <td><div class="inspection-intervals">{% if plano.intervalo_dias %}<span>{{ plano.intervalo_dias }} dias</span>{% endif %}{% if plano.intervalo_voos %}<span>{{ plano.intervalo_voos }} voos</span>{% endif %}{% if plano.intervalo_horas %}<span>{{ plano.intervalo_horas }} h</span>{% endif %}{% if plano.intervalo_ciclos %}<span>{{ plano.intervalo_ciclos }} ciclos</span>{% endif %}</div></td>
+    <td>{{ plano.ultima_execucao|date:"d/m/Y" }}</td>
+    <td><div class="inspection-progress"><span class="{{ plano.situacao }}" style="width:{% if plano.progresso > 100 %}100{% else %}{{ plano.progresso|stringformat:'f' }}{% endif %}%"></span></div><small>{{ plano.progresso }}%</small></td>
+    <td>{% if plano.situacao == 'vencido' %}<span class="badge-soft red">Vencido</span>{% elif plano.situacao == 'proximo' %}<span class="badge-soft orange">Próximo</span>{% elif plano.situacao == 'em_dia' %}<span class="badge-soft green">Em dia</span>{% else %}<span class="badge-soft">Inativo</span>{% endif %}</td>
+    <td class="actions"><a class="icon-btn" href="{% url 'plano_inspecao_executar' plano.pk %}">Registrar execução</a><a class="icon-btn" href="{% url 'plano_inspecao_editar' plano.pk %}">Editar</a></td>
+</tr>{% empty %}<tr><td colspan="7">Nenhum plano de inspeção cadastrado.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

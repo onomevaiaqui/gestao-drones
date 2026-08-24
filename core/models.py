@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from django.contrib.auth.models import User
 from django.db import models
@@ -607,3 +607,102 @@ class Bateria(models.Model):
     @property
     def ciclos_totais(self):
         return self.ciclos_informados + self.voos_registrados
+
+
+# =========================================================
+# PLANOS DE INSPEÇÃO / MANUTENÇÃO PROGRAMADA
+# =========================================================
+
+class PlanoInspecao(models.Model):
+    TIPO_CHOICES = [
+        ("inspecao", "Inspeção"),
+        ("preventiva", "Manutenção preventiva"),
+        ("componente", "Substituição de componente"),
+        ("bateria", "Verificação de bateria"),
+    ]
+
+    nome = models.CharField(max_length=150)
+    tipo = models.CharField(max_length=30, choices=TIPO_CHOICES, default="inspecao")
+    drone = models.ForeignKey(Drone, on_delete=models.CASCADE, null=True, blank=True, related_name="planos_inspecao")
+    bateria = models.ForeignKey(Bateria, on_delete=models.CASCADE, null=True, blank=True, related_name="planos_inspecao")
+    descricao = models.TextField(blank=True)
+    intervalo_dias = models.PositiveIntegerField(null=True, blank=True)
+    intervalo_voos = models.PositiveIntegerField(null=True, blank=True)
+    intervalo_horas = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    intervalo_ciclos = models.PositiveIntegerField(null=True, blank=True)
+    ultima_execucao = models.DateField(default=date.today)
+    voos_base = models.PositiveIntegerField(default=0)
+    minutos_base = models.PositiveIntegerField(default=0)
+    ciclos_base = models.PositiveIntegerField(default=0)
+    ativo = models.BooleanField(default=True)
+    criado_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="planos_inspecao_criados")
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["nome"]
+
+    def __str__(self):
+        return self.nome
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if bool(self.drone_id) == bool(self.bateria_id):
+            raise ValidationError("Selecione um drone ou uma bateria, mas não ambos.")
+        if not any([self.intervalo_dias, self.intervalo_voos, self.intervalo_horas, self.intervalo_ciclos]):
+            raise ValidationError("Informe pelo menos um intervalo de execução.")
+
+    @property
+    def alvo(self):
+        return self.drone or self.bateria
+
+    def _uso_atual(self):
+        if self.drone_id:
+            voos = list(Voo.objects.filter(drone_id=self.drone_id))
+            return len(voos), sum(v.duracao_minutos for v in voos), 0
+        return 0, 0, self.bateria.ciclos_totais
+
+    @property
+    def progresso(self):
+        hoje = date.today()
+        voos, minutos, ciclos = self._uso_atual()
+        valores = []
+        if self.intervalo_dias:
+            valores.append(max(0, (hoje - self.ultima_execucao).days) / self.intervalo_dias * 100)
+        if self.intervalo_voos:
+            valores.append(max(0, voos - self.voos_base) / self.intervalo_voos * 100)
+        if self.intervalo_horas:
+            valores.append(max(0, minutos - self.minutos_base) / (float(self.intervalo_horas) * 60) * 100)
+        if self.intervalo_ciclos:
+            valores.append(max(0, ciclos - self.ciclos_base) / self.intervalo_ciclos * 100)
+        return round(max(valores or [0]), 1)
+
+    @property
+    def situacao(self):
+        if not self.ativo:
+            return "inativo"
+        if self.progresso >= 100:
+            return "vencido"
+        if self.progresso >= 80:
+            return "proximo"
+        return "em_dia"
+
+    def atualizar_bases(self, data_execucao=None):
+        voos, minutos, ciclos = self._uso_atual()
+        self.ultima_execucao = data_execucao or date.today()
+        self.voos_base = voos
+        self.minutos_base = minutos
+        self.ciclos_base = ciclos
+
+
+class ExecucaoInspecao(models.Model):
+    plano = models.ForeignKey(PlanoInspecao, on_delete=models.CASCADE, related_name="execucoes")
+    data = models.DateField(default=date.today)
+    observacoes = models.TextField(blank=True)
+    executado_por = models.ForeignKey(User, on_delete=models.PROTECT)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-data", "-criado_em"]
+
+    def __str__(self):
+        return f"{self.plano} - {self.data}"
