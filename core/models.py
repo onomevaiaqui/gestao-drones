@@ -869,3 +869,67 @@ class Incidente(models.Model):
 
     def __str__(self):
         return f"{self.get_tipo_display()} - {self.alocacao}"
+
+
+# =========================================================
+# QUALIFICAÇÕES DOS PILOTOS
+# =========================================================
+
+class QualificacaoPiloto(models.Model):
+    CATEGORIA_CHOICES = [
+        ("regulatoria", "Regulatória"), ("modelo_drone", "Modelo de drone"),
+        ("tipo_operacao", "Tipo de operação"), ("seguranca", "Segurança"),
+        ("software", "Software / processamento"), ("instrutor", "Instrutor"),
+        ("outro", "Outro"),
+    ]
+    NIVEL_CHOICES = [
+        ("basico", "Básico"), ("intermediario", "Intermediário"),
+        ("avancado", "Avançado"), ("instrutor", "Instrutor"),
+    ]
+
+    piloto = models.ForeignKey(Piloto, on_delete=models.CASCADE, related_name="qualificacoes")
+    nome = models.CharField(max_length=160)
+    categoria = models.CharField(max_length=30, choices=CATEGORIA_CHOICES)
+    nivel = models.CharField(max_length=20, choices=NIVEL_CHOICES, default="basico")
+    instituicao = models.CharField(max_length=150, blank=True)
+    numero_certificado = models.CharField(max_length=100, blank=True)
+    modelo_drone = models.CharField(max_length=150, blank=True)
+    tipo_operacao = models.CharField(max_length=150, blank=True)
+    carga_horaria = models.PositiveIntegerField(null=True, blank=True)
+    data_conclusao = models.DateField(null=True, blank=True)
+    data_validade = models.DateField(null=True, blank=True)
+    documento = models.ForeignKey(Documento, on_delete=models.SET_NULL, null=True, blank=True, related_name="qualificacoes")
+    observacoes = models.TextField(blank=True)
+    ativo = models.BooleanField(default=True)
+    criado_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="qualificacoes_criadas")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["piloto__nome", "categoria", "nome"]
+
+    def __str__(self):
+        return f"{self.piloto} - {self.nome}"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.data_conclusao and self.data_validade and self.data_validade < self.data_conclusao:
+            raise ValidationError("A validade não pode ser anterior à conclusão.")
+        if self.documento_id and self.documento.piloto_id != self.piloto_id:
+            raise ValidationError("O documento selecionado deve pertencer ao mesmo piloto.")
+
+    @property
+    def dias_para_vencer(self):
+        return None if not self.data_validade else (self.data_validade - date.today()).days
+
+    @property
+    def situacao(self):
+        if not self.ativo:
+            return "inativa"
+        if self.dias_para_vencer is None:
+            return "valida"
+        if self.dias_para_vencer < 0:
+            return "vencida"
+        if self.dias_para_vencer <= 30:
+            return "vencendo"
+        return "valida"

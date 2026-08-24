@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import time, timedelta
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -9,7 +9,7 @@ from django.utils import timezone
 from .alerta_service import gerar_alertas, resumo_alertas
 from .models import (
     Alocacao, AvaliacaoRisco, Bateria, Documento, Drone, ExecucaoInspecao,
-    Incidente, Piloto, PlanoInspecao, SolicitacaoVoo,
+    Incidente, Piloto, PlanoInspecao, QualificacaoPiloto, SolicitacaoVoo, Voo,
 )
 
 
@@ -175,3 +175,39 @@ class SegurancaOperacionalTests(TestCase):
         self.client.force_login(self.usuario)
         resposta = self.client.get(reverse("incidentes"))
         self.assertContains(resposta, "Colisão controlada")
+
+
+class QualificacaoPilotoTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username="admin_qualificacao", password="teste123")
+        self.usuario = User.objects.create_user(username="piloto_qualificado", password="teste123")
+        self.piloto = Piloto.objects.create(user=self.usuario, nome="Piloto Qualificado", primeiro_acesso=False)
+        self.drone = Drone.objects.create(nome="Drone Experiência", modelo="Modelo")
+        Voo.objects.create(
+            data=timezone.localdate(), piloto=self.piloto, drone=self.drone,
+            finalidade="treinamento", local="Área", hora_inicio=time(10, 0),
+            hora_fim=time(11, 30), criado_por=self.admin,
+        )
+
+    def test_perfil_calcula_experiencia(self):
+        self.client.force_login(self.usuario)
+        resposta = self.client.get(reverse("meu_perfil_operacional"), follow=True)
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "1,5 h")
+        self.assertContains(resposta, "Drone Experiência")
+
+    def test_qualificacao_vencida_gera_alerta(self):
+        qualificacao = QualificacaoPiloto.objects.create(
+            piloto=self.piloto, nome="Treinamento vencido", categoria="seguranca",
+            nivel="avancado", data_validade=timezone.localdate() - timedelta(days=1),
+            criado_por=self.admin,
+        )
+        self.assertEqual(qualificacao.situacao, "vencida")
+        alertas = gerar_alertas()
+        self.assertTrue(any(a["chave"] == f"qualificacao-{qualificacao.pk}" for a in alertas))
+
+    def test_usuario_nao_acessa_perfil_de_outro_piloto(self):
+        outro = Piloto.objects.create(nome="Outro piloto")
+        self.client.force_login(self.usuario)
+        resposta = self.client.get(reverse("perfil_operacional", args=[outro.pk]))
+        self.assertRedirects(resposta, reverse("dashboard"))

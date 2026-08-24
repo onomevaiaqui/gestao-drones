@@ -28,6 +28,7 @@
         <a href="{% url 'minha_agenda' %}" class="nav-link">
             <span>Minha Agenda</span>
         </a>
+        {% if user.piloto %}<a href="{% url 'meu_perfil_operacional' %}" class="{% if 'perfil_operacional' in request.resolver_match.url_name %}active{% endif %}">♙ <span>Meu perfil operacional</span></a>{% endif %}
         <a href="{% url 'solicitacoes_voo' %}" class="nav-link"><span>Solicitações de Voo</span></a>
         <a href="{% url 'incidentes' %}" class="{% if 'incidente' in request.resolver_match.url_name %}active{% endif %}">⚠ <span>Incidentes</span></a>
 

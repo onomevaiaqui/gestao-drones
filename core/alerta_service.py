@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Alocacao, AvaliacaoRisco, Bateria, Documento, Drone, Incidente, Manutencao, PlanoInspecao
+from .models import Alocacao, AvaliacaoRisco, Bateria, Documento, Drone, Incidente, Manutencao, PlanoInspecao, QualificacaoPiloto
 
 
 ORDEM_PRIORIDADE = {"critico": 0, "alto": 1, "medio": 2, "baixo": 3}
@@ -65,6 +65,12 @@ def gerar_alertas():
     for incidente in Incidente.objects.select_related("alocacao__drone", "alocacao__piloto").exclude(status="encerrado"):
         prioridade = "critico" if incidente.gravidade in ["grave", "critico"] else "alto"
         adicionar("Incidentes", prioridade, f"Incidente {incidente.get_gravidade_display().lower()}: {incidente.alocacao.drone.nome}", f"{incidente.get_tipo_display()} · {incidente.get_status_display()}", reverse("incidente_editar", args=[incidente.pk]), f"incidente-{incidente.pk}", incidente.data_hora.date())
+
+    for qualificacao in QualificacaoPiloto.objects.select_related("piloto").filter(ativo=True):
+        if qualificacao.situacao == "vencida":
+            adicionar("Pilotos", "critico", f"Qualificação vencida: {qualificacao.piloto.nome}", qualificacao.nome, reverse("perfil_operacional", args=[qualificacao.piloto_id]), f"qualificacao-{qualificacao.pk}", qualificacao.data_validade)
+        elif qualificacao.situacao == "vencendo":
+            adicionar("Pilotos", "alto", f"Qualificação próxima do vencimento: {qualificacao.piloto.nome}", f"{qualificacao.nome} · {qualificacao.dias_para_vencer} dia(s)", reverse("perfil_operacional", args=[qualificacao.piloto_id]), f"qualificacao-{qualificacao.pk}", qualificacao.data_validade)
 
     alertas.sort(key=lambda a: (ORDEM_PRIORIDADE[a["prioridade"]], a["data"] or hoje, a["titulo"]))
     return alertas
