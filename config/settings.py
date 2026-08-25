@@ -1,6 +1,10 @@
+import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = "dev-only-change-this-key"
 DEBUG = True
@@ -69,3 +73,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "login"
+
+# Credenciais externas são carregadas apenas do ambiente e nunca do Git.
+DJI_FLIGHT_RECORD_APP_KEY = os.getenv("DJI_FLIGHT_RECORD_APP_KEY", "").strip()
