@@ -386,6 +386,27 @@ class PermissoesOperacionaisTests(TestCase):
         avaliacao.refresh_from_db()
         self.assertEqual(avaliacao.perigos_identificados, "Risco original")
 
+    def test_menu_oculta_areas_exclusivas_de_administradores(self):
+        self.client.force_login(self.usuario)
+        resposta = self.client.get(reverse("dashboard"))
+        for nome_rota in ["manutencoes", "planos_inspecao", "documentos", "pilotos", "relatorios", "alertas"]:
+            self.assertNotContains(resposta, f'href="{reverse(nome_rota)}"')
+
+    def test_calendario_oculta_acoes_de_reservas_de_outro_piloto(self):
+        outro_user = User.objects.create_user(username="outro_calendario", password="teste123")
+        outro_piloto = Piloto.objects.create(user=outro_user, nome="Outro Calendário", primeiro_acesso=False)
+        outra = Alocacao.objects.create(
+            data=timezone.localdate(), hora_inicio=time(11), hora_fim=time(12),
+            piloto=outro_piloto, drone=self.drone, finalidade="Outro", local="Área",
+            status="reservado", criado_por=self.admin,
+        )
+        self.client.force_login(self.usuario)
+        resposta = self.client.get(reverse("calendario"))
+        self.assertContains(resposta, reverse("checklist_pre_voo", args=[self.alocacao.pk]))
+        self.assertContains(resposta, reverse("registro_pos_voo", args=[self.alocacao.pk]))
+        self.assertNotContains(resposta, reverse("checklist_pre_voo", args=[outra.pk]))
+        self.assertNotContains(resposta, reverse("registro_pos_voo", args=[outra.pk]))
+
 
 class FluxoOperacionalCompletoTests(TestCase):
     def setUp(self):

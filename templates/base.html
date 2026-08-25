@@ -37,11 +37,11 @@
 
             <span class="nav-section">Segurança e conformidade</span>
             <a href="{% url 'incidentes' %}" class="{% if 'incidente' in request.resolver_match.url_name %}active{% endif %}">⚠ <span>Incidentes</span></a>
+            {% if eh_admin or user.is_superuser %}
             <a href="{% url 'manutencoes' %}" class="{% if 'manutencao' in request.resolver_match.url_name %}active{% endif %}">⚒ <span>Manutenções</span></a>
             <a href="{% url 'planos_inspecao' %}" class="{% if 'inspecao' in request.resolver_match.url_name %}active{% endif %}">◷ <span>Planos de inspeção</span></a>
             <a href="{% url 'documentos' %}" class="{% if 'documento' in request.resolver_match.url_name %}active{% endif %}">▤ <span>Documentos</span></a>
 
-            {% if eh_admin or user.is_superuser %}
             <span class="nav-section">Administração</span>
             <a href="{% url 'pilotos' %}" class="{% if 'piloto' in request.resolver_match.url_name %}active{% endif %}">♙ <span>Pilotos / Usuários</span></a>
             <a href="{% url 'relatorios' %}" class="{% if request.resolver_match.url_name == 'relatorios' %}active{% endif %}">▤ <span>Relatórios</span></a>
