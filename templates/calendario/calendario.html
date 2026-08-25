@@ -184,13 +184,13 @@
                         </div>
 
                         <div class="calendar-day-item-actions">
-{% if eh_admin or user.is_superuser or a.piloto.user_id == user.id %}
+{% if eh_admin or a.piloto.user_id == user.id %}
 <a href="{% url 'checklist_pre_voo' a.pk %}" class="icon-btn">Checklist</a>
 <a href="{% url 'registro_pos_voo' alocacao_id=a.pk %}" class="icon-btn">Pós-voo</a>
 {% endif %}
 
 
-                            {% if eh_admin or user.is_superuser %}
+                            {% if eh_admin %}
 
                                 <a
                                     href="{% url 'alocacao_editar' a.pk %}"

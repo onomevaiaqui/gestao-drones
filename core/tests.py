@@ -17,6 +17,56 @@ from .models import (
 from .telemetria_service import processar_importacao
 
 
+class SelecaoPerfilAcessoTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username="admin_duplo", password="teste123")
+        self.piloto_admin = Piloto.objects.create(
+            user=self.admin, nome="Administrador Piloto", perfil="administrador",
+            primeiro_acesso=False,
+        )
+        self.outro_user = User.objects.create_user(username="piloto_outro", password="teste123")
+        self.outro_piloto = Piloto.objects.create(
+            user=self.outro_user, nome="Piloto de Outro Usuário", primeiro_acesso=False,
+        )
+        self.drone = Drone.objects.create(nome="Drone Perfil Duplo", modelo="Modelo")
+        self.voo_admin = Voo.objects.create(
+            data=timezone.localdate(), piloto=self.piloto_admin, drone=self.drone,
+            finalidade="outro", local="Área própria", hora_inicio=time(9), hora_fim=time(10),
+            criado_por=self.admin,
+        )
+        self.voo_outro = Voo.objects.create(
+            data=timezone.localdate(), piloto=self.outro_piloto, drone=self.drone,
+            finalidade="outro", local="Área de outro usuário", hora_inicio=time(11), hora_fim=time(12),
+            criado_por=self.outro_user,
+        )
+
+    def test_login_admin_exige_escolha_de_perfil(self):
+        resposta = self.client.post(reverse("login"), {
+            "username": "admin_duplo", "password": "teste123",
+        })
+        self.assertRedirects(resposta, reverse("selecionar_modo_acesso"))
+        self.assertContains(self.client.get(reverse("selecionar_modo_acesso")), "Entrar como administrador")
+
+    def test_modo_usuario_limita_dados_e_permissoes(self):
+        self.client.force_login(self.admin)
+        resposta = self.client.post(reverse("selecionar_modo_acesso"), {"modo": "usuario"})
+        self.assertRedirects(resposta, reverse("dashboard"))
+        lista = self.client.get(reverse("voos"))
+        self.assertContains(lista, "Administrador Piloto")
+        self.assertNotContains(lista, "Piloto de Outro Usuário")
+        self.assertNotContains(lista, "Pilotos / Usuários")
+        self.assertRedirects(self.client.get(reverse("pilotos")), reverse("dashboard"))
+        self.assertRedirects(self.client.get("/admin/"), reverse("dashboard"))
+
+    def test_modo_admin_mantem_visao_global(self):
+        self.client.force_login(self.admin)
+        self.client.post(reverse("selecionar_modo_acesso"), {"modo": "admin"})
+        lista = self.client.get(reverse("voos"))
+        self.assertContains(lista, "Administrador Piloto")
+        self.assertContains(lista, "Piloto de Outro Usuário")
+        self.assertEqual(self.client.get(reverse("pilotos")).status_code, 200)
+
+
 class BateriaTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="piloto_teste", password="teste123")

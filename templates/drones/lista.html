@@ -8,7 +8,7 @@
         <p>Equipamentos, localização e disponibilidade operacional</p>
     </div>
 
-    {% if eh_admin or user.is_superuser %}
+    {% if eh_admin %}
     <a class="btn btn-primary" href="{% url 'drone_novo' %}">
         + Novo Drone
     </a>
@@ -58,7 +58,7 @@
     </td>
 
     <td>
-        {% if not eh_admin and not user.is_superuser %}
+        {% if not eh_admin %}
             <span class="badge-soft {% if d.status == 'ativo' %}green{% elif d.status == 'em_campo' %}purple{% elif d.status == 'manutencao' %}orange{% else %}red{% endif %}">{{ d.get_status_display }}</span>
         {% elif d.status == "em_campo" %}
             <span class="badge-soft purple">Em campo</span>
@@ -136,7 +136,7 @@
         </a>
         <a href="{% url 'componentes' %}?q={{ d.nome|urlencode }}" class="icon-btn">Componentes</a>
 
-        {% if eh_admin or user.is_superuser %}
+        {% if eh_admin %}
         <a
             href="{% url 'drone_editar' d.pk %}"
             class="icon-btn"

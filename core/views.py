@@ -46,7 +46,7 @@ from .forms import (
 # PERMISSÕES E CONTEXTO
 # =========================================================
 
-def usuario_e_admin(user):
+def usuario_tem_perfil_admin(user):
     if not user.is_authenticated:
         return False
 
@@ -60,6 +60,12 @@ def usuario_e_admin(user):
         )
     except Piloto.DoesNotExist:
         return False
+
+
+def usuario_e_admin(user):
+    if not usuario_tem_perfil_admin(user):
+        return False
+    return getattr(user, "_modo_acesso", None) not in ("usuario", "pendente")
 
 
 def admin_required(view_func):
@@ -80,7 +86,11 @@ def admin_required(view_func):
 
 def _base_context(request):
     eh_admin = usuario_e_admin(request.user)
-    contexto = {"eh_admin": eh_admin}
+    contexto = {
+        "eh_admin": eh_admin,
+        "pode_escolher_modo": usuario_tem_perfil_admin(request.user),
+        "modo_acesso": "admin" if eh_admin else "usuario",
+    }
     if eh_admin:
         from .alerta_service import resumo_alertas
         contexto["alertas_resumo_global"] = resumo_alertas()
@@ -369,6 +379,13 @@ def dashboard(request):
     voos_qs = filtrar_voos_realizados(Voo.objects.select_related("piloto", "drone")).filter(
         data__isnull=False, hora_inicio__isnull=False, hora_fim__isnull=False,
     )
+    piloto_sessao = None
+    if not usuario_e_admin(request.user):
+        try:
+            piloto_sessao = request.user.piloto
+            voos_qs = voos_qs.filter(piloto=piloto_sessao)
+        except Piloto.DoesNotExist:
+            voos_qs = voos_qs.none()
 
     inicio = request.GET.get("inicio")
     fim = request.GET.get("fim")
@@ -456,15 +473,17 @@ def dashboard(request):
         status="reservado",
     ).count()
 
-    proximas_reservas = (
+    proximas_reservas_qs = (
         Alocacao.objects
         .select_related("piloto", "drone")
         .filter(
             status="reservado",
             data__gte=agora_dashboard.date(),
         )
-        .order_by("data", "hora_inicio")[:8]
     )
+    if piloto_sessao:
+        proximas_reservas_qs = proximas_reservas_qs.filter(piloto=piloto_sessao)
+    proximas_reservas = proximas_reservas_qs.order_by("data", "hora_inicio")[:8]
 
     ctx = {
         "total_voos": total_voos,
@@ -645,6 +664,13 @@ def voos(request):
         "piloto",
         "drone"
     )
+    piloto_sessao = None
+    if not usuario_e_admin(request.user):
+        try:
+            piloto_sessao = request.user.piloto
+            qs = qs.filter(piloto=piloto_sessao)
+        except Piloto.DoesNotExist:
+            qs = qs.none()
 
     busca = request.GET.get(
         "q",
@@ -692,9 +718,7 @@ def voos(request):
 
     ctx = {
         "voos": qs[:200],
-        "pilotos": Piloto.objects.filter(
-            ativo=True
-        ),
+        "pilotos": Piloto.objects.filter(pk=piloto_sessao.pk) if piloto_sessao else Piloto.objects.filter(ativo=True),
         "drones": Drone.objects.all(),
         "finalidades": (
             Voo.FINALIDADE_CHOICES
@@ -1485,6 +1509,11 @@ def calendario(request):
             "id",
         )
     )
+    if not usuario_e_admin(request.user):
+        try:
+            alocacoes = alocacoes.filter(piloto=request.user.piloto)
+        except Piloto.DoesNotExist:
+            alocacoes = alocacoes.none()
 
     por_dia = defaultdict(list)
 
@@ -1532,6 +1561,11 @@ def calendario(request):
             "id",
         )
     )
+    if not usuario_e_admin(request.user):
+        try:
+            lista_alocacoes = lista_alocacoes.filter(piloto=request.user.piloto)
+        except Piloto.DoesNotExist:
+            lista_alocacoes = lista_alocacoes.none()
 
     ctx = {
         "semanas": semanas,

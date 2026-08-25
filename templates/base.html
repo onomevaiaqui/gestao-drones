@@ -37,7 +37,7 @@
 
             <span class="nav-section">Segurança e conformidade</span>
             <a href="{% url 'incidentes' %}" class="{% if 'incidente' in request.resolver_match.url_name %}active{% endif %}">⚠ <span>Incidentes</span></a>
-            {% if eh_admin or user.is_superuser %}
+            {% if eh_admin %}
             <a href="{% url 'manutencoes' %}" class="{% if 'manutencao' in request.resolver_match.url_name %}active{% endif %}">⚒ <span>Manutenções</span></a>
             <a href="{% url 'planos_inspecao' %}" class="{% if 'inspecao' in request.resolver_match.url_name %}active{% endif %}">◷ <span>Planos de inspeção</span></a>
             <a href="{% url 'documentos' %}" class="{% if 'documento' in request.resolver_match.url_name %}active{% endif %}">▤ <span>Documentos</span></a>
@@ -54,9 +54,11 @@
                 <div class="avatar">{% if user.piloto.foto %}<img src="{{ user.piloto.foto.url }}" alt="Foto de {{ user.username }}">{% else %}{{ user.username|first|upper }}{% endif %}</div>
                 <div>
                     <strong>{{ user.username }}</strong>
-                    <span>{% if eh_admin or user.is_superuser %}Administrador{% else %}Usuário{% endif %} · Editar perfil</span>
+                    <span>{% if eh_admin %}Administrador{% else %}Usuário{% endif %} · Editar perfil</span>
                 </div>
             </a>
+
+            {% if pode_escolher_modo %}<a class="logout-btn" href="{% url 'selecionar_modo_acesso' %}">Trocar perfil</a>{% endif %}
 
             <form method="post" action="{% url 'logout' %}">
                 {% csrf_token %}

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-header">
     <div><h1>Baterias</h1><p>Inventário, utilização e condição operacional</p></div>
-    {% if eh_admin or user.is_superuser %}<a class="btn btn-primary" href="{% url 'bateria_nova' %}">+ Nova bateria</a>{% endif %}
+    {% if eh_admin %}<a class="btn btn-primary" href="{% url 'bateria_nova' %}">+ Nova bateria</a>{% endif %}
 </div>
 <div class="kpi-grid">
     <div class="kpi-card"><div><span>Total</span><strong>{{ resumo.total }}</strong></div><div class="kpi-icon">▰</div></div>
@@ -28,7 +28,7 @@
         <td><div class="battery-health"><span style="width:{{ bateria.saude_percentual }}%"></span></div><small>{{ bateria.saude_percentual }}%</small></td>
         <td>{{ bateria.ciclos_informados }} anteriores + {{ bateria.total_voos }} voos</td>
         <td>{{ bateria.localizacao|default:"-" }}</td>
-        <td class="actions"><a class="icon-btn" href="{% url 'bateria_detalhe' bateria.pk %}">Histórico</a>{% if eh_admin or user.is_superuser %}<a class="icon-btn" href="{% url 'bateria_editar' bateria.pk %}">Editar</a>{% endif %}</td>
+        <td class="actions"><a class="icon-btn" href="{% url 'bateria_detalhe' bateria.pk %}">Histórico</a>{% if eh_admin %}<a class="icon-btn" href="{% url 'bateria_editar' bateria.pk %}">Editar</a>{% endif %}</td>
     </tr>{% empty %}<tr><td colspan="7">Nenhuma bateria cadastrada.</td></tr>{% endfor %}</tbody>
 </table></div></div>
 {% endblock %}
