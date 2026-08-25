@@ -13,7 +13,9 @@ from .views import _base_context, _sincronizar_voo_com_calendario, usuario_e_adm
 
 
 def _voos_permitidos(user):
-    qs = Voo.objects.select_related("piloto", "drone")
+    qs = Voo.objects.select_related("piloto", "drone").exclude(
+        importacoes_log__status="concluida"
+    ).distinct()
     if not usuario_e_admin(user):
         qs = qs.filter(piloto__user=user)
     return qs
@@ -41,7 +43,7 @@ def telemetria_lista(request):
 
 @login_required
 def telemetria_importar(request):
-    voos = _voos_permitidos(request.user).order_by("-data", "-hora_inicio")
+    voos = _voos_permitidos(request.user).order_by("-criado_em")
     form = ImportacaoLogForm(request.POST or None, request.FILES or None, voos=voos)
     if form.is_valid():
         voo_base = form.cleaned_data["voo"]

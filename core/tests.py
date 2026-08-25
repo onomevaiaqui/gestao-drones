@@ -315,6 +315,20 @@ class TelemetriaTests(TestCase):
         self.assertEqual(Voo.objects.filter(piloto=self.piloto).count(), 2)
         self.assertEqual(ImportacaoLog.objects.values("voo_id").distinct().count(), 2)
 
+    def test_seletor_exibe_apenas_voos_pendentes_com_identificacao_clara(self):
+        from .telemetria_forms import ImportacaoLogForm
+        from .telemetria_views import _voos_permitidos
+
+        processar_importacao(self._importacao())
+        pendente = Voo.objects.create(
+            piloto=self.piloto, drone=self.drone, finalidade="fotografia",
+            local="Área 2", criado_por=self.usuario,
+        )
+        form = ImportacaoLogForm(voos=_voos_permitidos(self.usuario))
+        self.assertNotIn(self.voo, form.fields["voo"].queryset)
+        self.assertIn(pendente, form.fields["voo"].queryset)
+        self.assertIn(f"Voo #{pendente.pk}", form.fields["voo"].label_from_instance(pendente))
+
 
 class ComponenteTests(TestCase):
     def setUp(self):
