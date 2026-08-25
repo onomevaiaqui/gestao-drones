@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Perfil de {{ piloto.nome }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Perfil do usuário</h1><p>Dados pessoais, foto e documentos</p></div><div class="actions"><a class="btn btn-light" href="{% url 'perfil_operacional' piloto.pk %}">Perfil operacional</a>{% if eh_admin %}<a class="btn btn-light" href="{% url 'pilotos' %}">Usuários</a>{% endif %}</div></div>
+<div class="profile-layout">
+  <form method="post" enctype="multipart/form-data" class="panel profile-card">{% csrf_token %}<div class="profile-photo">{% if piloto.foto %}<img src="{{ piloto.foto.url }}" alt="Foto de {{ piloto.nome }}">{% else %}<span>{{ piloto.nome|first|upper }}</span>{% endif %}</div><h3>{{ piloto.nome }}</h3><p class="text-muted">{{ piloto.user.username }}</p>
+    {% for field in form %}<div class="mb-3"><label class="form-label">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+    <button class="btn btn-primary" type="submit">Salvar perfil</button>
+  </form>
+  <div>
+    <div class="panel"><h3>Adicionar documento</h3><form method="post" enctype="multipart/form-data" action="{% url 'documento_perfil_novo' piloto.pk %}">{% csrf_token %}<div class="profile-document-grid">{% for field in documento_form %}<div class="mb-3 {% if field.name == 'observacoes' or field.name == 'arquivo' %}wide{% endif %}"><label class="form-label">{{ field.label }}</label>{{ field }}</div>{% endfor %}</div><button class="btn btn-primary" type="submit">Adicionar documento</button></form></div>
+    <div class="panel"><h3>Documentos do usuário</h3><div class="table-responsive"><table class="modern-table"><thead><tr><th>Documento</th><th>Tipo</th><th>Número</th><th>Validade</th><th>Situação</th><th></th></tr></thead><tbody>{% for documento in documentos %}<tr><td><strong>{{ documento.titulo }}</strong></td><td>{{ documento.get_tipo_display }}</td><td>{{ documento.numero|default:"—" }}</td><td>{{ documento.data_validade|date:"d/m/Y"|default:"Sem validade" }}</td><td><span class="badge-soft {% if documento.situacao == 'vencido' %}red{% elif documento.situacao == 'vencendo' %}orange{% else %}green{% endif %}">{{ documento.situacao|capfirst }}</span></td><td>{% if documento.arquivo %}<a class="icon-btn" href="{{ documento.arquivo.url }}" target="_blank" rel="noopener">Abrir</a>{% endif %}{% if eh_admin %}<a class="icon-btn" href="{% url 'documento_editar' documento.pk %}">Editar</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="6">Nenhum documento adicionado.</td></tr>{% endfor %}</tbody></table></div></div>
+  </div>
+</div>
+{% endblock %}

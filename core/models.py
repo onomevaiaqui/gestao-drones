@@ -46,6 +46,12 @@ class Piloto(models.Model):
         default=True
     )
 
+    foto = models.ImageField(
+        upload_to="perfis/%Y/%m/",
+        null=True,
+        blank=True,
+    )
+
     class Meta:
         ordering = ["nome"]
         verbose_name = "Piloto"
@@ -78,6 +84,14 @@ class Drone(models.Model):
     numero_serie = models.CharField(
         max_length=100,
         blank=True
+    )
+
+    prefixo = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        db_index=True,
+        verbose_name="Prefixo",
     )
 
     localizacao = models.CharField(
@@ -229,6 +243,14 @@ class Voo(models.Model):
 
     criado_em = models.DateTimeField(
         auto_now_add=True
+    )
+
+    alocacao_calendario = models.OneToOneField(
+        "Alocacao",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="voo_sincronizado",
     )
 
     class Meta:

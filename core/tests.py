@@ -443,3 +443,74 @@ class FluxoOperacionalCompletoTests(TestCase):
         self.assertTrue(Manutencao.objects.filter(drone=self.drone, tipo="inspecao", concluida=False).exists())
         self.assertTrue(DroneHistorico.objects.filter(drone=self.drone, status_novo="manutencao").exists())
         self.assertEqual(Voo.objects.get(pk=registro.voo_id).distancia_m, 1250.50)
+
+
+class SincronizacaoCalendarioTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username="admin_calendario", password="teste123")
+        self.usuario = User.objects.create_user(username="piloto_calendario", password="teste123")
+        self.piloto = Piloto.objects.create(user=self.usuario, nome="Piloto Calendário", primeiro_acesso=False)
+        self.drone = Drone.objects.create(nome="Drone Calendário", prefixo="DC-01", modelo="Modelo", status="ativo")
+
+    def test_voo_manual_cria_vinculo_e_exclusao_limpa_calendario(self):
+        self.client.force_login(self.admin)
+        resposta = self.client.post(reverse("voo_novo"), {
+            "data": timezone.localdate().isoformat(), "piloto": self.piloto.pk, "drone": self.drone.pk,
+            "finalidade": "inspecao", "local": "Área", "hora_inicio": "14:00", "hora_fim": "15:00",
+            "bateria_inicial": 95, "bateria_final": 50, "distancia_m": "1000", "observacoes": "",
+        })
+        self.assertRedirects(resposta, reverse("voos"))
+        voo = Voo.objects.get(piloto=self.piloto)
+        self.assertIsNotNone(voo.alocacao_calendario_id)
+        alocacao_id = voo.alocacao_calendario_id
+        self.client.post(reverse("voo_excluir", args=[voo.pk]))
+        self.assertFalse(Voo.objects.filter(pk=voo.pk).exists())
+        self.assertFalse(Alocacao.objects.filter(pk=alocacao_id).exists())
+
+    def test_piloto_solicita_em_vez_de_registrar_voo_direto(self):
+        self.client.force_login(self.usuario)
+        self.assertRedirects(self.client.get(reverse("voo_novo")), reverse("dashboard"))
+        resposta = self.client.get(reverse("voos"))
+        self.assertContains(resposta, "Solicitar novo voo")
+        self.assertContains(resposta, "Pedidos futuros são feitos em Solicitações")
+
+    def test_prefixo_aparece_no_inventario(self):
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get(reverse("drones")), "DC-01")
+
+
+class PerfilUsuarioTests(TestCase):
+    def setUp(self):
+        self.media_dir = tempfile.TemporaryDirectory()
+        self.configuracao_media = override_settings(MEDIA_ROOT=self.media_dir.name)
+        self.configuracao_media.enable()
+        self.usuario = User.objects.create_user(username="perfil_usuario", password="teste123")
+        self.piloto = Piloto.objects.create(user=self.usuario, nome="Nome Original", primeiro_acesso=False)
+
+    def tearDown(self):
+        self.configuracao_media.disable()
+        self.media_dir.cleanup()
+
+    def test_usuario_edita_proprio_perfil(self):
+        self.client.force_login(self.usuario)
+        resposta = self.client.post(reverse("perfil_usuario", args=[self.piloto.pk]), {
+            "nome": "Nome Atualizado", "matricula": "MAT-10", "email": "piloto@example.com",
+        })
+        self.assertRedirects(resposta, reverse("perfil_usuario", args=[self.piloto.pk]))
+        self.piloto.refresh_from_db()
+        self.usuario.refresh_from_db()
+        self.assertEqual(self.piloto.nome, "Nome Atualizado")
+        self.assertEqual(self.usuario.email, "piloto@example.com")
+
+    def test_usuario_adiciona_documento_ao_proprio_perfil(self):
+        self.client.force_login(self.usuario)
+        arquivo = SimpleUploadedFile("certificado.pdf", b"arquivo de teste", content_type="application/pdf")
+        resposta = self.client.post(reverse("documento_perfil_novo", args=[self.piloto.pk]), {
+            "titulo": "Certificado geral", "tipo": "treinamento", "numero": "CERT-1",
+            "data_emissao": "", "data_validade": "", "observacoes": "Documento do piloto",
+            "arquivo": arquivo,
+        })
+        self.assertRedirects(resposta, reverse("perfil_usuario", args=[self.piloto.pk]))
+        documento = Documento.objects.get(piloto=self.piloto)
+        self.assertEqual(documento.titulo, "Certificado geral")
+        self.assertEqual(documento.criado_por, self.usuario)

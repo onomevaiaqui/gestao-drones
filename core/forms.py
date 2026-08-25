@@ -126,9 +126,10 @@ class PrimeiroAcessoSenhaForm(SetPasswordForm):
 class DroneForm(forms.ModelForm):
     class Meta:
         model = Drone
-        fields = ["nome", "modelo", "numero_serie", "localizacao", "status"]
+        fields = ["nome", "prefixo", "modelo", "numero_serie", "localizacao", "status"]
         widgets = {
             "nome": forms.TextInput(attrs={"class": "form-control"}),
+            "prefixo": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex.: M300-01"}),
             "modelo": forms.TextInput(attrs={"class": "form-control"}),
             "numero_serie": forms.TextInput(attrs={"class": "form-control"}),
             "localizacao": forms.TextInput(attrs={
@@ -142,7 +143,7 @@ class DroneForm(forms.ModelForm):
 class VooForm(forms.ModelForm):
     class Meta:
         model = Voo
-        exclude = ["criado_por"]
+        exclude = ["criado_por", "alocacao_calendario"]
         widgets = {
             "data": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "hora_inicio": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),

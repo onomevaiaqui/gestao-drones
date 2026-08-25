@@ -22,6 +22,7 @@
 <thead>
 <tr>
     <th>Nome</th>
+    <th>Prefixo</th>
     <th>Modelo</th>
     <th>Localização</th>
     <th>Status</th>
@@ -41,6 +42,8 @@
             {{ d.numero_serie|default:"Sem nº de série" }}
         </div>
     </td>
+
+    <td><strong>{{ d.prefixo|default:"—" }}</strong></td>
 
     <td>{{ d.modelo }}</td>
 
@@ -161,7 +164,7 @@
 
 {% empty %}
 <tr>
-    <td colspan="7">
+    <td colspan="8">
         Nenhum drone cadastrado.
     </td>
 </tr>

@@ -50,13 +50,13 @@
         </nav>
 
         <div class="sidebar-footer">
-            <div class="user-box">
-                <div class="avatar">{{ user.username|first|upper }}</div>
+            <a class="user-box" href="{% if user.piloto %}{% url 'perfil_usuario' user.piloto.pk %}{% else %}#{% endif %}">
+                <div class="avatar">{% if user.piloto.foto %}<img src="{{ user.piloto.foto.url }}" alt="Foto de {{ user.username }}">{% else %}{{ user.username|first|upper }}{% endif %}</div>
                 <div>
                     <strong>{{ user.username }}</strong>
-                    <span>{% if eh_admin or user.is_superuser %}Administrador{% else %}Usuário{% endif %}</span>
+                    <span>{% if eh_admin or user.is_superuser %}Administrador{% else %}Usuário{% endif %} · Editar perfil</span>
                 </div>
-            </div>
+            </a>
 
             <form method="post" action="{% url 'logout' %}">
                 {% csrf_token %}

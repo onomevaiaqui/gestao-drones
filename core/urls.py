@@ -10,6 +10,7 @@ from . import seguranca_views
 from . import qualificacao_views
 from . import telemetria_views
 from . import componente_views
+from . import perfil_views
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
@@ -91,6 +92,9 @@ urlpatterns = [
     path("componentes/<int:pk>/editar/", componente_views.componente_editar, name="componente_editar"),
     path("componentes/<int:pk>/qr.png", componente_views.componente_qr, name="componente_qr"),
     path("identificar/<uuid:token>/", componente_views.componente_detalhe, name="componente_por_qr"),
+    path("meu-perfil/", perfil_views.perfil_usuario, name="meu_perfil"),
+    path("usuarios/<int:pk>/perfil/", perfil_views.perfil_usuario, name="perfil_usuario"),
+    path("usuarios/<int:pk>/documentos/novo/", perfil_views.documento_perfil_novo, name="documento_perfil_novo"),
 ]
 # PATCH REGISTRO POS-VOO: ROTA
 from . import views as pos_voo_views

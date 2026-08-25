@@ -574,19 +574,22 @@ def _sincronizar_voo_com_calendario(voo, usuario):
         else str(voo.finalidade)
     )
 
-    alocacao = (
-        Alocacao.objects
-        .filter(
+    alocacao = voo.alocacao_calendario
+    if alocacao is None:
+        alocacao = Alocacao.objects.filter(
             piloto=voo.piloto,
             drone=voo.drone,
             data=voo.data,
             hora_inicio=voo.hora_inicio,
             hora_fim=voo.hora_fim,
-        )
-        .first()
-    )
+        ).first()
 
     if alocacao:
+        alocacao.data = voo.data
+        alocacao.hora_inicio = voo.hora_inicio
+        alocacao.hora_fim = voo.hora_fim
+        alocacao.piloto = voo.piloto
+        alocacao.drone = voo.drone
         alocacao.finalidade = finalidade_texto
         alocacao.local = voo.local or ""
         alocacao.observacoes = voo.observacoes or ""
@@ -596,15 +599,19 @@ def _sincronizar_voo_com_calendario(voo, usuario):
 
         alocacao.save(
             update_fields=[
+                "data", "hora_inicio", "hora_fim", "piloto", "drone",
                 "finalidade",
                 "local",
                 "observacoes",
                 "status",
             ]
         )
+        if voo.alocacao_calendario_id != alocacao.pk:
+            voo.alocacao_calendario = alocacao
+            voo.save(update_fields=["alocacao_calendario"])
         return alocacao
 
-    return Alocacao.objects.create(
+    alocacao = Alocacao.objects.create(
         data=voo.data,
         hora_inicio=voo.hora_inicio,
         hora_fim=voo.hora_fim,
@@ -616,6 +623,9 @@ def _sincronizar_voo_com_calendario(voo, usuario):
         status=status_calendario,
         criado_por=usuario,
     )
+    voo.alocacao_calendario = alocacao
+    voo.save(update_fields=["alocacao_calendario"])
+    return alocacao
 
 
 # =========================================================
@@ -697,7 +707,7 @@ def voos(request):
     )
 
 
-@login_required
+@admin_required
 def voo_novo(request):
     _atualizar_status_drones_por_reserva()
     form = VooForm(
@@ -862,7 +872,10 @@ def voo_excluir(request, pk):
         pk=pk
     )
 
+    alocacao = voo.alocacao_calendario
     voo.delete()
+    if alocacao and not hasattr(alocacao, "solicitacao_voo") and not hasattr(alocacao, "registro_pos_voo"):
+        alocacao.delete()
 
     messages.success(
         request,
@@ -2607,9 +2620,13 @@ def registro_pos_voo(request, alocacao_id):
                     registro.voo.save()
                     voo = registro.voo
                 else:
-                    voo = Voo.objects.create(**voo_defaults)
+                    voo = Voo.objects.create(alocacao_calendario=alocacao, **voo_defaults)
                     registro.voo = voo
                     registro.save(update_fields=["voo", "atualizado_em"])
+
+                if voo.alocacao_calendario_id != alocacao.pk:
+                    voo.alocacao_calendario = alocacao
+                    voo.save(update_fields=["alocacao_calendario"])
 
                 if alocacao.status != "concluido":
                     alocacao.status = "concluido"

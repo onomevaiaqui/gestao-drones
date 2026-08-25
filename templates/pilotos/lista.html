@@ -19,7 +19,8 @@
     <td>{% if p.user %}{{ p.user.username }}{% else %}<span class="text-muted">Sem acesso</span>{% endif %}</td>
     <td>{% if p.user and p.user.email %}{{ p.user.email }}{% else %}<span class="text-muted">Não informado</span>{% endif %}</td>
     <td><span class="badge-soft {% if p.ativo %}green{% else %}red{% endif %}">{% if p.ativo %}Ativo{% else %}Inativo{% endif %}</span></td>
-    <td class="actions">
+<td class="actions">
+<a href="{% url 'perfil_usuario' p.pk %}" class="icon-btn">Perfil</a>
         <a href="{% url 'perfil_operacional' p.pk %}" class="icon-btn">Perfil operacional</a>
         <a href="{% url 'piloto_editar' p.pk %}" class="icon-btn">Editar</a>
         {% if p.user_id != user.id %}
