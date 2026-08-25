@@ -475,6 +475,7 @@ class PlanejamentoVoo(models.Model):
     hora_inicio = models.TimeField()
     hora_fim = models.TimeField()
     altura_maxima_m = models.PositiveIntegerField(default=120)
+    local = models.CharField(max_length=200, blank=True, verbose_name="Local/região")
     area_geojson = models.JSONField()
     centro_latitude = models.DecimalField(max_digits=10, decimal_places=7)
     centro_longitude = models.DecimalField(max_digits=10, decimal_places=7)
@@ -499,7 +500,7 @@ class PlanejamentoVoo(models.Model):
 
 class SolicitacaoVoo(models.Model):
     STATUS_CHOICES = [
-        ("solicitado", "Solicitado"),
+        ("solicitado", "Pendente de avaliação"),
         ("aprovado", "Aprovado"),
         ("rejeitado", "Rejeitado"),
         ("cancelado", "Cancelado"),

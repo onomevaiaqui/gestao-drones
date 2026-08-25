@@ -27,7 +27,7 @@
             <a href="{% url 'calendario' %}" class="{% if 'calendario' in request.resolver_match.url_name or 'alocacao' in request.resolver_match.url_name %}active{% endif %}">▣ <span>Calendário</span></a>
             <a href="{% url 'planejamentos' %}" class="{% if 'planejamento' in request.resolver_match.url_name %}active{% endif %}">⌖ <span>Planejamento de Voo</span></a>
             <a href="{% url 'minha_agenda' %}" class="{% if request.resolver_match.url_name == 'minha_agenda' %}active{% endif %}">◷ <span>Minha agenda</span></a>
-            <a href="{% url 'solicitacoes_voo' %}" class="{% if 'solicitacao' in request.resolver_match.url_name %}active{% endif %}">✎ <span>Solicitações</span></a>
+            <a href="{% url 'solicitacoes_voo' %}" class="{% if 'solicitacao' in request.resolver_match.url_name %}active{% endif %}">✎ <span>Reservas de drones</span></a>
             {% if user.piloto %}<a href="{% url 'meu_perfil_operacional' %}" class="{% if 'perfil_operacional' in request.resolver_match.url_name %}active{% endif %}">♙ <span>Meu perfil operacional</span></a>{% endif %}
 
             <span class="nav-section">Frota</span>

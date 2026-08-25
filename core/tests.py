@@ -745,7 +745,7 @@ class SincronizacaoCalendarioTests(TestCase):
         self.assertRedirects(self.client.get(reverse("voo_novo")), reverse("dashboard"))
         resposta = self.client.get(reverse("voos"))
         self.assertContains(resposta, "Solicitar novo voo")
-        self.assertContains(resposta, "Pedidos futuros são feitos em Solicitações")
+        self.assertContains(resposta, "Operações futuras são registradas em Reservas de drones")
 
     def test_prefixo_aparece_no_inventario(self):
         self.client.force_login(self.admin)

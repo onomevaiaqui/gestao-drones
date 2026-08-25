@@ -31,7 +31,8 @@ class PlanejamentoVooTests(TestCase):
         calculada = calcular_geometria(AREA)
         self.obj = PlanejamentoVoo.objects.create(
             titulo="Inspeção", piloto=self.piloto, data=timezone.localdate() + timedelta(days=1),
-            hora_inicio=time(9), hora_fim=time(10), area_geojson=calculada["geojson"],
+            hora_inicio=time(9), hora_fim=time(10), local="Parque Ambiental, Guarapuava/PR",
+            area_geojson=calculada["geojson"],
             centro_latitude=calculada["centro_latitude"], centro_longitude=calculada["centro_longitude"],
             area_hectares=calculada["area_hectares"], criado_por=self.user,
         )
@@ -74,6 +75,16 @@ class PlanejamentoVooTests(TestCase):
         self.assertEqual(resultado["neblina_area_max_percentual"], 100)
         self.assertGreater(resultado["raio_neblina_estimado_km"], 0)
         self.assertTrue(resultado["pontos_neblina"])
+
+    def test_reserva_iniciada_pelo_planejamento_vem_pre_preenchida(self):
+        self.client.force_login(self.user)
+        resposta = self.client.get(reverse("solicitacao_voo_nova"), {"planejamento": self.obj.pk})
+        form = resposta.context["form"]
+        self.assertEqual(form.initial["data"], self.obj.data)
+        self.assertEqual(form.initial["hora_inicio"], self.obj.hora_inicio)
+        self.assertEqual(form.initial["hora_fim"], self.obj.hora_fim)
+        self.assertEqual(form.initial["local"], "Parque Ambiental, Guarapuava/PR")
+        self.assertContains(resposta, "Reservar drone")
 
     @patch("core.planejamento_aeronautico_service.urlopen")
     def test_aerodromo_proximo_e_area_proibida_sao_detectados(self, urlopen):

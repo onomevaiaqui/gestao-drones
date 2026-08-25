@@ -37,7 +37,7 @@ def solicitacao_voo_nova(request):
     if planejamento_inicial:
         initial = {"planejamento": planejamento_inicial, "data": planejamento_inicial.data,
                    "hora_inicio": planejamento_inicial.hora_inicio, "hora_fim": planejamento_inicial.hora_fim,
-                   "piloto": planejamento_inicial.piloto}
+                   "piloto": planejamento_inicial.piloto, "local": planejamento_inicial.local}
     form = SolicitacaoVooForm(request.POST or None, initial=initial)
     if not eh_admin:
         try:
@@ -64,15 +64,15 @@ def solicitacao_voo_nova(request):
         obj.status = "solicitado"
         obj.save()
         if obj.requer_avaliacao_risco:
-            messages.success(request, "Solicitação registrada. Preencha a avaliação de risco para liberar o voo.")
+            messages.success(request, "Reserva registrada. Preencha a avaliação de risco para liberar a operação.")
         else:
             try:
                 liberar_solicitacao(obj, request.user)
-                messages.success(request, "Voo registrado e adicionado ao calendário.")
+                messages.success(request, "Drone reservado e operação adicionada ao calendário.")
             except LiberacaoVooErro as erro:
-                messages.error(request, f"A solicitação foi salva, mas o voo não pôde ser liberado: {erro}")
+                messages.error(request, f"A reserva foi salva, mas a operação não pôde ser liberada: {erro}")
         return redirect("solicitacoes_voo")
-    ctx = {"form": form, "titulo": "Solicitar voo"}
+    ctx = {"form": form, "titulo": "Reservar drone"}
     ctx.update(_base_context(request))
     return render(request, "solicitacoes/form.html", ctx)
 
@@ -111,7 +111,7 @@ def solicitacao_voo_editar(request, pk):
             try:
                 liberar_solicitacao(obj, request.user)
             except LiberacaoVooErro as erro:
-                messages.error(request, f"A solicitação foi atualizada, mas o voo não pôde ser liberado: {erro}")
+                messages.error(request, f"A reserva foi atualizada, mas a operação não pôde ser liberada: {erro}")
                 return redirect("solicitacoes_voo")
         if eh_admin and obj.status == "aprovado" and obj.alocacao_id:
             aloc = obj.alocacao
@@ -124,9 +124,9 @@ def solicitacao_voo_editar(request, pk):
             aloc.local = obj.local
             aloc.observacoes = obj.observacoes
             aloc.save()
-        messages.success(request, "Solicitação atualizada.")
+        messages.success(request, "Reserva atualizada.")
         return redirect("solicitacoes_voo")
-    ctx = {"form": form, "titulo": "Editar solicitação de voo"}
+    ctx = {"form": form, "titulo": "Editar reserva de drone"}
     ctx.update(_base_context(request))
     return render(request, "solicitacoes/form.html", ctx)
 
@@ -135,7 +135,7 @@ def solicitacao_voo_editar(request, pk):
 def solicitacao_voo_aprovar(request, pk):
     obj = get_object_or_404(SolicitacaoVoo, pk=pk)
     if obj.status != "solicitado":
-        messages.warning(request, "Esta solicitação já foi analisada.")
+        messages.warning(request, "Esta reserva já foi analisada.")
         return redirect("solicitacoes_voo")
     messages.info(request, "A liberação agora é automática. Quando exigida, aprove somente a avaliação de risco.")
     return redirect("solicitacoes_voo")
@@ -145,12 +145,12 @@ def solicitacao_voo_aprovar(request, pk):
 def solicitacao_voo_rejeitar(request, pk):
     obj = get_object_or_404(SolicitacaoVoo, pk=pk)
     if obj.status != "solicitado":
-        messages.warning(request, "Esta solicitação já foi analisada.")
+        messages.warning(request, "Esta reserva já foi analisada.")
         return redirect("solicitacoes_voo")
     obj.status = "rejeitado"
     obj.analisado_por = request.user
     obj.save()
-    messages.success(request, "Solicitação rejeitada.")
+    messages.success(request, "Reserva rejeitada.")
     return redirect("solicitacoes_voo")
 
 @login_required
@@ -176,5 +176,5 @@ def solicitacao_voo_cancelar(request, pk):
     if eh_admin:
         obj.analisado_por = request.user
     obj.save()
-    messages.success(request, "Solicitação cancelada.")
+    messages.success(request, "Reserva cancelada.")
     return redirect("solicitacoes_voo")

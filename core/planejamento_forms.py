@@ -12,12 +12,13 @@ class PlanejamentoVooForm(forms.ModelForm):
     class Meta:
         model = PlanejamentoVoo
         fields = [
-            "titulo", "piloto", "data", "hora_inicio", "hora_fim",
+            "titulo", "piloto", "local", "data", "hora_inicio", "hora_fim",
             "altura_maxima_m", "observacoes",
         ]
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control"}),
             "piloto": forms.Select(attrs={"class": "form-select"}),
+            "local": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex.: Parque Ambiental, Guarapuava/PR"}),
             "data": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "hora_inicio": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
             "hora_fim": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
