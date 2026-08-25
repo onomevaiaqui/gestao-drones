@@ -296,6 +296,25 @@ class TelemetriaTests(TestCase):
             processar_importacao(importacao)
         self.assertEqual(PontoTelemetria.objects.filter(importacao=importacao).count(), 0)
 
+    def test_importacao_de_pasta_cria_um_voo_por_arquivo(self):
+        conteudo = (
+            "seconds,latitude,longitude,altitude,battery\n"
+            "0,-25.3000,-51.2700,10,95\n"
+            "10,-25.3001,-51.2701,20,90\n"
+        ).encode()
+        self.client.force_login(self.usuario)
+        resposta = self.client.post(reverse("telemetria_importar"), {
+            "voo": self.voo.pk, "modo": "pasta",
+            "pasta": [
+                SimpleUploadedFile("voo-1.csv", conteudo, content_type="text/csv"),
+                SimpleUploadedFile("voo-2.csv", conteudo, content_type="text/csv"),
+            ],
+        })
+        self.assertRedirects(resposta, reverse("telemetria_lista"))
+        self.assertEqual(ImportacaoLog.objects.filter(status="concluida").count(), 2)
+        self.assertEqual(Voo.objects.filter(piloto=self.piloto).count(), 2)
+        self.assertEqual(ImportacaoLog.objects.values("voo_id").distinct().count(), 2)
+
 
 class ComponenteTests(TestCase):
     def setUp(self):

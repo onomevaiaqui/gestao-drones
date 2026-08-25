@@ -1,12 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Importar telemetria{% endblock %}
 {% block content %}
-<div class="page-header"><div><h1>Importar telemetria</h1><p>Associe o arquivo de log a um voo já registrado</p></div><a class="btn btn-light" href="{% url 'telemetria_lista' %}">Voltar</a></div>
+<div class="page-header"><div><h1>Importar telemetria</h1><p>Importe um log individual ou todos os logs de uma pasta</p></div><a class="btn btn-light" href="{% url 'telemetria_lista' %}">Voltar</a></div>
 <div class="form-layout telemetry-import-layout">
-  <form method="post" enctype="multipart/form-data" class="panel">{% csrf_token %}<h3>Arquivo do voo</h3>
+  <form method="post" enctype="multipart/form-data" class="panel" id="telemetry-import-form">{% csrf_token %}<h3>Origem dos logs</h3>
     {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
     <div class="mb-3"><label class="form-label">{{ form.voo.label }}</label>{{ form.voo }}{{ form.voo.errors }}</div>
-    <div class="mb-3"><label class="form-label">{{ form.arquivo.label }}</label>{{ form.arquivo }}{{ form.arquivo.errors }}<div class="form-text">CSV ou DJI Flight Record (.txt), com até 20 MB e 100.000 pontos.</div></div>
+    <div class="mb-3"><label class="form-label">Como deseja importar?</label>{{ form.modo }}{{ form.modo.errors }}</div>
+    <div class="mb-3" id="single-file-field"><label class="form-label">Arquivo</label>{{ form.arquivo }}{{ form.arquivo.errors }}</div>
+    <div class="mb-3" id="folder-field"><label class="form-label">Pasta</label>{{ form.pasta }}{{ form.pasta.errors }}<div class="form-text">Arquivos que não sejam CSV ou TXT serão ignorados.</div></div>
+    <div class="form-text mb-3">Cada arquivo pode ter até 20 MB e 100.000 pontos. Uma pasta pode conter até 100 logs.</div>
     <div class="info-box mb-3">Data, horários, distância e percentuais de bateria reconhecidos serão aplicados automaticamente ao voo.</div>
     <button class="btn btn-primary" type="submit">Importar e processar</button>
   </form>
@@ -18,3 +21,15 @@
   </div>
 </div>
 {% endblock %}
+{% block scripts %}<script>
+(() => {
+  const radios = document.querySelectorAll('input[name="modo"]');
+  const single = document.getElementById('single-file-field');
+  const folder = document.getElementById('folder-field');
+  const update = () => {
+    const mode = document.querySelector('input[name="modo"]:checked')?.value || 'arquivo';
+    single.hidden = mode !== 'arquivo'; folder.hidden = mode !== 'pasta';
+  };
+  radios.forEach(radio => radio.addEventListener('change', update)); update();
+})();
+</script>{% endblock %}

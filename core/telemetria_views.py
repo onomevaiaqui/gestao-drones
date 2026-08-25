@@ -44,21 +44,45 @@ def telemetria_importar(request):
     voos = _voos_permitidos(request.user).order_by("-data", "-hora_inicio")
     form = ImportacaoLogForm(request.POST or None, request.FILES or None, voos=voos)
     if form.is_valid():
-        importacao = form.save(commit=False)
-        importacao.nome_original = form.cleaned_data["arquivo"].name[:255]
-        importacao.formato = importacao.nome_original.rsplit(".", 1)[-1].lower()
-        importacao.importado_por = request.user
-        importacao.save()
-        try:
-            processar_importacao(importacao, atualizar_voo=True)
-            _sincronizar_voo_com_calendario(importacao.voo, request.user)
-            messages.success(request, f"Log importado: {importacao.total_pontos} pontos reconhecidos.")
-        except Exception as exc:
-            importacao.status = "erro"
-            importacao.mensagem_erro = str(exc)[:2000]
-            importacao.save(update_fields=["status", "mensagem_erro"])
-            messages.error(request, f"Não foi possível processar o log: {exc}")
-        return redirect("telemetria_detalhe", pk=importacao.pk)
+        voo_base = form.cleaned_data["voo"]
+        arquivos = form.cleaned_data["arquivos"]
+        base_disponivel = not voo_base.importacoes_log.filter(status="concluida").exists()
+        importacoes, sucessos, erros = [], 0, 0
+        for indice, arquivo in enumerate(arquivos):
+            if indice == 0 and base_disponivel:
+                voo = voo_base
+            else:
+                voo = Voo.objects.create(
+                    piloto=voo_base.piloto, drone=voo_base.drone,
+                    finalidade=voo_base.finalidade, local=voo_base.local,
+                    observacoes=voo_base.observacoes, criado_por=request.user,
+                )
+            importacao = ImportacaoLog.objects.create(
+                voo=voo, arquivo=arquivo, nome_original=arquivo.name[:255],
+                formato=arquivo.name.rsplit(".", 1)[-1].lower(), importado_por=request.user,
+            )
+            importacoes.append(importacao)
+            try:
+                processar_importacao(importacao, atualizar_voo=True)
+                _sincronizar_voo_com_calendario(importacao.voo, request.user)
+                sucessos += 1
+            except Exception as exc:
+                importacao.status = "erro"
+                importacao.mensagem_erro = str(exc)[:2000]
+                importacao.save(update_fields=["status", "mensagem_erro"])
+                erros += 1
+        if len(importacoes) == 1:
+            importacao = importacoes[0]
+            if sucessos:
+                messages.success(request, f"Log importado: {importacao.total_pontos} pontos reconhecidos.")
+            else:
+                messages.error(request, f"Não foi possível processar o log: {importacao.mensagem_erro}")
+            return redirect("telemetria_detalhe", pk=importacao.pk)
+        if sucessos:
+            messages.success(request, f"Pasta processada: {sucessos} log(s) importado(s) com sucesso.")
+        if erros:
+            messages.error(request, f"{erros} arquivo(s) apresentaram erro. Abra os itens para consultar os detalhes.")
+        return redirect("telemetria_lista")
     ctx = {"form": form}
     ctx.update(_base_context(request))
     return render(request, "telemetria/importar.html", ctx)
