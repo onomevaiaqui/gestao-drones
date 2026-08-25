@@ -17,58 +17,55 @@
 {% if rota %}{{ rota|json_script:"telemetry-route" }}{{ alertas_mapa|json_script:"telemetry-alerts" }}{% endif %}
 {% endblock %}
 {% block scripts %}{% if rota %}
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css">
-<script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 (() => {
   const route = JSON.parse(document.getElementById('telemetry-route').textContent);
   const alerts = JSON.parse(document.getElementById('telemetry-alerts').textContent);
-  const coordinates = route.map(point => [point.lon, point.lat]);
-  const mapContainer = document.getElementById('telemetry-map');
-  const map = new maplibregl.Map({
-    container: 'telemetry-map', style: 'https://tiles.openfreemap.org/styles/liberty',
-    center: coordinates[0], zoom: 15, pixelRatio: 1
-  });
-  const fitRoute = () => {
-    map.resize();
-    const bounds = coordinates.reduce((box, coordinate) => box.extend(coordinate), new maplibregl.LngLatBounds(coordinates[0], coordinates[0]));
-    map.fitBounds(bounds, {padding: 45, maxZoom: 18, duration: 0});
-  };
-  const resizeObserver = new ResizeObserver(() => {
-    window.requestAnimationFrame(() => map.resize());
-  });
-  resizeObserver.observe(mapContainer);
-  window.addEventListener('load', () => window.requestAnimationFrame(fitRoute), {once: true});
-  map.addControl(new maplibregl.NavigationControl(), 'top-left');
+  const coordinates = route.map(point => [point.lat, point.lon]);
+  const map = L.map('telemetry-map', {zoomControl: true});
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    referrerPolicy: 'origin',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  }).addTo(map);
+  L.polyline(coordinates, {color: '#2864dc', weight: 4, opacity: 0.95}).addTo(map);
+
   const popupFor = (title, point, message) => {
     const box = document.createElement('div');
     const heading = document.createElement('strong');
     heading.textContent = title;
     box.appendChild(heading);
-    if (message) { const text = document.createElement('p'); text.textContent = message; text.style.margin = '6px 0'; box.appendChild(text); }
+    if (message) {
+      const text = document.createElement('p');
+      text.textContent = message;
+      text.style.margin = '6px 0';
+      box.appendChild(text);
+    }
     const detail = document.createElement('small');
     const time = point.seconds == null ? '' : ` · ${Math.floor(point.seconds / 60)}min ${Math.floor(point.seconds % 60)}s`;
     detail.textContent = `Altitude: ${point.alt == null ? '—' : point.alt + ' m'}${time}`;
     box.appendChild(detail);
-    return new maplibregl.Popup({offset: 18}).setDOMContent(box);
+    return box;
   };
-  const marker = (point, color, title) => new maplibregl.Marker({color})
-    .setLngLat([point.lon, point.lat]).setPopup(popupFor(title, point, '')).addTo(map);
-  map.on('load', () => {
-    map.addSource('flight-route', {type: 'geojson', data: {type: 'Feature', geometry: {type: 'LineString', coordinates}}});
-    map.addLayer({id: 'flight-route', type: 'line', source: 'flight-route', paint: {'line-color': '#2864dc', 'line-width': 4}});
-    marker(route[0], '#198754', 'Início do voo');
-    marker(route[route.length - 1], '#dc3545', 'Fim do voo');
-    alerts.forEach(point => {
-      const element = document.createElement('button');
-      element.type = 'button'; element.className = 'telemetry-alert-marker';
-      element.textContent = '!'; element.title = 'Abrir alerta';
-      new maplibregl.Marker({element}).setLngLat([point.lon, point.lat])
-        .setPopup(popupFor('Alerta de voo', point, point.alert)).addTo(map);
-    });
-    window.requestAnimationFrame(fitRoute);
-    window.setTimeout(fitRoute, 150);
+  const marker = (point, color, title) => L.circleMarker([point.lat, point.lon], {
+    radius: 9, color: '#fff', weight: 3, fillColor: color, fillOpacity: 1
+  }).bindPopup(popupFor(title, point, '')).addTo(map);
+
+  marker(route[0], '#198754', 'Início do voo');
+  marker(route[route.length - 1], '#dc3545', 'Fim do voo');
+  alerts.forEach(point => {
+    L.circleMarker([point.lat, point.lon], {
+      radius: 8, color: '#fff', weight: 3, fillColor: '#dc3545', fillOpacity: 1
+    }).bindPopup(popupFor('Alerta de voo', point, point.alert)).addTo(map);
   });
+
+  map.fitBounds(coordinates, {padding: [45, 45], maxZoom: 18});
+  window.setTimeout(() => {
+    map.invalidateSize(true);
+    map.fitBounds(coordinates, {padding: [45, 45], maxZoom: 18});
+  }, 100);
 })();
 </script>
 {% endif %}{% endblock %}
