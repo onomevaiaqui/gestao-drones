@@ -29,11 +29,9 @@
                 <div class="mb-3 battery-choice"><label class="form-label">Identificação das baterias</label>{{ form.baterias }}{{ form.baterias.errors }}<small class="text-muted">Selecione as unidades cadastradas usadas neste voo.</small></div>
             </div>
             <div class="panel">
-                <h3>Bateria e telemetria</h3>
-                <div class="mb-3"><label class="form-label">Bateria inicial (%)</label>{{ form.bateria_inicial }}{{ form.bateria_inicial.errors }}</div>
-                <div class="mb-3"><label class="form-label">Bateria final (%)</label>{{ form.bateria_final }}{{ form.bateria_final.errors }}</div>
+                <h3>Dados complementares</h3>
                 <div class="mb-3"><label class="form-label">Distância percorrida (m)</label>{{ form.distancia_m }}{{ form.distancia_m.errors }}</div>
-                <div class="info-box">Informe percentuais entre 0 e 100. A duração será calculada pelos horários reais.</div>
+                <div class="info-box">Os percentuais de bateria são obtidos automaticamente pela importação da telemetria.</div>
             </div>
             <div class="panel">
                 <h3>Ocorrências e observações</h3>

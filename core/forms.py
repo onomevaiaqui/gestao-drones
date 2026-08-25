@@ -143,7 +143,7 @@ class DroneForm(forms.ModelForm):
 class VooForm(forms.ModelForm):
     class Meta:
         model = Voo
-        exclude = ["criado_por", "alocacao_calendario"]
+        exclude = ["criado_por", "alocacao_calendario", "bateria_inicial", "bateria_final"]
         widgets = {
             "data": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "hora_inicio": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
@@ -152,8 +152,6 @@ class VooForm(forms.ModelForm):
             "drone": forms.Select(attrs={"class": "form-select"}),
             "finalidade": forms.Select(attrs={"class": "form-select"}),
             "local": forms.TextInput(attrs={"class": "form-control"}),
-            "bateria_inicial": forms.NumberInput(attrs={"class": "form-control"}),
-            "bateria_final": forms.NumberInput(attrs={"class": "form-control"}),
             "distancia_m": forms.NumberInput(attrs={"class": "form-control"}),
             "observacoes": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
@@ -251,7 +249,7 @@ class RegistroPosVooForm(pos_voo_forms.ModelForm):
         model = RegistroPosVoo
         fields = [
             "hora_inicio_real", "hora_fim_real", "resultado",
-            "baterias_utilizadas", "bateria_inicial", "bateria_final",
+            "baterias_utilizadas",
             "baterias",
             "distancia_m", "ocorrencias", "danos", "necessita_manutencao",
             "observacoes", "concluido",
@@ -262,8 +260,6 @@ class RegistroPosVooForm(pos_voo_forms.ModelForm):
             "resultado": pos_voo_forms.Select(attrs={"class": "form-select"}),
             "baterias_utilizadas": pos_voo_forms.NumberInput(attrs={"class": "form-control", "min": 1}),
             "baterias": pos_voo_forms.CheckboxSelectMultiple(),
-            "bateria_inicial": pos_voo_forms.NumberInput(attrs={"class": "form-control", "min": 0, "max": 100}),
-            "bateria_final": pos_voo_forms.NumberInput(attrs={"class": "form-control", "min": 0, "max": 100}),
             "distancia_m": pos_voo_forms.NumberInput(attrs={"class": "form-control", "min": 0, "step": "0.01"}),
             "ocorrencias": pos_voo_forms.Textarea(attrs={"rows": 4, "class": "form-control"}),
             "danos": pos_voo_forms.Textarea(attrs={"rows": 4, "class": "form-control"}),
@@ -283,10 +279,6 @@ class RegistroPosVooForm(pos_voo_forms.ModelForm):
 
     def clean(self):
         dados = super().clean()
-        for campo in ("bateria_inicial", "bateria_final"):
-            valor = dados.get(campo)
-            if valor is not None and not 0 <= valor <= 100:
-                self.add_error(campo, "Informe um percentual entre 0 e 100.")
         if dados.get("baterias_utilizadas") == 0:
             self.add_error("baterias_utilizadas", "Informe ao menos uma bateria.")
         return dados

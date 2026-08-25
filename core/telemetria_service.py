@@ -154,7 +154,12 @@ def _concluir_importacao(importacao, pontos, atualizar_voo):
     importacao.total_pontos = len(pontos)
     # O relógio interno de alguns DJI Pilot 2 pode saltar entre quadros. O tempo
     # decorrido do voo é a fonte estável sempre que estiver disponível.
-    importacao.duracao_segundos = int(max(segundos) - min(segundos)) if len(segundos) >= 2 else int((max(instantes) - min(instantes)).total_seconds()) if len(instantes) >= 2 else None
+    if segundos:
+        # No Flight Record DJI o contador pode continuar de um arquivo anterior;
+        # o controle exibe o valor final acumulado, não apenas o trecho do arquivo.
+        importacao.duracao_segundos = int(max(segundos)) if importacao.origem == "dji_flight_record" else int(max(segundos) - min(segundos))
+    else:
+        importacao.duracao_segundos = int((max(instantes) - min(instantes)).total_seconds()) if len(instantes) >= 2 else None
     importacao.altitude_maxima_m = max((p.altitude_m for p in pontos if p.altitude_m is not None), default=None)
     importacao.velocidade_maxima_ms = max((p.velocidade_ms for p in pontos if p.velocidade_ms is not None), default=None)
     importacao.distancia_calculada_m = Decimal(str(round(distancia, 2))) if coordenadas else None
