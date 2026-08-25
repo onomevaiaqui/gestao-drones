@@ -404,6 +404,8 @@ class TelemetriaTests(TestCase):
         self.assertContains(resposta, "tile.openstreetmap.org")
         self.assertContains(resposta, "Data do voo")
         self.assertContains(resposta, "Amostra dos dados por minuto")
+        self.assertContains(resposta, "Satélites conectados")
+        self.assertNotContains(resposta, "Sinal / satélites")
         self.assertContains(resposta, "leaflet@1.9.4")
         self.assertContains(resposta, "invalidateSize")
         self.assertEqual(len(resposta.context["amostra_minutos"]), 1)
