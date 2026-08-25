@@ -468,10 +468,13 @@ def dashboard(request):
 
     agora_dashboard = timezone.localtime()
 
-    reservas_hoje = Alocacao.objects.filter(
+    reservas_hoje_qs = Alocacao.objects.filter(
         data=agora_dashboard.date(),
         status="reservado",
-    ).count()
+    )
+    if piloto_sessao:
+        reservas_hoje_qs = reservas_hoje_qs.filter(piloto=piloto_sessao)
+    reservas_hoje = reservas_hoje_qs.count()
 
     proximas_reservas_qs = (
         Alocacao.objects

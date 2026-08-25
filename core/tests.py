@@ -39,6 +39,11 @@ class SelecaoPerfilAcessoTests(TestCase):
             finalidade="outro", local="Área de outro usuário", hora_inicio=time(11), hora_fim=time(12),
             criado_por=self.outro_user,
         )
+        self.reserva_outro = Alocacao.objects.create(
+            data=timezone.localdate(), hora_inicio=time(13), hora_fim=time(14),
+            piloto=self.outro_piloto, drone=self.drone, finalidade="Reserva de outro usuário",
+            status="reservado", criado_por=self.outro_user,
+        )
 
     def test_login_admin_exige_escolha_de_perfil(self):
         resposta = self.client.post(reverse("login"), {
@@ -57,6 +62,8 @@ class SelecaoPerfilAcessoTests(TestCase):
         self.assertNotContains(lista, "Pilotos / Usuários")
         self.assertRedirects(self.client.get(reverse("pilotos")), reverse("dashboard"))
         self.assertRedirects(self.client.get("/admin/"), reverse("dashboard"))
+        painel = self.client.get(reverse("dashboard"))
+        self.assertEqual(painel.context["reservas_hoje"], 0)
 
     def test_modo_admin_mantem_visao_global(self):
         self.client.force_login(self.admin)
@@ -65,6 +72,7 @@ class SelecaoPerfilAcessoTests(TestCase):
         self.assertContains(lista, "Administrador Piloto")
         self.assertContains(lista, "Piloto de Outro Usuário")
         self.assertEqual(self.client.get(reverse("pilotos")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("dashboard")).context["reservas_hoje"], 1)
 
 
 class BateriaTests(TestCase):
