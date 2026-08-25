@@ -482,6 +482,10 @@ class SolicitacaoVoo(models.Model):
     finalidade = models.CharField(max_length=100)
     local = models.CharField(max_length=200, blank=True)
     observacoes = models.TextField(blank=True)
+    requer_avaliacao_risco = models.BooleanField(
+        default=False,
+        verbose_name="Necessita avaliação de risco operacional",
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="solicitado")
     motivo_rejeicao = models.TextField(blank=True)
     criado_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="solicitacoes_voo_criadas")

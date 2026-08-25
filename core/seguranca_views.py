@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from .models import Alocacao, AvaliacaoRisco, Incidente, Piloto, SolicitacaoVoo
 from .seguranca_forms import AvaliacaoRiscoForm, IncidenteForm
+from .solicitacao_service import LiberacaoVooErro, liberar_solicitacao
 from .views import _base_context, usuario_e_admin
 
 
@@ -31,7 +32,14 @@ def avaliacao_risco(request, solicitacao_id):
             avaliacao.analisado_por = request.user
             avaliacao.analisado_em = timezone.now()
             avaliacao.save(update_fields=["status", "analisado_por", "analisado_em", "atualizado_em"])
-            messages.success(request, "Avaliação aprovada." if acao == "aprovar" else "Avaliação devolvida para revisão.")
+            if acao == "aprovar":
+                try:
+                    liberar_solicitacao(solicitacao, request.user)
+                    messages.success(request, "Avaliação aprovada, voo liberado e adicionado ao calendário.")
+                except LiberacaoVooErro as erro:
+                    messages.error(request, f"Avaliação aprovada, mas o voo não pôde ser liberado: {erro}")
+            else:
+                messages.success(request, "Avaliação devolvida para revisão.")
             return redirect("solicitacoes_voo")
         form = AvaliacaoRiscoForm(request.POST, instance=avaliacao)
         if form.is_valid():

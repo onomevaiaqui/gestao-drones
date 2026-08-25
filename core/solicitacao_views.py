@@ -4,6 +4,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
 
 from .models import Piloto, Alocacao, SolicitacaoVoo
+from .solicitacao_service import LiberacaoVooErro, liberar_solicitacao
 from .solicitacao_forms import SolicitacaoVooForm
 from .views import usuario_e_admin, admin_required, _base_context
 
@@ -100,38 +101,14 @@ def solicitacao_voo_aprovar(request, pk):
         messages.warning(request, "Esta solicitação já foi analisada.")
         return redirect("solicitacoes_voo")
     avaliacao = getattr(obj, "avaliacao_risco", None)
-    if not avaliacao or avaliacao.status != "aprovada":
+    if obj.requer_avaliacao_risco and (not avaliacao or avaliacao.status != "aprovada"):
         messages.error(request, "A avaliação de risco precisa ser preenchida e aprovada antes do voo.")
         return redirect("avaliacao_risco", solicitacao_id=obj.pk)
-    if obj.drone.status != "ativo":
-        messages.error(request, "O drone selecionado não está disponível.")
+    try:
+        liberar_solicitacao(obj, request.user)
+    except LiberacaoVooErro as erro:
+        messages.error(request, str(erro))
         return redirect("solicitacoes_voo")
-    conflito = Alocacao.objects.filter(
-        data=obj.data,
-        drone=obj.drone,
-        status="reservado",
-        hora_inicio__lt=obj.hora_fim,
-        hora_fim__gt=obj.hora_inicio,
-    ).exists()
-    if conflito:
-        messages.error(request, "Existe outra reserva para este drone no horário.")
-        return redirect("solicitacoes_voo")
-    aloc = Alocacao.objects.create(
-        data=obj.data,
-        hora_inicio=obj.hora_inicio,
-        hora_fim=obj.hora_fim,
-        piloto=obj.piloto,
-        drone=obj.drone,
-        finalidade=obj.finalidade,
-        local=obj.local,
-        observacoes=obj.observacoes,
-        status="reservado",
-        criado_por=request.user,
-    )
-    obj.status = "aprovado"
-    obj.analisado_por = request.user
-    obj.alocacao = aloc
-    obj.save()
     messages.success(request, "Solicitação aprovada e adicionada ao calendário.")
     return redirect("solicitacoes_voo")
 

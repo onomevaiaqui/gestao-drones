@@ -2624,7 +2624,20 @@ def registro_pos_voo(request, alocacao_id):
                     registro.voo.save()
                     voo = registro.voo
                 else:
-                    voo = Voo.objects.create(alocacao_calendario=alocacao, **voo_defaults)
+                    voo = Voo.objects.filter(alocacao_calendario=alocacao).first()
+                    if voo is None:
+                        voo = Voo.objects.filter(
+                            data=alocacao.data,
+                            piloto=alocacao.piloto,
+                            drone=alocacao.drone,
+                        ).first()
+                    if voo is None:
+                        voo = Voo.objects.create(alocacao_calendario=alocacao, **voo_defaults)
+                    else:
+                        for campo, valor in voo_defaults.items():
+                            setattr(voo, campo, valor)
+                        voo.alocacao_calendario = alocacao
+                        voo.save()
                     registro.voo = voo
                     registro.save(update_fields=["voo", "atualizado_em"])
 
