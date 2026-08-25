@@ -24,10 +24,21 @@
   const route = JSON.parse(document.getElementById('telemetry-route').textContent);
   const alerts = JSON.parse(document.getElementById('telemetry-alerts').textContent);
   const coordinates = route.map(point => [point.lon, point.lat]);
+  const mapContainer = document.getElementById('telemetry-map');
   const map = new maplibregl.Map({
     container: 'telemetry-map', style: 'https://tiles.openfreemap.org/styles/liberty',
     center: coordinates[0], zoom: 15
   });
+  const fitRoute = () => {
+    map.resize();
+    const bounds = coordinates.reduce((box, coordinate) => box.extend(coordinate), new maplibregl.LngLatBounds(coordinates[0], coordinates[0]));
+    map.fitBounds(bounds, {padding: 45, maxZoom: 18, duration: 0});
+  };
+  const resizeObserver = new ResizeObserver(() => {
+    window.requestAnimationFrame(() => map.resize());
+  });
+  resizeObserver.observe(mapContainer);
+  window.addEventListener('load', () => window.requestAnimationFrame(fitRoute), {once: true});
   map.addControl(new maplibregl.NavigationControl(), 'top-left');
   const popupFor = (title, point, message) => {
     const box = document.createElement('div');
@@ -44,7 +55,6 @@
   const marker = (point, color, title) => new maplibregl.Marker({color})
     .setLngLat([point.lon, point.lat]).setPopup(popupFor(title, point, '')).addTo(map);
   map.on('load', () => {
-    map.resize();
     map.addSource('flight-route', {type: 'geojson', data: {type: 'Feature', geometry: {type: 'LineString', coordinates}}});
     map.addLayer({id: 'flight-route', type: 'line', source: 'flight-route', paint: {'line-color': '#2864dc', 'line-width': 4}});
     marker(route[0], '#198754', 'Início do voo');
@@ -56,8 +66,8 @@
       new maplibregl.Marker({element}).setLngLat([point.lon, point.lat])
         .setPopup(popupFor('Alerta de voo', point, point.alert)).addTo(map);
     });
-    const bounds = coordinates.reduce((box, coordinate) => box.extend(coordinate), new maplibregl.LngLatBounds(coordinates[0], coordinates[0]));
-    map.fitBounds(bounds, {padding: 45, maxZoom: 18, duration: 0});
+    window.requestAnimationFrame(fitRoute);
+    window.setTimeout(fitRoute, 150);
   });
 })();
 </script>

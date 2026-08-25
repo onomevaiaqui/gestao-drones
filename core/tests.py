@@ -404,6 +404,7 @@ class TelemetriaTests(TestCase):
         self.assertContains(resposta, "tiles.openfreemap.org")
         self.assertContains(resposta, "Data do voo")
         self.assertContains(resposta, "Amostra dos dados por minuto")
+        self.assertContains(resposta, "ResizeObserver")
         self.assertEqual(len(resposta.context["amostra_minutos"]), 1)
         self.assertEqual(resposta.context["amostra_minutos"][0]["status"], "atencao")
 
