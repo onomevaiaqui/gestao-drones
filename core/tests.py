@@ -411,7 +411,7 @@ class TelemetriaTests(TestCase):
         from .telemetria_views import _resumir_pontos_por_minuto
 
         pontos = [
-            PontoTelemetria(importacao_id=1, indice=0, segundos=0, bateria_percentual=90, sinal_percentual=100, satelites=15),
+            PontoTelemetria(importacao_id=1, indice=0, segundos=0, bateria_percentual=90, sinal_percentual=0, satelites=15),
             PontoTelemetria(importacao_id=1, indice=1, segundos=60, bateria_percentual=25, sinal_percentual=70, satelites=12),
             PontoTelemetria(importacao_id=1, indice=2, segundos=120, bateria_percentual=10, sinal_percentual=15, satelites=4, alerta="Falha crítica"),
         ]

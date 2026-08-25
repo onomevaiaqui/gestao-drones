@@ -55,11 +55,11 @@ def _resumir_pontos_por_minuto(pontos):
         texto_alertas = " · ".join(alertas)
         erro = (
             (bateria is not None and bateria <= 15)
-            or (sinal is not None and sinal <= 20)
+            or (sinal is not None and 0 < sinal <= 20)
             or (satelites is not None and satelites <= 5)
             or any(termo in texto_alertas.lower() for termo in termos_erro)
         )
-        atencao = bool(texto_alertas) or (bateria is not None and bateria <= 30) or (sinal is not None and sinal <= 50) or (satelites is not None and satelites <= 9)
+        atencao = bool(texto_alertas) or (bateria is not None and bateria <= 30) or (sinal is not None and 0 < sinal <= 50) or (satelites is not None and satelites <= 9)
         status = "erro" if erro else "atencao" if atencao else "normal"
         instante = next((item.instante for item in itens if item.instante), None)
         resumo.append({
