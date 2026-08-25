@@ -933,3 +933,60 @@ class QualificacaoPiloto(models.Model):
         if self.dias_para_vencer <= 30:
             return "vencendo"
         return "valida"
+
+
+# =========================================================
+# IMPORTAÇÃO DE LOGS E TELEMETRIA
+# =========================================================
+
+class ImportacaoLog(models.Model):
+    STATUS_CHOICES = [
+        ("processando", "Processando"), ("concluida", "Concluída"),
+        ("erro", "Erro"),
+    ]
+
+    voo = models.ForeignKey(Voo, on_delete=models.CASCADE, related_name="importacoes_log")
+    arquivo = models.FileField(upload_to="telemetria/%Y/%m/")
+    nome_original = models.CharField(max_length=255)
+    formato = models.CharField(max_length=20, default="csv")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="processando")
+    total_pontos = models.PositiveIntegerField(default=0)
+    duracao_segundos = models.PositiveIntegerField(null=True, blank=True)
+    altitude_maxima_m = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    velocidade_maxima_ms = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    distancia_calculada_m = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    bateria_inicial = models.PositiveIntegerField(null=True, blank=True)
+    bateria_final = models.PositiveIntegerField(null=True, blank=True)
+    total_alertas = models.PositiveIntegerField(default=0)
+    colunas_reconhecidas = models.JSONField(default=list, blank=True)
+    mensagem_erro = models.TextField(blank=True)
+    importado_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="logs_importados")
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-criado_em"]
+
+    def __str__(self):
+        return f"Log {self.pk} - {self.voo}"
+
+
+class PontoTelemetria(models.Model):
+    importacao = models.ForeignKey(ImportacaoLog, on_delete=models.CASCADE, related_name="pontos")
+    indice = models.PositiveIntegerField()
+    instante = models.DateTimeField(null=True, blank=True)
+    segundos = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)
+    latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    altitude_m = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    velocidade_ms = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    bateria_percentual = models.PositiveIntegerField(null=True, blank=True)
+    satelites = models.PositiveIntegerField(null=True, blank=True)
+    sinal_percentual = models.PositiveIntegerField(null=True, blank=True)
+    alerta = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["indice"]
+        constraints = [models.UniqueConstraint(fields=["importacao", "indice"], name="telemetria_indice_unico")]
+
+    def __str__(self):
+        return f"{self.importacao_id} - ponto {self.indice}"

@@ -1,16 +1,20 @@
 from datetime import time, timedelta
+import tempfile
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from .alerta_service import gerar_alertas, resumo_alertas
 from .models import (
     Alocacao, AvaliacaoRisco, Bateria, Documento, Drone, ExecucaoInspecao,
-    Incidente, Piloto, PlanoInspecao, QualificacaoPiloto, SolicitacaoVoo, Voo,
+    ImportacaoLog, Incidente, Piloto, PlanoInspecao, PontoTelemetria,
+    QualificacaoPiloto, SolicitacaoVoo, Voo,
 )
+from .telemetria_service import processar_importacao
 
 
 class BateriaTests(TestCase):
@@ -211,3 +215,63 @@ class QualificacaoPilotoTests(TestCase):
         self.client.force_login(self.usuario)
         resposta = self.client.get(reverse("perfil_operacional", args=[outro.pk]))
         self.assertRedirects(resposta, reverse("dashboard"))
+
+
+class TelemetriaTests(TestCase):
+    def setUp(self):
+        self.media_dir = tempfile.TemporaryDirectory()
+        self.configuracao_media = override_settings(MEDIA_ROOT=self.media_dir.name)
+        self.configuracao_media.enable()
+        self.usuario = User.objects.create_user(username="piloto_telemetria", password="teste123")
+        self.piloto = Piloto.objects.create(user=self.usuario, nome="Piloto Telemetria", primeiro_acesso=False)
+        self.drone = Drone.objects.create(nome="Drone Log", modelo="Modelo")
+        self.voo = Voo.objects.create(
+            data=timezone.localdate(), piloto=self.piloto, drone=self.drone,
+            finalidade="mapeamento", local="Área", hora_inicio=time(10), hora_fim=time(11),
+            criado_por=self.usuario,
+        )
+
+    def tearDown(self):
+        self.configuracao_media.disable()
+        self.media_dir.cleanup()
+
+    def _importacao(self):
+        conteudo = (
+            "timestamp,latitude,longitude,altitude_m,speed_ms,battery_percent,warning\n"
+            "2026-08-24T10:00:00-03:00,-25.5163000,-54.5854000,10,2.5,98,\n"
+            "2026-08-24T10:00:10-03:00,-25.5164000,-54.5855000,15,4.5,94,Vento forte\n"
+            "2026-08-24T10:00:20-03:00,-25.5165000,-54.5856000,12,3.0,90,\n"
+        ).encode()
+        return ImportacaoLog.objects.create(
+            voo=self.voo,
+            arquivo=SimpleUploadedFile("voo.csv", conteudo, content_type="text/csv"),
+            nome_original="voo.csv", formato="csv", importado_por=self.usuario,
+        )
+
+    def test_processa_log_e_atualiza_resumo_do_voo(self):
+        importacao = processar_importacao(self._importacao(), atualizar_voo=True)
+        self.assertEqual(importacao.status, "concluida")
+        self.assertEqual(importacao.total_pontos, 3)
+        self.assertEqual(importacao.duracao_segundos, 20)
+        self.assertEqual(importacao.bateria_inicial, 98)
+        self.assertEqual(importacao.bateria_final, 90)
+        self.assertEqual(importacao.total_alertas, 1)
+        self.assertGreater(importacao.distancia_calculada_m, 0)
+        self.assertEqual(PontoTelemetria.objects.filter(importacao=importacao).count(), 3)
+        self.voo.refresh_from_db()
+        self.assertEqual(self.voo.bateria_final, 90)
+
+    def test_piloto_visualiza_apenas_telemetria_dos_proprios_voos(self):
+        importacao = processar_importacao(self._importacao())
+        outro_user = User.objects.create_user(username="outro_telemetria", password="teste123")
+        outro_piloto = Piloto.objects.create(user=outro_user, nome="Outro Telemetria", primeiro_acesso=False)
+        outro_voo = Voo.objects.create(
+            data=timezone.localdate(), piloto=outro_piloto, drone=self.drone,
+            finalidade="outro", local="Outra área", hora_inicio=time(12), hora_fim=time(13),
+        )
+        outro_log = ImportacaoLog.objects.create(voo=outro_voo, nome_original="oculto.csv", formato="csv", importado_por=outro_user)
+        self.client.force_login(self.usuario)
+        resposta = self.client.get(reverse("telemetria_lista"))
+        self.assertContains(resposta, importacao.nome_original)
+        self.assertNotContains(resposta, outro_log.nome_original)
+        self.assertEqual(self.client.get(reverse("telemetria_detalhe", args=[outro_log.pk])).status_code, 404)

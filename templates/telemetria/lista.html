@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Telemetria{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Telemetria</h1><p>Importações e resumos dos registros de voo</p></div><a class="btn btn-primary" href="{% url 'telemetria_importar' %}">+ Importar log</a></div>
+<div class="kpi-grid">
+  <div class="kpi-card"><div><span>Importações</span><strong>{{ resumo.total }}</strong></div><div class="kpi-icon">⌁</div></div>
+  <div class="kpi-card"><div><span>Concluídas</span><strong>{{ resumo.concluidas }}</strong></div><div class="kpi-icon green">✓</div></div>
+  <div class="kpi-card"><div><span>Com erro</span><strong>{{ resumo.erros }}</strong></div><div class="kpi-icon alert-critical">!</div></div>
+  <div class="kpi-card"><div><span>Pontos processados</span><strong>{{ resumo.pontos }}</strong></div><div class="kpi-icon">⋮</div></div>
+</div>
+<div class="panel"><div class="table-responsive"><table class="modern-table"><thead><tr><th>Importado em</th><th>Voo</th><th>Arquivo</th><th>Status</th><th>Pontos</th><th>Duração</th><th>Distância</th><th></th></tr></thead><tbody>
+{% for item in importacoes %}<tr><td>{{ item.criado_em|date:"d/m/Y H:i" }}</td><td><strong>{{ item.voo.drone.nome }}</strong><div class="text-muted small">{{ item.voo.data|date:"d/m/Y" }} · {{ item.voo.piloto.nome }}</div></td><td>{{ item.nome_original|truncatechars:35 }}</td><td><span class="badge-soft {% if item.status == 'concluida' %}green{% elif item.status == 'erro' %}red{% else %}orange{% endif %}">{{ item.get_status_display }}</span></td><td>{{ item.total_pontos }}</td><td>{% if item.duracao_segundos != None %}{{ item.duracao_segundos }} s{% else %}—{% endif %}</td><td>{% if item.distancia_calculada_m != None %}{{ item.distancia_calculada_m }} m{% else %}—{% endif %}</td><td><a class="icon-btn" href="{% url 'telemetria_detalhe' item.pk %}">Abrir</a></td></tr>
+{% empty %}<tr><td colspan="8"><div class="empty-state"><strong>Nenhum log importado</strong><p>Importe um CSV exportado pelo equipamento para visualizar a rota e os indicadores.</p></div></td></tr>{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

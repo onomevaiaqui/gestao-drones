@@ -8,6 +8,7 @@ from . import documento_views
 from . import alerta_views
 from . import seguranca_views
 from . import qualificacao_views
+from . import telemetria_views
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
@@ -78,6 +79,11 @@ urlpatterns = [
     path("pilotos/<int:pk>/perfil-operacional/", qualificacao_views.perfil_operacional, name="perfil_operacional"),
     path("pilotos/<int:piloto_id>/qualificacoes/nova/", qualificacao_views.qualificacao_nova, name="qualificacao_nova"),
     path("qualificacoes/<int:pk>/editar/", qualificacao_views.qualificacao_editar, name="qualificacao_editar"),
+    path("telemetria/", telemetria_views.telemetria_lista, name="telemetria_lista"),
+    path("telemetria/importar/", telemetria_views.telemetria_importar, name="telemetria_importar"),
+    path("telemetria/modelo.csv", telemetria_views.telemetria_modelo_csv, name="telemetria_modelo_csv"),
+    path("telemetria/<int:pk>/", telemetria_views.telemetria_detalhe, name="telemetria_detalhe"),
+    path("telemetria/<int:pk>/excluir/", telemetria_views.telemetria_excluir, name="telemetria_excluir"),
 ]
 # PATCH REGISTRO POS-VOO: ROTA
 from . import views as pos_voo_views

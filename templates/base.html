@@ -23,6 +23,7 @@
         <nav class="sidebar-nav">
             <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">⌂ <span>Dashboard</span></a>
             <a href="{% url 'voos' %}" class="{% if request.resolver_match.url_name == 'voos' or request.resolver_match.url_name == 'voo_novo' %}active{% endif %}">✈ <span>Voos</span></a>
+            <a href="{% url 'telemetria_lista' %}" class="{% if 'telemetria' in request.resolver_match.url_name %}active{% endif %}">⌁ <span>Telemetria</span></a>
             <a href="{% url 'calendario' %}" class="{% if 'calendario' in request.resolver_match.url_name or 'alocacao' in request.resolver_match.url_name %}active{% endif %}">▣ <span>Calendário</span></a>
 
         <a href="{% url 'minha_agenda' %}" class="nav-link">
