@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from .models import PlanejamentoVoo, Piloto
 from .planejamento_service import calcular_geometria, consultar_previsao
+from .planejamento_aeronautico_service import consultar_condicionantes_aeronauticas
 
 
 AREA = {"type": "Polygon", "coordinates": [[
@@ -73,3 +74,19 @@ class PlanejamentoVooTests(TestCase):
         self.assertEqual(resultado["neblina_area_max_percentual"], 100)
         self.assertGreater(resultado["raio_neblina_estimado_km"], 0)
         self.assertTrue(resultado["pontos_neblina"])
+
+    @patch("core.planejamento_aeronautico_service.urlopen")
+    def test_aerodromo_proximo_e_area_proibida_sao_detectados(self, urlopen):
+        import json
+        aeroporto = {"type":"Feature", "geometry":{"type":"Point", "coordinates":[-51.46,-25.39]},
+                     "properties":{"localidade_id":"SBXX", "nome":"Teste"}}
+        proibida = {"type":"Feature", "geometry":AREA,
+                    "properties":{"id":"SBP999", "nome":"Área teste", "lowerlimit":0,
+                                  "uom_llimit":"FT", "upperlimit":1000, "uom_ulimit":"FT"}}
+        def resposta(req, timeout=0):
+            features = [aeroporto] if "airport" in req.full_url else [proibida] if "eac_p" in req.full_url else []
+            return _Resposta(json.dumps({"features":features}))
+        urlopen.side_effect = resposta
+        resultado = consultar_condicionantes_aeronauticas(self.obj)
+        self.assertEqual(resultado["status"], "desfavoravel")
+        self.assertEqual({i["tipo"] for i in resultado["itens"]}, {"aerodromo", "proibida"})

@@ -7,6 +7,7 @@ from django.views.decorators.http import require_POST
 from .models import PlanejamentoVoo, Piloto
 from .planejamento_forms import PlanejamentoVooForm
 from .planejamento_service import consultar_previsao
+from .planejamento_aeronautico_service import consultar_condicionantes_aeronauticas
 from .views import _base_context, usuario_e_admin
 
 
@@ -18,14 +19,19 @@ def _planejamentos_do_usuario(request):
 
 
 def _atualizar_previsao(obj):
+    resumo_atual = obj.resumo_meteorologico or {}
     try:
         resumo = consultar_previsao(obj)
     except Exception as erro:
         obj.status_meteorologico = "indisponivel"
-        obj.resumo_meteorologico = {"erro": str(erro)}
+        obj.resumo_meteorologico = {"erro": str(erro), "aeronautica": resumo_atual.get("aeronautica", {})}
         obj.previsao_consultada_em = timezone.now()
         obj.save(update_fields=["status_meteorologico", "resumo_meteorologico", "previsao_consultada_em"])
         return False, str(erro)
+    try:
+        resumo["aeronautica"] = consultar_condicionantes_aeronauticas(obj)
+    except Exception as erro:
+        resumo["aeronautica"] = {"status":"indisponivel", "erro":str(erro), "itens":[], "geojson":{"type":"FeatureCollection", "features":[]}}
     obj.status_meteorologico = resumo["status"]
     obj.resumo_meteorologico = resumo
     obj.previsao_consultada_em = timezone.now()
@@ -92,7 +98,8 @@ def planejamento_editar(request, pk):
 @login_required
 def planejamento_detalhe(request, pk):
     obj = get_object_or_404(_planejamentos_do_usuario(request), pk=pk)
-    ctx = {"planejamento": obj, "meteo": obj.resumo_meteorologico or {}}
+    meteo = obj.resumo_meteorologico or {}
+    ctx = {"planejamento": obj, "meteo": meteo, "aeronautica": meteo.get("aeronautica", {})}
     ctx.update(_base_context(request))
     return render(request, "planejamentos/detalhe.html", ctx)
 

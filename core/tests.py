@@ -40,7 +40,7 @@ class SelecaoPerfilAcessoTests(TestCase):
             criado_por=self.outro_user,
         )
         self.reserva_outro = Alocacao.objects.create(
-            data=timezone.localdate(), hora_inicio=time(13), hora_fim=time(14),
+            data=timezone.localdate(), hora_inicio=time(0), hora_fim=time(23, 59, 59),
             piloto=self.outro_piloto, drone=self.drone, finalidade="Reserva de outro usuário",
             status="reservado", criado_por=self.outro_user,
         )

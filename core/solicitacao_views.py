@@ -58,7 +58,8 @@ def solicitacao_voo_nova(request):
         if not eh_admin:
             obj.piloto = request.user.piloto
         obj.criado_por = request.user
-        if obj.planejamento and obj.planejamento.status_meteorologico in ("atencao", "desfavoravel"):
+        if obj.planejamento and (obj.planejamento.status_meteorologico in ("atencao", "desfavoravel") or
+                obj.planejamento.resumo_meteorologico.get("aeronautica", {}).get("status") in ("atencao", "desfavoravel")):
             obj.requer_avaliacao_risco = True
         obj.status = "solicitado"
         obj.save()
@@ -102,7 +103,8 @@ def solicitacao_voo_editar(request, pk):
         obj = form.save(commit=False)
         if not eh_admin:
             obj.piloto = request.user.piloto
-        if obj.planejamento and obj.planejamento.status_meteorologico in ("atencao", "desfavoravel"):
+        if obj.planejamento and (obj.planejamento.status_meteorologico in ("atencao", "desfavoravel") or
+                obj.planejamento.resumo_meteorologico.get("aeronautica", {}).get("status") in ("atencao", "desfavoravel")):
             obj.requer_avaliacao_risco = True
         obj.save()
         if obj.status == "solicitado" and not obj.requer_avaliacao_risco:
