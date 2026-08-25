@@ -1,10 +1,12 @@
 import csv
 import io
+import logging
 import math
 import unicodedata
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
+from django.conf import settings
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -64,6 +66,113 @@ def _distancia(lat1, lon1, lat2, lon2):
     return 2 * raio * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+def _parece_log_dji(bruto, nome):
+    amostra = bruto[:4096]
+    proporcao_legivel = sum(
+        byte in (9, 10, 13) or 32 <= byte <= 126 for byte in amostra
+    ) / max(1, len(amostra))
+    return bruto.startswith(b"\x29\x03\x00\x00") or (
+        nome.startswith("DJIFlightRecord_") and proporcao_legivel < 0.65
+    )
+
+
+def _processar_dji(importacao, bruto):
+    chave = getattr(settings, "DJI_FLIGHT_RECORD_APP_KEY", "").strip()
+    if not chave:
+        raise ValueError("A chave DJI não está configurada no arquivo .env.")
+    try:
+        from dji_flightlog_parser import DJILog
+    except ImportError as exc:
+        raise ValueError(
+            "O leitor de logs DJI não está instalado. Execute a instalação das dependências do projeto."
+        ) from exc
+
+    logging.getLogger("dji_flightlog_parser").setLevel(logging.CRITICAL)
+    try:
+        log = DJILog.from_bytes(bruto)
+        if log.version not in (13, 14):
+            raise ValueError(f"Flight Record DJI versão {log.version} ainda não suportado.")
+        chaves = log.fetch_keychains(chave, use_cache=False)
+        frames = log.frames(chaves)
+    except ValueError:
+        raise
+    except Exception as exc:
+        detalhe = str(exc)
+        if "401" in detalhe or "403" in detalhe:
+            detalhe = "a App Key DJI foi recusada ou não tem acesso à Flight Record Parsing API"
+        raise ValueError(f"Não foi possível decodificar o Flight Record DJI: {detalhe}") from exc
+
+    if not frames:
+        raise ValueError("O log DJI foi aberto, mas não contém pontos de voo reconhecíveis.")
+    if len(frames) > 100000:
+        raise ValueError("O arquivo excede o limite de 100.000 pontos.")
+
+    pontos = []
+    for indice, frame in enumerate(frames, start=1):
+        osd, bateria, rc = frame.osd, frame.battery, frame.rc
+        instante = frame.custom.date_time
+        if not instante or instante.year < 2000:
+            instante = None
+        latitude = osd.latitude if -90 <= osd.latitude <= 90 and osd.latitude != 0 else None
+        longitude = osd.longitude if -180 <= osd.longitude <= 180 and osd.longitude != 0 else None
+        velocidade = math.hypot(osd.x_speed, osd.y_speed)
+        alerta = (frame.app.warn or "").strip()
+        pontos.append(PontoTelemetria(
+            importacao=importacao, indice=indice, instante=instante,
+            segundos=Decimal(str(round(osd.fly_time, 3))),
+            latitude=Decimal(str(latitude)) if latitude is not None else None,
+            longitude=Decimal(str(longitude)) if longitude is not None else None,
+            altitude_m=Decimal(str(round(osd.height, 2))),
+            velocidade_ms=Decimal(str(round(velocidade, 2))),
+            bateria_percentual=max(0, min(100, bateria.charge_level)),
+            satelites=max(0, osd.gps_num),
+            sinal_percentual=rc.downlink_signal,
+            alerta=alerta[:255],
+        ))
+
+    detalhes = log.details
+    ultimo = frames[-1]
+    importacao.origem = "dji_flight_record"
+    importacao.formato = f"dji-v{log.version}"
+    importacao.versao_log = log.version
+    importacao.drone_modelo_detectado = (detalhes.aircraft_name or ultimo.recover.aircraft_name or "")[:120]
+    importacao.drone_serial_detectado = (detalhes.aircraft_sn or ultimo.recover.aircraft_sn or "")[:100]
+    importacao.bateria_serial_detectada = (ultimo.battery.battery_serial or ultimo.recover.battery_sn or "")[:100]
+    importacao.colunas_reconhecidas = [
+        "tempo", "gps", "altitude", "velocidade", "bateria", "satelites", "sinal", "alertas"
+    ]
+    return pontos
+
+
+def _concluir_importacao(importacao, pontos, atualizar_voo):
+    PontoTelemetria.objects.bulk_create(pontos, batch_size=2000)
+    coordenadas = [(p.latitude, p.longitude) for p in pontos if p.latitude is not None and p.longitude is not None]
+    distancia = sum(_distancia(*anterior, *atual) for anterior, atual in zip(coordenadas, coordenadas[1:]))
+    instantes = [p.instante for p in pontos if p.instante]
+    segundos = [p.segundos for p in pontos if p.segundos is not None]
+    baterias = [p.bateria_percentual for p in pontos if p.bateria_percentual is not None]
+    importacao.total_pontos = len(pontos)
+    importacao.duracao_segundos = int((max(instantes) - min(instantes)).total_seconds()) if len(instantes) >= 2 else int(max(segundos) - min(segundos)) if len(segundos) >= 2 else None
+    importacao.altitude_maxima_m = max((p.altitude_m for p in pontos if p.altitude_m is not None), default=None)
+    importacao.velocidade_maxima_ms = max((p.velocidade_ms for p in pontos if p.velocidade_ms is not None), default=None)
+    importacao.distancia_calculada_m = Decimal(str(round(distancia, 2))) if coordenadas else None
+    importacao.bateria_inicial = baterias[0] if baterias else None
+    importacao.bateria_final = baterias[-1] if baterias else None
+    importacao.total_alertas = sum(bool(p.alerta) for p in pontos)
+    importacao.status = "concluida"
+    importacao.mensagem_erro = ""
+    importacao.save()
+    if atualizar_voo:
+        voo = importacao.voo
+        campos = []
+        for campo, valor in [("distancia_m", importacao.distancia_calculada_m), ("bateria_inicial", importacao.bateria_inicial), ("bateria_final", importacao.bateria_final)]:
+            if valor is not None:
+                setattr(voo, campo, valor); campos.append(campo)
+        if campos:
+            voo.save(update_fields=campos)
+    return importacao
+
+
 @transaction.atomic
 def processar_importacao(importacao, atualizar_voo=False):
     arquivo = importacao.arquivo
@@ -72,19 +181,8 @@ def processar_importacao(importacao, atualizar_voo=False):
     arquivo.close()
     if len(bruto) > 20 * 1024 * 1024:
         raise ValueError("O arquivo excede o limite de 20 MB.")
-    amostra_binaria = bruto[:4096]
-    proporcao_legivel = (
-        sum(byte in (9, 10, 13) or 32 <= byte <= 126 for byte in amostra_binaria)
-        / max(1, len(amostra_binaria))
-    )
-    if bruto.startswith(b"\x29\x03\x00\x00") or (
-        importacao.nome_original.startswith("DJIFlightRecord_") and proporcao_legivel < 0.65
-    ):
-        raise ValueError(
-            "Arquivo nativo DJI FlightRecord detectado. Ele é binário e protegido, apesar da extensão .txt. "
-            "Para processá-lo é necessário configurar o parser oficial DJI com uma App Key, "
-            "ou importar uma versão convertida para CSV."
-        )
+    if _parece_log_dji(bruto, importacao.nome_original):
+        return _concluir_importacao(importacao, _processar_dji(importacao, bruto), atualizar_voo)
     try:
         texto = bruto.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -125,30 +223,6 @@ def processar_importacao(importacao, atualizar_voo=False):
         ))
     if not pontos:
         raise ValueError("O arquivo não possui linhas de dados.")
-    PontoTelemetria.objects.bulk_create(pontos, batch_size=2000)
-    coordenadas = [(p.latitude, p.longitude) for p in pontos if p.latitude is not None and p.longitude is not None]
-    distancia = sum(_distancia(*anterior, *atual) for anterior, atual in zip(coordenadas, coordenadas[1:]))
-    instantes = [p.instante for p in pontos if p.instante]
-    segundos = [p.segundos for p in pontos if p.segundos is not None]
-    baterias = [p.bateria_percentual for p in pontos if p.bateria_percentual is not None]
-    importacao.total_pontos = len(pontos)
-    importacao.duracao_segundos = int((max(instantes) - min(instantes)).total_seconds()) if len(instantes) >= 2 else int(max(segundos) - min(segundos)) if len(segundos) >= 2 else None
-    importacao.altitude_maxima_m = max((p.altitude_m for p in pontos if p.altitude_m is not None), default=None)
-    importacao.velocidade_maxima_ms = max((p.velocidade_ms for p in pontos if p.velocidade_ms is not None), default=None)
-    importacao.distancia_calculada_m = Decimal(str(round(distancia, 2))) if coordenadas else None
-    importacao.bateria_inicial = baterias[0] if baterias else None
-    importacao.bateria_final = baterias[-1] if baterias else None
-    importacao.total_alertas = sum(bool(p.alerta) for p in pontos)
+    importacao.origem = "csv"
     importacao.colunas_reconhecidas = sorted(mapa.keys())
-    importacao.status = "concluida"
-    importacao.mensagem_erro = ""
-    importacao.save()
-    if atualizar_voo:
-        voo = importacao.voo
-        campos = []
-        for campo, valor in [("distancia_m", importacao.distancia_calculada_m), ("bateria_inicial", importacao.bateria_inicial), ("bateria_final", importacao.bateria_final)]:
-            if valor is not None:
-                setattr(voo, campo, valor); campos.append(campo)
-        if campos:
-            voo.save(update_fields=campos)
-    return importacao
+    return _concluir_importacao(importacao, pontos, atualizar_voo)

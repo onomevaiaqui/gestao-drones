@@ -6,11 +6,12 @@
   <form method="post" enctype="multipart/form-data" class="panel">{% csrf_token %}<h3>Arquivo do voo</h3>
     {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
     <div class="mb-3"><label class="form-label">{{ form.voo.label }}</label>{{ form.voo }}{{ form.voo.errors }}</div>
-    <div class="mb-3"><label class="form-label">{{ form.arquivo.label }}</label>{{ form.arquivo }}{{ form.arquivo.errors }}<div class="form-text">CSV ou TXT, com até 20 MB e 100.000 pontos.</div></div>
+    <div class="mb-3"><label class="form-label">{{ form.arquivo.label }}</label>{{ form.arquivo }}{{ form.arquivo.errors }}<div class="form-text">CSV ou DJI Flight Record (.txt), com até 20 MB e 100.000 pontos.</div></div>
     <div class="checklist-item mb-3"><label>{{ form.atualizar_voo }} <span>{{ form.atualizar_voo.label }}<small>Os valores reconhecidos substituem distância e bateria no cadastro do voo.</small></span></label></div>
     <button class="btn btn-primary" type="submit">Importar e processar</button>
   </form>
-  <div class="panel"><h3>Colunas reconhecidas</h3><p class="text-muted">O sistema identifica automaticamente nomes comuns usados por diferentes aplicativos.</p>
+  <div class="panel"><h3>Formatos reconhecidos</h3><p class="text-muted">Envie diretamente o arquivo DJIFlightRecord do controle ou um CSV exportado por outro aplicativo.</p>
+    <div class="alert alert-info"><strong>DJI Pilot 2:</strong> leitura manual de Flight Record v13/v14 com a chave DJI configurada.</div>
     <div class="telemetry-columns"><span>timestamp</span><span>seconds</span><span>latitude</span><span>longitude</span><span>altitude</span><span>speed</span><span>battery</span><span>satellites</span><span>signal</span><span>warning</span></div>
     <p class="text-muted small mt-3">O separador pode ser vírgula, ponto e vírgula, tabulação ou barra vertical. Decimais aceitam ponto ou vírgula.</p>
     <a class="btn btn-light" href="{% url 'telemetria_modelo_csv' %}">Baixar CSV de exemplo</a>
