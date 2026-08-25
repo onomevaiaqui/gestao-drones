@@ -17,19 +17,20 @@ class MultipleFileField(forms.FileField):
         return [limpar(data, initial)] if data else []
 
 
-class VooPendenteChoiceField(forms.ModelChoiceField):
+class VooChoiceField(forms.ModelChoiceField):
     def label_from_instance(self, voo):
+        data = voo.data.strftime("%d/%m/%Y") if voo.data else "data pela telemetria"
         return (
             f"Voo #{voo.pk} · {voo.drone.nome} · {voo.piloto.nome} · "
-            f"{voo.get_finalidade_display()} · aguardando telemetria"
+            f"{voo.get_finalidade_display()} · {data}"
         )
 
 
 class ImportacaoLogForm(forms.Form):
     MODO_CHOICES = [("arquivo", "Arquivo individual"), ("pasta", "Pasta completa")]
 
-    voo = VooPendenteChoiceField(
-        label="Voo aguardando telemetria",
+    voo = VooChoiceField(
+        label="Voo que receberá os logs",
         queryset=Voo.objects.none(),
         widget=forms.Select(attrs={"class": "form-select"}),
     )

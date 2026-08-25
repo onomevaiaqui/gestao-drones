@@ -978,6 +978,8 @@ class ImportacaoLog(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="processando")
     total_pontos = models.PositiveIntegerField(default=0)
     duracao_segundos = models.PositiveIntegerField(null=True, blank=True)
+    inicio_registro = models.DateTimeField(null=True, blank=True)
+    fim_registro = models.DateTimeField(null=True, blank=True)
     altitude_maxima_m = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     velocidade_maxima_ms = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     distancia_calculada_m = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)

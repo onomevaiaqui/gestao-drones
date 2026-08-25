@@ -13,9 +13,7 @@ from .views import _base_context, _sincronizar_voo_com_calendario, usuario_e_adm
 
 
 def _voos_permitidos(user):
-    qs = Voo.objects.select_related("piloto", "drone").exclude(
-        importacoes_log__status="concluida"
-    ).distinct()
+    qs = Voo.objects.select_related("piloto", "drone")
     if not usuario_e_admin(user):
         qs = qs.filter(piloto__user=user)
     return qs
@@ -48,19 +46,10 @@ def telemetria_importar(request):
     if form.is_valid():
         voo_base = form.cleaned_data["voo"]
         arquivos = form.cleaned_data["arquivos"]
-        base_disponivel = not voo_base.importacoes_log.filter(status="concluida").exists()
         importacoes, sucessos, erros = [], 0, 0
-        for indice, arquivo in enumerate(arquivos):
-            if indice == 0 and base_disponivel:
-                voo = voo_base
-            else:
-                voo = Voo.objects.create(
-                    piloto=voo_base.piloto, drone=voo_base.drone,
-                    finalidade=voo_base.finalidade, local=voo_base.local,
-                    observacoes=voo_base.observacoes, criado_por=request.user,
-                )
+        for arquivo in arquivos:
             importacao = ImportacaoLog.objects.create(
-                voo=voo, arquivo=arquivo, nome_original=arquivo.name[:255],
+                voo=voo_base, arquivo=arquivo, nome_original=arquivo.name[:255],
                 formato=arquivo.name.rsplit(".", 1)[-1].lower(), importado_por=request.user,
             )
             importacoes.append(importacao)

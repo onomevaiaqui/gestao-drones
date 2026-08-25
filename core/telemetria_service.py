@@ -164,6 +164,13 @@ def _concluir_importacao(importacao, pontos, atualizar_voo):
         importacao.duracao_segundos = int(max(segundos) - min(segundos))
     else:
         importacao.duracao_segundos = int((max(instantes) - min(instantes)).total_seconds()) if len(instantes) >= 2 else None
+    inicio_dji = getattr(importacao, "_inicio_dji", None)
+    if inicio_dji:
+        importacao.inicio_registro = inicio_dji
+        importacao.fim_registro = inicio_dji + timedelta(seconds=importacao.duracao_segundos or 0)
+    elif instantes:
+        importacao.inicio_registro = min(instantes)
+        importacao.fim_registro = max(instantes)
     importacao.altitude_maxima_m = max((p.altitude_m for p in pontos if p.altitude_m is not None), default=None)
     importacao.velocidade_maxima_ms = max((p.velocidade_ms for p in pontos if p.velocidade_ms is not None), default=None)
     importacao.distancia_calculada_m = Decimal(str(round(distancia, 2))) if coordenadas else None
@@ -181,20 +188,24 @@ def _concluir_importacao(importacao, pontos, atualizar_voo):
     importacao.save()
     if atualizar_voo:
         voo = importacao.voo
-        campos = []
-        inicio_dji = getattr(importacao, "_inicio_dji", None)
-        if inicio_dji:
-            inicio_local = timezone.localtime(inicio_dji)
-            fim_local = inicio_local + timedelta(seconds=importacao.duracao_segundos or 0)
+        importacoes = list(
+            voo.importacoes_log.filter(status="concluida").order_by("inicio_registro", "criado_em")
+        )
+        campos = ["distancia_m", "bateria_inicial", "bateria_final"]
+        com_horario = [item for item in importacoes if item.inicio_registro and item.fim_registro]
+        if com_horario:
+            inicio_local = timezone.localtime(min(item.inicio_registro for item in com_horario))
+            fim_local = timezone.localtime(max(item.fim_registro for item in com_horario))
             voo.data = inicio_local.date()
             voo.hora_inicio = inicio_local.time().replace(tzinfo=None)
             voo.hora_fim = fim_local.time().replace(tzinfo=None)
             campos.extend(["data", "hora_inicio", "hora_fim"])
-        for campo, valor in [("distancia_m", importacao.distancia_calculada_m), ("bateria_inicial", importacao.bateria_inicial), ("bateria_final", importacao.bateria_final)]:
-            if valor is not None:
-                setattr(voo, campo, valor); campos.append(campo)
-        if campos:
-            voo.save(update_fields=campos)
+        distancias = [item.distancia_calculada_m for item in importacoes if item.distancia_calculada_m is not None]
+        voo.distancia_m = sum(distancias, Decimal("0")) if distancias else None
+        com_bateria = [item for item in importacoes if item.bateria_inicial is not None or item.bateria_final is not None]
+        voo.bateria_inicial = com_bateria[0].bateria_inicial if com_bateria else None
+        voo.bateria_final = com_bateria[-1].bateria_final if com_bateria else None
+        voo.save(update_fields=list(dict.fromkeys(campos)))
     return importacao
 
 

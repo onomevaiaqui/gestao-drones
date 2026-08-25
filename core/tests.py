@@ -296,11 +296,11 @@ class TelemetriaTests(TestCase):
             processar_importacao(importacao)
         self.assertEqual(PontoTelemetria.objects.filter(importacao=importacao).count(), 0)
 
-    def test_importacao_de_pasta_cria_um_voo_por_arquivo(self):
+    def test_importacao_de_pasta_vincula_todos_os_logs_ao_mesmo_voo(self):
         conteudo = (
-            "seconds,latitude,longitude,altitude,battery\n"
-            "0,-25.3000,-51.2700,10,95\n"
-            "10,-25.3001,-51.2701,20,90\n"
+            "timestamp,seconds,latitude,longitude,altitude,battery\n"
+            "2026-08-24T13:00:00-03:00,0,-25.3000,-51.2700,10,95\n"
+            "2026-08-24T13:00:10-03:00,10,-25.3001,-51.2701,20,90\n"
         ).encode()
         self.client.force_login(self.usuario)
         resposta = self.client.post(reverse("telemetria_importar"), {
@@ -312,10 +312,18 @@ class TelemetriaTests(TestCase):
         })
         self.assertRedirects(resposta, reverse("telemetria_lista"))
         self.assertEqual(ImportacaoLog.objects.filter(status="concluida").count(), 2)
-        self.assertEqual(Voo.objects.filter(piloto=self.piloto).count(), 2)
-        self.assertEqual(ImportacaoLog.objects.values("voo_id").distinct().count(), 2)
+        self.assertEqual(Voo.objects.filter(piloto=self.piloto).count(), 1)
+        self.assertEqual(ImportacaoLog.objects.values("voo_id").distinct().count(), 1)
+        self.assertFalse(ImportacaoLog.objects.exclude(voo=self.voo).exists())
+        self.voo.refresh_from_db()
+        self.assertEqual(self.voo.data.isoformat(), "2026-08-24")
+        self.assertEqual(self.voo.hora_inicio.strftime("%H:%M:%S"), "13:00:00")
+        self.assertEqual(self.voo.hora_fim.strftime("%H:%M:%S"), "13:00:10")
+        self.assertEqual(self.voo.bateria_inicial, 95)
+        self.assertEqual(self.voo.bateria_final, 90)
+        self.assertGreater(self.voo.distancia_m, 0)
 
-    def test_seletor_exibe_apenas_voos_pendentes_com_identificacao_clara(self):
+    def test_seletor_exibe_voos_com_e_sem_telemetria_com_identificacao_clara(self):
         from .telemetria_forms import ImportacaoLogForm
         from .telemetria_views import _voos_permitidos
 
@@ -325,7 +333,7 @@ class TelemetriaTests(TestCase):
             local="Área 2", criado_por=self.usuario,
         )
         form = ImportacaoLogForm(voos=_voos_permitidos(self.usuario))
-        self.assertNotIn(self.voo, form.fields["voo"].queryset)
+        self.assertIn(self.voo, form.fields["voo"].queryset)
         self.assertIn(pendente, form.fields["voo"].queryset)
         self.assertIn(f"Voo #{pendente.pk}", form.fields["voo"].label_from_instance(pendente))
 
