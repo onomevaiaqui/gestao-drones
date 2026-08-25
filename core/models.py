@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta
+import uuid
 
 from django.contrib.auth.models import User
 from django.db import models
@@ -990,3 +991,60 @@ class PontoTelemetria(models.Model):
 
     def __str__(self):
         return f"{self.importacao_id} - ponto {self.indice}"
+
+
+# =========================================================
+# EQUIPAMENTOS E COMPONENTES
+# =========================================================
+
+class Componente(models.Model):
+    TIPO_CHOICES = [
+        ("camera", "Câmera"), ("sensor", "Sensor"), ("helice", "Hélice"),
+        ("motor", "Motor"), ("gimbal", "Gimbal"), ("controle", "Controle"),
+        ("carregador", "Carregador"), ("acessorio", "Acessório"), ("outro", "Outro"),
+    ]
+    STATUS_CHOICES = [
+        ("disponivel", "Disponível"), ("instalado", "Instalado"),
+        ("manutencao", "Em manutenção"), ("indisponivel", "Indisponível"),
+        ("baixado", "Baixado"),
+    ]
+
+    codigo = models.CharField(max_length=50, unique=True)
+    nome = models.CharField(max_length=150)
+    tipo = models.CharField(max_length=30, choices=TIPO_CHOICES)
+    fabricante = models.CharField(max_length=100, blank=True)
+    modelo = models.CharField(max_length=100, blank=True)
+    numero_serie = models.CharField(max_length=100, blank=True)
+    drone = models.ForeignKey(Drone, on_delete=models.PROTECT, null=True, blank=True, related_name="componentes")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="disponivel")
+    data_aquisicao = models.DateField(null=True, blank=True)
+    data_instalacao = models.DateField(null=True, blank=True)
+    vida_util_horas = models.PositiveIntegerField(null=True, blank=True)
+    observacoes = models.TextField(blank=True)
+    qr_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    criado_por = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["tipo", "codigo"]
+
+    def __str__(self):
+        return f"{self.codigo} - {self.nome}"
+
+
+class MovimentacaoComponente(models.Model):
+    componente = models.ForeignKey(Componente, on_delete=models.CASCADE, related_name="movimentacoes")
+    drone_anterior = models.ForeignKey(Drone, on_delete=models.PROTECT, null=True, blank=True, related_name="componentes_removidos")
+    drone_novo = models.ForeignKey(Drone, on_delete=models.PROTECT, null=True, blank=True, related_name="componentes_instalados")
+    status_anterior = models.CharField(max_length=20, blank=True)
+    status_novo = models.CharField(max_length=20)
+    motivo = models.CharField(max_length=255, blank=True)
+    realizado_por = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-criado_em"]
+
+    def __str__(self):
+        return f"{self.componente} - {self.criado_em}"

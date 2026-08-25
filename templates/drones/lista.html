@@ -129,6 +129,7 @@
         >
             Histórico
         </a>
+        <a href="{% url 'componentes' %}?q={{ d.nome|urlencode }}" class="icon-btn">Componentes</a>
 
         {% if eh_admin or user.is_superuser %}
         <a

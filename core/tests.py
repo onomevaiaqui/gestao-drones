@@ -10,9 +10,9 @@ from django.utils import timezone
 
 from .alerta_service import gerar_alertas, resumo_alertas
 from .models import (
-    Alocacao, AvaliacaoRisco, Bateria, Documento, Drone, ExecucaoInspecao,
+    Alocacao, AvaliacaoRisco, Bateria, Componente, Documento, Drone, ExecucaoInspecao,
     ImportacaoLog, Incidente, Piloto, PlanoInspecao, PontoTelemetria,
-    QualificacaoPiloto, SolicitacaoVoo, Voo,
+    MovimentacaoComponente, QualificacaoPiloto, SolicitacaoVoo, Voo,
 )
 from .telemetria_service import processar_importacao
 
@@ -275,3 +275,44 @@ class TelemetriaTests(TestCase):
         self.assertContains(resposta, importacao.nome_original)
         self.assertNotContains(resposta, outro_log.nome_original)
         self.assertEqual(self.client.get(reverse("telemetria_detalhe", args=[outro_log.pk])).status_code, 404)
+
+
+class ComponenteTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username="admin_componente", password="teste123")
+        self.usuario = User.objects.create_user(username="usuario_componente", password="teste123")
+        Piloto.objects.create(user=self.usuario, nome="Usuário Componente", primeiro_acesso=False)
+        self.drone = Drone.objects.create(nome="Drone Componentes", modelo="Modelo")
+        self.item = Componente.objects.create(
+            codigo="CAM-001", nome="Câmera RGB", tipo="camera", status="disponivel", criado_por=self.admin,
+        )
+
+    def test_usuario_comum_visualiza_mas_nao_edita(self):
+        self.client.force_login(self.usuario)
+        self.assertEqual(self.client.get(reverse("componentes")).status_code, 200)
+        self.assertContains(self.client.get(reverse("componente_detalhe", args=[self.item.pk])), "CAM-001")
+        self.assertEqual(self.client.get(reverse("componente_editar", args=[self.item.pk])).status_code, 302)
+
+    def test_edicao_registra_instalacao_no_historico(self):
+        self.client.force_login(self.admin)
+        resposta = self.client.post(reverse("componente_editar", args=[self.item.pk]), {
+            "codigo": "CAM-001", "nome": "Câmera RGB", "tipo": "camera",
+            "fabricante": "Fabricante", "modelo": "X1", "numero_serie": "SER-1",
+            "drone": self.drone.pk, "status": "instalado", "data_aquisicao": "",
+            "data_instalacao": timezone.localdate().isoformat(), "vida_util_horas": 500,
+            "observacoes": "", "motivo_movimentacao": "Instalação para missão",
+        })
+        self.assertRedirects(resposta, reverse("componente_detalhe", args=[self.item.pk]))
+        movimento = MovimentacaoComponente.objects.get(componente=self.item)
+        self.assertEqual(movimento.drone_novo, self.drone)
+        self.assertEqual(movimento.status_novo, "instalado")
+        self.assertEqual(movimento.motivo, "Instalação para missão")
+
+    def test_qr_code_aponta_para_ficha_protegida(self):
+        self.client.force_login(self.usuario)
+        resposta = self.client.get(reverse("componente_qr", args=[self.item.pk]))
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(resposta["Content-Type"], "image/png")
+        self.assertTrue(resposta.content.startswith(b"\x89PNG"))
+        ficha = self.client.get(reverse("componente_por_qr", args=[self.item.qr_token]))
+        self.assertContains(ficha, "Câmera RGB")
