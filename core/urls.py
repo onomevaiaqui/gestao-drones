@@ -11,11 +11,17 @@ from . import qualificacao_views
 from . import telemetria_views
 from . import componente_views
 from . import perfil_views
+from . import planejamento_views
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
 
     path("solicitacoes/", solicitacao_views.solicitacoes_voo, name="solicitacoes_voo"),
+    path("planejamentos/", planejamento_views.planejamentos, name="planejamentos"),
+    path("planejamentos/novo/", planejamento_views.planejamento_novo, name="planejamento_novo"),
+    path("planejamentos/<int:pk>/", planejamento_views.planejamento_detalhe, name="planejamento_detalhe"),
+    path("planejamentos/<int:pk>/editar/", planejamento_views.planejamento_editar, name="planejamento_editar"),
+    path("planejamentos/<int:pk>/atualizar-previsao/", planejamento_views.planejamento_atualizar_previsao, name="planejamento_atualizar_previsao"),
     path("solicitacoes/nova/", solicitacao_views.solicitacao_voo_nova, name="solicitacao_voo_nova"),
     path("solicitacoes/<int:pk>/editar/", solicitacao_views.solicitacao_voo_editar, name="solicitacao_voo_editar"),
     path("solicitacoes/<int:pk>/aprovar/", solicitacao_views.solicitacao_voo_aprovar, name="solicitacao_voo_aprovar"),

@@ -1,12 +1,13 @@
 from django import forms
 from django.db.models import Q
-from .models import Piloto, Drone, Alocacao, SolicitacaoVoo
+from .models import Piloto, Drone, Alocacao, SolicitacaoVoo, PlanejamentoVoo
 
 class SolicitacaoVooForm(forms.ModelForm):
     class Meta:
         model = SolicitacaoVoo
-        fields = ["data", "hora_inicio", "hora_fim", "piloto", "drone", "finalidade", "local", "observacoes", "requer_avaliacao_risco"]
+        fields = ["planejamento", "data", "hora_inicio", "hora_fim", "piloto", "drone", "finalidade", "local", "observacoes", "requer_avaliacao_risco"]
         widgets = {
+            "planejamento": forms.Select(attrs={"class": "form-select"}),
             "data": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "hora_inicio": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
             "hora_fim": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
@@ -23,6 +24,9 @@ class SolicitacaoVooForm(forms.ModelForm):
         self.fields["requer_avaliacao_risco"].help_text = (
             "Marque quando a operação precisar ser avaliada antes da liberação do voo."
         )
+        self.fields["planejamento"].required = False
+        self.fields["planejamento"].help_text = "Opcional. Use um planejamento para vincular a área e a análise meteorológica."
+        self.fields["planejamento"].queryset = PlanejamentoVoo.objects.filter(solicitacao_voo__isnull=True)
         self.fields["piloto"].queryset = Piloto.objects.filter(ativo=True)
         self.fields["drone"].queryset = Drone.objects.filter(status="ativo")
         if self.instance and self.instance.pk:
@@ -35,6 +39,7 @@ class SolicitacaoVooForm(forms.ModelForm):
         inicio = cleaned.get("hora_inicio")
         fim = cleaned.get("hora_fim")
         drone = cleaned.get("drone")
+        planejamento = cleaned.get("planejamento")
         if inicio and fim and fim <= inicio:
             self.add_error("hora_fim", "A hora final deve ser posterior à hora inicial.")
         if data and inicio and fim and drone:
@@ -47,4 +52,13 @@ class SolicitacaoVooForm(forms.ModelForm):
             ).exists()
             if conflito:
                 self.add_error("drone", "Este drone já possui uma reserva nesse horário.")
+        if planejamento:
+            if data and data != planejamento.data:
+                self.add_error("data", "A data deve ser igual à do planejamento selecionado.")
+            if inicio and inicio != planejamento.hora_inicio:
+                self.add_error("hora_inicio", "O início deve ser igual ao do planejamento selecionado.")
+            if fim and fim != planejamento.hora_fim:
+                self.add_error("hora_fim", "O término deve ser igual ao do planejamento selecionado.")
+            if cleaned.get("piloto") and cleaned["piloto"] != planejamento.piloto:
+                self.add_error("piloto", "O piloto deve ser o mesmo do planejamento.")
         return cleaned

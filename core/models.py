@@ -460,6 +460,43 @@ class Manutencao(models.Model):
 # SOLICITAÇÕES DE VOO
 # =========================================================
 
+class PlanejamentoVoo(models.Model):
+    STATUS_METEO_CHOICES = [
+        ("nao_consultado", "Não consultado"),
+        ("favoravel", "Favorável"),
+        ("atencao", "Atenção"),
+        ("desfavoravel", "Desfavorável"),
+        ("indisponivel", "Previsão indisponível"),
+    ]
+
+    titulo = models.CharField(max_length=150)
+    piloto = models.ForeignKey(Piloto, on_delete=models.PROTECT, related_name="planejamentos_voo")
+    data = models.DateField()
+    hora_inicio = models.TimeField()
+    hora_fim = models.TimeField()
+    altura_maxima_m = models.PositiveIntegerField(default=120)
+    area_geojson = models.JSONField()
+    centro_latitude = models.DecimalField(max_digits=10, decimal_places=7)
+    centro_longitude = models.DecimalField(max_digits=10, decimal_places=7)
+    area_hectares = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    observacoes = models.TextField(blank=True)
+    status_meteorologico = models.CharField(
+        max_length=20, choices=STATUS_METEO_CHOICES, default="nao_consultado"
+    )
+    resumo_meteorologico = models.JSONField(default=dict, blank=True)
+    previsao_consultada_em = models.DateTimeField(null=True, blank=True)
+    criado_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="planejamentos_voo_criados")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-data", "-hora_inicio"]
+        verbose_name = "Planejamento de voo"
+        verbose_name_plural = "Planejamentos de voo"
+
+    def __str__(self):
+        return f"{self.data} - {self.titulo} - {self.piloto}"
+
 class SolicitacaoVoo(models.Model):
     STATUS_CHOICES = [
         ("solicitado", "Solicitado"),
@@ -477,6 +514,13 @@ class SolicitacaoVoo(models.Model):
     finalidade = models.CharField(max_length=100)
     local = models.CharField(max_length=200, blank=True)
     observacoes = models.TextField(blank=True)
+    planejamento = models.OneToOneField(
+        PlanejamentoVoo,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="solicitacao_voo",
+    )
     requer_avaliacao_risco = models.BooleanField(
         default=False,
         verbose_name="Necessita avaliação de risco operacional",

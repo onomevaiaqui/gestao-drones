@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% load static %}
+{% block title %}{{ titulo }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>{{ titulo }}</h1><p>Informe o período e desenhe uma única área fechada no mapa.</p></div></div>
+<form method="post" id="planning-form">{% csrf_token %}
+<div class="planning-form-grid">
+<div class="panel"><div class="form-layout">
+{% for field in form %}{% if field.name != "area_geojson_texto" %}<div class="mb-3"><label>{{ field.label }}</label>{{ field }}{% if field.help_text %}<div class="text-muted small mt-1">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endif %}{% endfor %}
+{{ form.area_geojson_texto }}{% for error in form.area_geojson_texto.errors %}<div class="text-danger small planning-map-error">{{ error }}</div>{% endfor %}
+</div></div>
+<div class="panel planning-draw-panel"><h3>Área planejada</h3><p class="text-muted small">Use o polígono ou retângulo. Você pode editar os pontos depois de desenhar.</p><div id="planning-map"></div></div>
+</div>
+<div class="form-actions"><a class="btn btn-light" href="{% url 'planejamentos' %}">Cancelar</a><button class="btn btn-primary" type="submit">Salvar e consultar previsão</button></div>
+</form>
+{{ geometria_inicial|json_script:"planning-initial-geometry" }}
+{% endblock %}
+{% block scripts %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.js"></script>
+<script>
+(function(){
+ const map=L.map('planning-map').setView([-25.39,-51.46],12);
+ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap',referrerPolicy:'origin'}).addTo(map);
+ map.pm.addControls({position:'topleft',drawMarker:false,drawCircleMarker:false,drawPolyline:false,drawCircle:false,drawText:false,cutPolygon:false,rotateMode:false});
+ const input=document.getElementById('id_area_geojson_texto'); let area=null;
+ function store(){input.value=area?JSON.stringify(area.toGeoJSON().geometry):'';}
+ function use(layer){if(area&&area!==layer)map.removeLayer(area);area=layer;area.addTo(map);area.on('pm:edit pm:dragend',store);store();}
+ map.on('pm:create',e=>use(e.layer)); map.on('pm:remove',e=>{if(e.layer===area){area=null;store();}});
+ const initial=JSON.parse(document.getElementById('planning-initial-geometry').textContent);
+ if(initial){const group=L.geoJSON(initial).addTo(map);const layer=group.getLayers()[0];group.removeLayer(layer);map.removeLayer(group);use(layer);map.fitBounds(layer.getBounds(),{padding:[30,30]});}
+ setTimeout(()=>map.invalidateSize(),100);
+})();
+</script>
+{% endblock %}

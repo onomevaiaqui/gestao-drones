@@ -2,8 +2,9 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
+from django.db.models import Q
 
-from .models import Piloto, Alocacao, SolicitacaoVoo
+from .models import Piloto, Alocacao, SolicitacaoVoo, PlanejamentoVoo
 from .solicitacao_service import LiberacaoVooErro, liberar_solicitacao
 from .solicitacao_forms import SolicitacaoVooForm
 from .views import usuario_e_admin, admin_required, _base_context
@@ -28,8 +29,16 @@ def solicitacoes_voo(request):
 
 @login_required
 def solicitacao_voo_nova(request):
-    form = SolicitacaoVooForm(request.POST or None)
     eh_admin = usuario_e_admin(request.user)
+    planejamento_inicial = None
+    if request.method == "GET" and request.GET.get("planejamento"):
+        planejamento_inicial = PlanejamentoVoo.objects.filter(pk=request.GET["planejamento"]).first()
+    initial = {}
+    if planejamento_inicial:
+        initial = {"planejamento": planejamento_inicial, "data": planejamento_inicial.data,
+                   "hora_inicio": planejamento_inicial.hora_inicio, "hora_fim": planejamento_inicial.hora_fim,
+                   "piloto": planejamento_inicial.piloto}
+    form = SolicitacaoVooForm(request.POST or None, initial=initial)
     if not eh_admin:
         try:
             piloto = request.user.piloto
@@ -39,11 +48,18 @@ def solicitacao_voo_nova(request):
         form.fields["piloto"].queryset = Piloto.objects.filter(pk=piloto.pk)
         form.fields["piloto"].initial = piloto
         form.fields["piloto"].disabled = True
+        form.fields["planejamento"].queryset = PlanejamentoVoo.objects.filter(
+            piloto=piloto, solicitacao_voo__isnull=True
+        )
+    else:
+        form.fields["planejamento"].queryset = PlanejamentoVoo.objects.filter(solicitacao_voo__isnull=True)
     if form.is_valid():
         obj = form.save(commit=False)
         if not eh_admin:
             obj.piloto = request.user.piloto
         obj.criado_por = request.user
+        if obj.planejamento and obj.planejamento.status_meteorologico in ("atencao", "desfavoravel"):
+            obj.requer_avaliacao_risco = True
         obj.status = "solicitado"
         obj.save()
         if obj.requer_avaliacao_risco:
@@ -75,13 +91,19 @@ def solicitacao_voo_editar(request, pk):
             messages.error(request, "Somente solicitações pendentes podem ser editadas.")
             return redirect("solicitacoes_voo")
     form = SolicitacaoVooForm(request.POST or None, instance=obj)
+    form.fields["planejamento"].queryset = PlanejamentoVoo.objects.filter(
+        Q(solicitacao_voo__isnull=True) | Q(pk=obj.planejamento_id)
+    )
     if not eh_admin:
         form.fields["piloto"].queryset = Piloto.objects.filter(pk=request.user.piloto.pk)
         form.fields["piloto"].disabled = True
+        form.fields["planejamento"].queryset = form.fields["planejamento"].queryset.filter(piloto=request.user.piloto)
     if form.is_valid():
         obj = form.save(commit=False)
         if not eh_admin:
             obj.piloto = request.user.piloto
+        if obj.planejamento and obj.planejamento.status_meteorologico in ("atencao", "desfavoravel"):
+            obj.requer_avaliacao_risco = True
         obj.save()
         if obj.status == "solicitado" and not obj.requer_avaliacao_risco:
             try:
