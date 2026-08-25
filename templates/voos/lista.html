@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-header">
     <div><h1>Voos realizados</h1><p>Histórico das operações concluídas. Operações futuras são registradas em Reservas de drones.</p></div>
-    {% if eh_admin %}<a href="{% url 'voo_novo' %}" class="btn btn-primary">+ Registrar voo realizado</a>{% else %}<a href="{% url 'solicitacao_voo_nova' %}" class="btn btn-primary">+ Solicitar novo voo</a>{% endif %}
+    {% if eh_admin %}<a href="{% url 'voo_novo' %}" class="btn btn-primary">+ Registrar voo realizado</a>{% else %}<a href="{% url 'solicitacao_voo_nova' %}" class="btn btn-primary">+ Reservar Drone</a>{% endif %}
 </div>
 
 <div class="panel">
