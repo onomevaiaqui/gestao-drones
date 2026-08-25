@@ -421,6 +421,9 @@ class TelemetriaTests(TestCase):
         ]
         resumo = _resumir_pontos_por_minuto(pontos)
         self.assertEqual([item["status"] for item in resumo], ["normal", "atencao", "erro"])
+        self.assertIn("Nenhuma anormalidade", resumo[0]["motivos"][0])
+        self.assertIn("Bateria baixa", resumo[1]["motivos"][0])
+        self.assertTrue(any("Falha crítica" in motivo for motivo in resumo[2]["motivos"]))
 
     def test_piloto_visualiza_apenas_telemetria_dos_proprios_voos(self):
         importacao = processar_importacao(self._importacao())

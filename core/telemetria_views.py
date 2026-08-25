@@ -61,6 +61,23 @@ def _resumir_pontos_por_minuto(pontos):
         )
         atencao = bool(texto_alertas) or (bateria is not None and bateria <= 30) or (sinal is not None and 0 < sinal <= 50) or (satelites is not None and satelites <= 9)
         status = "erro" if erro else "atencao" if atencao else "normal"
+        motivos = []
+        if texto_alertas:
+            motivos.append(f"Alerta registrado pelo drone: {texto_alertas}")
+        if bateria is not None and bateria <= 15:
+            motivos.append(f"Bateria em nível crítico: {bateria}%.")
+        elif bateria is not None and bateria <= 30:
+            motivos.append(f"Bateria baixa: {bateria}%.")
+        if sinal is not None and 0 < sinal <= 20:
+            motivos.append(f"Sinal em nível crítico: {sinal}%.")
+        elif sinal is not None and sinal <= 50 and sinal > 0:
+            motivos.append(f"Sinal reduzido: {sinal}%.")
+        if satelites is not None and satelites <= 5:
+            motivos.append(f"Quantidade crítica de satélites conectados: {satelites}.")
+        elif satelites is not None and satelites <= 9:
+            motivos.append(f"Poucos satélites conectados: {satelites}.")
+        if not motivos:
+            motivos.append("Nenhuma anormalidade detectada nos parâmetros disponíveis.")
         instante = next((item.instante for item in itens if item.instante), None)
         resumo.append({
             "minuto": minuto,
@@ -75,6 +92,7 @@ def _resumir_pontos_por_minuto(pontos):
             "alerta": texto_alertas,
             "status": status,
             "status_label": {"erro": "Erro", "atencao": "Atenção", "normal": "Normal"}[status],
+            "motivos": motivos,
         })
     return resumo
 
