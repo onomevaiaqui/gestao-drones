@@ -276,6 +276,18 @@ class TelemetriaTests(TestCase):
         self.assertNotContains(resposta, outro_log.nome_original)
         self.assertEqual(self.client.get(reverse("telemetria_detalhe", args=[outro_log.pk])).status_code, 404)
 
+    def test_identifica_log_nativo_dji_com_mensagem_especifica(self):
+        conteudo = b"\x29\x03\x00\x00" + bytes(range(256)) * 4
+        importacao = ImportacaoLog.objects.create(
+            voo=self.voo,
+            arquivo=SimpleUploadedFile("DJIFlightRecord_2026-08-24_[14-57-10].txt", conteudo),
+            nome_original="DJIFlightRecord_2026-08-24_[14-57-10].txt",
+            formato="txt", importado_por=self.usuario,
+        )
+        with self.assertRaisesMessage(ValueError, "Arquivo nativo DJI FlightRecord detectado"):
+            processar_importacao(importacao)
+        self.assertEqual(PontoTelemetria.objects.filter(importacao=importacao).count(), 0)
+
 
 class ComponenteTests(TestCase):
     def setUp(self):

@@ -72,6 +72,19 @@ def processar_importacao(importacao, atualizar_voo=False):
     arquivo.close()
     if len(bruto) > 20 * 1024 * 1024:
         raise ValueError("O arquivo excede o limite de 20 MB.")
+    amostra_binaria = bruto[:4096]
+    proporcao_legivel = (
+        sum(byte in (9, 10, 13) or 32 <= byte <= 126 for byte in amostra_binaria)
+        / max(1, len(amostra_binaria))
+    )
+    if bruto.startswith(b"\x29\x03\x00\x00") or (
+        importacao.nome_original.startswith("DJIFlightRecord_") and proporcao_legivel < 0.65
+    ):
+        raise ValueError(
+            "Arquivo nativo DJI FlightRecord detectado. Ele é binário e protegido, apesar da extensão .txt. "
+            "Para processá-lo é necessário configurar o parser oficial DJI com uma App Key, "
+            "ou importar uma versão convertida para CSV."
+        )
     try:
         texto = bruto.decode("utf-8-sig")
     except UnicodeDecodeError:
