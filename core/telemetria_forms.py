@@ -20,9 +20,13 @@ class MultipleFileField(forms.FileField):
 class VooChoiceField(forms.ModelChoiceField):
     def label_from_instance(self, voo):
         data = voo.data.strftime("%d/%m/%Y") if voo.data else "data pela telemetria"
+        total_logs = getattr(voo, "total_logs", None)
+        if total_logs is None:
+            total_logs = voo.importacoes_log.count()
+        logs = f"{total_logs} log" if total_logs == 1 else f"{total_logs} logs"
         return (
             f"Voo #{voo.pk} · {voo.drone.nome} · {voo.piloto.nome} · "
-            f"{voo.get_finalidade_display()} · {data}"
+            f"{voo.get_finalidade_display()} · {data} · {logs}"
         )
 
 

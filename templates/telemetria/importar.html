@@ -5,7 +5,7 @@
 <div class="form-layout telemetry-import-layout">
   <form method="post" enctype="multipart/form-data" class="panel" id="telemetry-import-form">{% csrf_token %}<h3>Origem dos logs</h3>
     {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
-    <div class="mb-3"><label class="form-label">{{ form.voo.label }}</label>{{ form.voo }}{{ form.voo.errors }}<div class="form-text">Todos os arquivos selecionados serão vinculados a este mesmo voo.</div></div>
+    <div class="mb-3"><label class="form-label">{{ form.voo.label }}</label>{{ form.voo }}{{ form.voo.errors }}<div class="form-text">Voos antigos e voos que já possuem logs continuam disponíveis. Todos os arquivos selecionados serão vinculados ao mesmo voo.</div></div>
     <div class="mb-3"><label class="form-label">Como deseja importar?</label>{{ form.modo }}{{ form.modo.errors }}</div>
     <div class="mb-3" id="single-file-field"><label class="form-label">Arquivo</label>{{ form.arquivo }}{{ form.arquivo.errors }}</div>
     <div class="mb-3" id="folder-field"><label class="form-label">Pasta</label>{{ form.pasta }}{{ form.pasta.errors }}<div class="form-text">Arquivos que não sejam CSV ou TXT serão ignorados.</div></div>

@@ -328,6 +328,8 @@ class TelemetriaTests(TestCase):
         from .telemetria_views import _voos_permitidos
 
         processar_importacao(self._importacao())
+        self.voo.data = date(2024, 1, 15)
+        self.voo.save(update_fields=["data"])
         pendente = Voo.objects.create(
             piloto=self.piloto, drone=self.drone, finalidade="fotografia",
             local="Área 2", criado_por=self.usuario,
@@ -336,6 +338,7 @@ class TelemetriaTests(TestCase):
         self.assertIn(self.voo, form.fields["voo"].queryset)
         self.assertIn(pendente, form.fields["voo"].queryset)
         self.assertIn(f"Voo #{pendente.pk}", form.fields["voo"].label_from_instance(pendente))
+        self.assertIn("15/01/2024 · 1 log", form.fields["voo"].label_from_instance(self.voo))
 
     def test_telemetria_consolida_mesmo_drone_piloto_e_dia(self):
         self.voo.data = date(2026, 8, 24)
