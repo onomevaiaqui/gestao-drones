@@ -402,6 +402,21 @@ class TelemetriaTests(TestCase):
         self.assertContains(resposta, "telemetry-alerts")
         self.assertContains(resposta, "Vento forte")
         self.assertContains(resposta, "tiles.openfreemap.org")
+        self.assertContains(resposta, "Data do voo")
+        self.assertContains(resposta, "Amostra dos dados por minuto")
+        self.assertEqual(len(resposta.context["amostra_minutos"]), 1)
+        self.assertEqual(resposta.context["amostra_minutos"][0]["status"], "atencao")
+
+    def test_resumo_por_minuto_classifica_normal_atencao_e_erro(self):
+        from .telemetria_views import _resumir_pontos_por_minuto
+
+        pontos = [
+            PontoTelemetria(importacao_id=1, indice=0, segundos=0, bateria_percentual=90, sinal_percentual=100, satelites=15),
+            PontoTelemetria(importacao_id=1, indice=1, segundos=60, bateria_percentual=25, sinal_percentual=70, satelites=12),
+            PontoTelemetria(importacao_id=1, indice=2, segundos=120, bateria_percentual=10, sinal_percentual=15, satelites=4, alerta="Falha crítica"),
+        ]
+        resumo = _resumir_pontos_por_minuto(pontos)
+        self.assertEqual([item["status"] for item in resumo], ["normal", "atencao", "erro"])
 
     def test_piloto_visualiza_apenas_telemetria_dos_proprios_voos(self):
         importacao = processar_importacao(self._importacao())

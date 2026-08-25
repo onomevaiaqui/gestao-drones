@@ -1,10 +1,12 @@
 import csv
+from collections import defaultdict
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .models import ImportacaoLog, Voo
@@ -25,6 +27,56 @@ def _importacoes_permitidas(user):
     if not usuario_e_admin(user):
         qs = qs.filter(voo__piloto__user=user)
     return qs
+
+
+def _resumir_pontos_por_minuto(pontos):
+    grupos = defaultdict(list)
+    for ponto in pontos:
+        if ponto.segundos is not None:
+            chave = int(float(ponto.segundos) // 60)
+        elif ponto.instante:
+            local = timezone.localtime(ponto.instante)
+            chave = local.hour * 60 + local.minute
+        else:
+            chave = ponto.indice // 60
+        grupos[chave].append(ponto)
+
+    resumo = []
+    termos_erro = ("erro", "error", "falha", "critical", "crítico", "critico", "perda", "lost", "desconect", "colisão", "colisao", "queda", "motor")
+    for minuto, itens in sorted(grupos.items()):
+        def media(campo):
+            valores = [float(getattr(item, campo)) for item in itens if getattr(item, campo) is not None]
+            return round(sum(valores) / len(valores), 2) if valores else None
+
+        alertas = list(dict.fromkeys(item.alerta.strip() for item in itens if item.alerta.strip()))
+        bateria = min((item.bateria_percentual for item in itens if item.bateria_percentual is not None), default=None)
+        sinal = min((item.sinal_percentual for item in itens if item.sinal_percentual is not None), default=None)
+        satelites = min((item.satelites for item in itens if item.satelites is not None), default=None)
+        texto_alertas = " · ".join(alertas)
+        erro = (
+            (bateria is not None and bateria <= 15)
+            or (sinal is not None and sinal <= 20)
+            or (satelites is not None and satelites <= 5)
+            or any(termo in texto_alertas.lower() for termo in termos_erro)
+        )
+        atencao = bool(texto_alertas) or (bateria is not None and bateria <= 30) or (sinal is not None and sinal <= 50) or (satelites is not None and satelites <= 9)
+        status = "erro" if erro else "atencao" if atencao else "normal"
+        instante = next((item.instante for item in itens if item.instante), None)
+        resumo.append({
+            "minuto": minuto,
+            "instante": instante,
+            "latitude": media("latitude"),
+            "longitude": media("longitude"),
+            "altitude": media("altitude_m"),
+            "velocidade": media("velocidade_ms"),
+            "bateria": bateria,
+            "satelites": satelites,
+            "sinal": sinal,
+            "alerta": texto_alertas,
+            "status": status,
+            "status_label": {"erro": "Erro", "atencao": "Atenção", "normal": "Normal"}[status],
+        })
+    return resumo
 
 
 @login_required
@@ -104,9 +156,11 @@ def telemetria_detalhe(request, pk):
         horas, restante = divmod(importacao.duracao_segundos, 3600)
         minutos, segundos = divmod(restante, 60)
         duracao = f"{horas:02d}h {minutos:02d}min {segundos:02d}s"
+    data_voo = timezone.localtime(importacao.inicio_registro).date() if importacao.inicio_registro else importacao.voo.data
     ctx = {
-        "importacao": importacao, "pontos": pontos[:500], "rota": rota,
+        "importacao": importacao, "amostra_minutos": _resumir_pontos_por_minuto(pontos), "rota": rota,
         "alertas_mapa": alertas_mapa, "duracao_formatada": duracao,
+        "data_voo": data_voo,
     }
     ctx.update(_base_context(request))
     return render(request, "telemetria/detalhe.html", ctx)
