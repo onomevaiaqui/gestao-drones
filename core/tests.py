@@ -10,9 +10,9 @@ from django.utils import timezone
 
 from .alerta_service import gerar_alertas, resumo_alertas
 from .models import (
-    Alocacao, AvaliacaoRisco, Bateria, Componente, Documento, Drone, ExecucaoInspecao,
-    ImportacaoLog, Incidente, Piloto, PlanoInspecao, PontoTelemetria,
-    MovimentacaoComponente, QualificacaoPiloto, SolicitacaoVoo, Voo,
+    Alocacao, AvaliacaoRisco, Bateria, ChecklistPreVoo, Componente, Documento, Drone, ExecucaoInspecao,
+    DroneHistorico, ImportacaoLog, Incidente, Manutencao, Piloto, PlanoInspecao, PontoTelemetria,
+    MovimentacaoComponente, QualificacaoPiloto, RegistroPosVoo, SolicitacaoVoo, Voo,
 )
 from .telemetria_service import processar_importacao
 
@@ -316,3 +316,130 @@ class ComponenteTests(TestCase):
         self.assertTrue(resposta.content.startswith(b"\x89PNG"))
         ficha = self.client.get(reverse("componente_por_qr", args=[self.item.qr_token]))
         self.assertContains(ficha, "Câmera RGB")
+
+
+class PermissoesOperacionaisTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username="admin_permissoes", password="teste123")
+        self.usuario = User.objects.create_user(username="piloto_permissoes", password="teste123")
+        self.piloto = Piloto.objects.create(user=self.usuario, nome="Piloto Permissões", primeiro_acesso=False)
+        self.drone = Drone.objects.create(nome="Drone Permissões", modelo="Modelo", status="ativo")
+        self.alocacao = Alocacao.objects.create(
+            data=timezone.localdate(), hora_inicio=time(9), hora_fim=time(10),
+            piloto=self.piloto, drone=self.drone, finalidade="Inspeção", local="Área",
+            status="reservado", criado_por=self.admin,
+        )
+
+    def test_piloto_nao_altera_status_do_drone(self):
+        self.client.force_login(self.usuario)
+        resposta = self.client.post(reverse("drone_status_atualizar", args=[self.drone.pk]), {"status": "manutencao"})
+        self.assertRedirects(resposta, reverse("dashboard"))
+        self.drone.refresh_from_db()
+        self.assertEqual(self.drone.status, "ativo")
+
+    def test_usuario_staff_nao_e_administrador_operacional(self):
+        self.usuario.is_staff = True
+        self.usuario.save(update_fields=["is_staff"])
+        RegistroPosVoo.objects.create(
+            alocacao=self.alocacao, hora_inicio_real=time(9), hora_fim_real=time(10),
+            resultado="concluido", observacoes="Original", concluido=True, preenchido_por=self.usuario,
+        )
+        self.client.force_login(self.usuario)
+        resposta = self.client.post(reverse("registro_pos_voo", args=[self.alocacao.pk]), {
+            "hora_inicio_real": "09:00", "hora_fim_real": "10:00", "resultado": "concluido",
+            "baterias_utilizadas": 1, "observacoes": "Alterado", "concluido": "on",
+        })
+        self.assertContains(resposta, "Apenas administradores podem alterá-lo")
+        self.assertEqual(RegistroPosVoo.objects.get(alocacao=self.alocacao).observacoes, "Original")
+
+    def test_piloto_nao_reabre_checklist_concluido(self):
+        checklist = ChecklistPreVoo.objects.create(
+            alocacao=self.alocacao, bateria_ok=True, helices_ok=True, estrutura_ok=True,
+            controle_ok=True, gps_ok=True, memoria_ok=True, area_segura=True,
+            meteorologia_ok=True, concluido=True, preenchido_por=self.usuario,
+        )
+        self.client.force_login(self.usuario)
+        resposta = self.client.post(reverse("checklist_pre_voo", args=[self.alocacao.pk]), {"observacoes": "Alterado"})
+        self.assertRedirects(resposta, reverse("checklist_pre_voo", args=[self.alocacao.pk]))
+        checklist.refresh_from_db()
+        self.assertTrue(checklist.concluido)
+        self.assertEqual(checklist.observacoes, "")
+
+    def test_avaliacao_submetida_fica_bloqueada_para_piloto(self):
+        solicitacao = SolicitacaoVoo.objects.create(
+            piloto=self.piloto, drone=self.drone, data=timezone.localdate() + timedelta(days=1),
+            hora_inicio=time(11), hora_fim=time(12), finalidade="Inspeção", local="Área",
+            criado_por=self.usuario,
+        )
+        avaliacao = AvaliacaoRisco.objects.create(
+            solicitacao=solicitacao, perigos_identificados="Risco original",
+            probabilidade_inicial=3, impacto_inicial=3, medidas_mitigadoras="Isolar área",
+            probabilidade_residual=1, impacto_residual=2, status="submetida", preenchido_por=self.usuario,
+        )
+        self.client.force_login(self.usuario)
+        resposta = self.client.post(reverse("avaliacao_risco", args=[solicitacao.pk]), {
+            "perigos_identificados": "Alterado", "probabilidade_inicial": 1, "impacto_inicial": 1,
+            "medidas_mitigadoras": "Nenhuma", "probabilidade_residual": 1, "impacto_residual": 1,
+            "acao": "salvar",
+        })
+        self.assertEqual(resposta.status_code, 200)
+        avaliacao.refresh_from_db()
+        self.assertEqual(avaliacao.perigos_identificados, "Risco original")
+
+
+class FluxoOperacionalCompletoTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username="admin_fluxo", password="teste123")
+        self.usuario = User.objects.create_user(username="piloto_fluxo", password="teste123")
+        self.piloto = Piloto.objects.create(user=self.usuario, nome="Piloto Fluxo", primeiro_acesso=False)
+        self.drone = Drone.objects.create(nome="Drone Fluxo", modelo="Modelo", status="ativo")
+        self.solicitacao = SolicitacaoVoo.objects.create(
+            piloto=self.piloto, drone=self.drone, data=timezone.localdate() + timedelta(days=1),
+            hora_inicio=time(9), hora_fim=time(10), finalidade="inspecao", local="Área de teste",
+            criado_por=self.usuario,
+        )
+        AvaliacaoRisco.objects.create(
+            solicitacao=self.solicitacao, perigos_identificados="Obstáculos",
+            probabilidade_inicial=3, impacto_inicial=3, medidas_mitigadoras="Isolar área",
+            probabilidade_residual=1, impacto_residual=2, status="aprovada",
+            preenchido_por=self.usuario, analisado_por=self.admin,
+        )
+
+    def test_solicitacao_ate_pos_voo_com_manutencao(self):
+        self.client.force_login(self.admin)
+        resposta = self.client.post(reverse("solicitacao_voo_aprovar", args=[self.solicitacao.pk]))
+        self.assertRedirects(resposta, reverse("solicitacoes_voo"))
+        self.solicitacao.refresh_from_db()
+        self.assertEqual(self.solicitacao.status, "aprovado")
+        self.assertIsNotNone(self.solicitacao.alocacao_id)
+
+        alocacao = self.solicitacao.alocacao
+        self.client.force_login(self.usuario)
+        resposta = self.client.post(reverse("checklist_pre_voo", args=[alocacao.pk]), {
+            "bateria_ok": "on", "helices_ok": "on", "estrutura_ok": "on", "controle_ok": "on",
+            "gps_ok": "on", "memoria_ok": "on", "area_segura": "on", "meteorologia_ok": "on",
+            "observacoes": "Operação liberada",
+        })
+        self.assertRedirects(resposta, reverse("calendario"))
+        self.assertTrue(ChecklistPreVoo.objects.get(alocacao=alocacao).concluido)
+
+        resposta = self.client.post(reverse("registro_pos_voo", args=[alocacao.pk]), {
+            "hora_inicio_real": "09:05", "hora_fim_real": "09:50", "resultado": "concluido",
+            "baterias_utilizadas": 1, "bateria_inicial": 98, "bateria_final": 41,
+            "distancia_m": "1250.50", "ocorrencias": "Vibração no gimbal",
+            "danos": "Verificar suporte", "necessita_manutencao": "on",
+            "observacoes": "Missão concluída", "concluido": "on",
+        })
+        self.assertRedirects(resposta, reverse("registro_pos_voo", args=[alocacao.pk]))
+        registro = RegistroPosVoo.objects.get(alocacao=alocacao)
+        self.assertTrue(registro.concluido)
+        self.assertIsNotNone(registro.voo_id)
+        alocacao.refresh_from_db()
+        self.solicitacao.refresh_from_db()
+        self.drone.refresh_from_db()
+        self.assertEqual(alocacao.status, "concluido")
+        self.assertEqual(self.solicitacao.status, "concluido")
+        self.assertEqual(self.drone.status, "manutencao")
+        self.assertTrue(Manutencao.objects.filter(drone=self.drone, tipo="inspecao", concluida=False).exists())
+        self.assertTrue(DroneHistorico.objects.filter(drone=self.drone, status_novo="manutencao").exists())
+        self.assertEqual(Voo.objects.get(pk=registro.voo_id).distancia_m, 1250.50)

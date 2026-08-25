@@ -20,7 +20,9 @@ def avaliacao_risco(request, solicitacao_id):
         return redirect("solicitacoes_voo")
     avaliacao = AvaliacaoRisco.objects.filter(solicitacao=solicitacao).first()
     eh_admin = usuario_e_admin(request.user)
-    somente_leitura = bool(avaliacao and avaliacao.status == "aprovada" and not eh_admin)
+    somente_leitura = bool(
+        avaliacao and avaliacao.status in ["submetida", "aprovada"] and not eh_admin
+    )
 
     if request.method == "POST" and not somente_leitura:
         acao = request.POST.get("acao", "salvar")

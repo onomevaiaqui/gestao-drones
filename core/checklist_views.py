@@ -25,9 +25,14 @@ def checklist_pre_voo(request, pk):
         return redirect("calendario")
 
     checklist, _ = ChecklistPreVoo.objects.get_or_create(alocacao=alocacao)
+    somente_leitura = checklist.concluido and not usuario_e_admin(request.user)
     form = ChecklistPreVooForm(request.POST or None, instance=checklist)
 
-    if form.is_valid():
+    if request.method == "POST" and somente_leitura:
+        messages.error(request, "O checklist concluído só pode ser alterado por um administrador.")
+        return redirect("checklist_pre_voo", pk=alocacao.pk)
+
+    if form.is_valid() and request.method == "POST":
         checklist = form.save(commit=False)
         checklist.preenchido_por = request.user
         checklist.atualizar_status()
@@ -44,6 +49,7 @@ def checklist_pre_voo(request, pk):
         "form": form,
         "alocacao": alocacao,
         "checklist": checklist,
+        "somente_leitura": somente_leitura,
     }
     ctx.update(_base_context(request))
     return render(request, "checklist/pre_voo.html", ctx)

@@ -1279,7 +1279,7 @@ def drone_editar(request, pk):
     )
 
 
-@login_required
+@admin_required
 @require_POST
 def drone_status_atualizar(request, pk):
     drone = get_object_or_404(Drone, pk=pk)
@@ -2542,10 +2542,7 @@ from .forms import RegistroPosVooForm
 from .models import Alocacao, DroneHistorico, Manutencao, RegistroPosVoo, Voo
 
 def _pos_voo_admin(user):
-    return bool(
-        user.is_superuser or user.is_staff
-        or getattr(getattr(user, "piloto", None), "perfil", "") == "administrador"
-    )
+    return usuario_e_admin(user)
 
 def _pos_voo_pode_acessar(user, alocacao):
     return _pos_voo_admin(user) or alocacao.piloto.user_id == user.id
@@ -2565,10 +2562,12 @@ def registro_pos_voo(request, alocacao_id):
 
     registro = RegistroPosVoo.objects.filter(alocacao=alocacao).first()
     if registro and registro.concluido and not _pos_voo_admin(request.user):
-        return pos_voo_render(request, "core/registro_pos_voo.html", {
+        contexto = {
             "form": RegistroPosVooForm(instance=registro), "alocacao": alocacao,
             "registro": registro, "somente_leitura": True,
-        })
+        }
+        contexto.update(_base_context(request))
+        return pos_voo_render(request, "core/registro_pos_voo.html", contexto)
 
     if request.method == "POST":
         form = RegistroPosVooForm(request.POST, instance=registro)
@@ -2651,7 +2650,9 @@ def registro_pos_voo(request, alocacao_id):
             "hora_inicio_real": alocacao.hora_inicio,
             "hora_fim_real": alocacao.hora_fim,
         })
-    return pos_voo_render(request, "core/registro_pos_voo.html", {
+    contexto = {
         "form": form, "alocacao": alocacao, "registro": registro,
         "somente_leitura": False,
-    })
+    }
+    contexto.update(_base_context(request))
+    return pos_voo_render(request, "core/registro_pos_voo.html", contexto)

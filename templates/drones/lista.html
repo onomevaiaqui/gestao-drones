@@ -55,7 +55,9 @@
     </td>
 
     <td>
-        {% if d.status == "em_campo" %}
+        {% if not eh_admin and not user.is_superuser %}
+            <span class="badge-soft {% if d.status == 'ativo' %}green{% elif d.status == 'em_campo' %}purple{% elif d.status == 'manutencao' %}orange{% else %}red{% endif %}">{{ d.get_status_display }}</span>
+        {% elif d.status == "em_campo" %}
             <span class="badge-soft purple">Em campo</span>
             <div class="text-muted small mt-1">Atualização automática</div>
         {% else %}
