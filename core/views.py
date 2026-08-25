@@ -365,7 +365,8 @@ def dashboard(request):
     if primeiro:
         return primeiro
 
-    voos_qs = Voo.objects.select_related("piloto", "drone").filter(
+    from .voo_service import filtrar_voos_realizados
+    voos_qs = filtrar_voos_realizados(Voo.objects.select_related("piloto", "drone")).filter(
         data__isnull=False, hora_inicio__isnull=False, hora_fim__isnull=False,
     )
 
@@ -379,7 +380,8 @@ def dashboard(request):
         voos_qs = voos_qs.filter(data__lte=fim)
 
     total_voos = voos_qs.count()
-    total_minutos = sum(voo.duracao_minutos for voo in voos_qs)
+    total_segundos = sum(voo.duracao_segundos_operacionais for voo in voos_qs)
+    total_minutos = total_segundos // 60
     horas = total_minutos // 60
     minutos = total_minutos % 60
 
@@ -388,54 +390,54 @@ def dashboard(request):
         for voo in voos_qs
     )
 
-    media_minutos = round(total_minutos / total_voos) if total_voos else 0
+    media_minutos = round(total_segundos / 60 / total_voos) if total_voos else 0
 
     pilotos_data = []
     for piloto in Piloto.objects.filter(ativo=True):
-        minutos_piloto = sum(
-            voo.duracao_minutos
+        segundos_piloto = sum(
+            voo.duracao_segundos_operacionais
             for voo in voos_qs
             if voo.piloto_id == piloto.id
         )
-        if minutos_piloto > 0:
+        if segundos_piloto > 0:
             pilotos_data.append({
                 "nome": piloto.nome,
-                "horas": round(minutos_piloto / 60, 2),
+                "horas": round(segundos_piloto / 3600, 2),
             })
 
     drones_data = []
     for drone in Drone.objects.all():
-        minutos_drone = sum(
-            voo.duracao_minutos
+        segundos_drone = sum(
+            voo.duracao_segundos_operacionais
             for voo in voos_qs
             if voo.drone_id == drone.id
         )
-        if minutos_drone > 0:
+        if segundos_drone > 0:
             drones_data.append({
                 "nome": drone.nome,
-                "horas": round(minutos_drone / 60, 2),
+                "horas": round(segundos_drone / 3600, 2),
             })
 
     finalidade_map = defaultdict(int)
     for voo in voos_qs:
-        finalidade_map[voo.get_finalidade_display()] += voo.duracao_minutos
+        finalidade_map[voo.get_finalidade_display()] += voo.duracao_segundos_operacionais
 
     finalidades_data = [
         {
             "nome": nome,
-            "horas": round(minutos_finalidade / 60, 2),
+            "horas": round(minutos_finalidade / 3600, 2),
         }
         for nome, minutos_finalidade in finalidade_map.items()
     ]
 
     dias = defaultdict(int)
     for voo in voos_qs:
-        dias[voo.data.isoformat()] += voo.duracao_minutos
+        dias[voo.data.isoformat()] += voo.duracao_segundos_operacionais
 
     tempo_data = [
         {
             "data": data_voo,
-            "horas": round(minutos_dia / 60, 2),
+            "horas": round(minutos_dia / 3600, 2),
         }
         for data_voo, minutos_dia in sorted(dias.items())
     ]
@@ -1133,16 +1135,14 @@ def piloto_excluir(request, pk):
 @login_required
 def drones(request):
     _atualizar_status_drones_por_reserva()
-    voos_all = (
-        Voo.objects
-        .select_related("drone")
-    )
+    from .voo_service import filtrar_voos_realizados
+    voos_all = filtrar_voos_realizados(Voo.objects.select_related("drone"))
 
     drones_lista = []
 
     for d in Drone.objects.all():
-        mins = sum(
-            v.duracao_minutos
+        segundos = sum(
+            v.duracao_segundos_operacionais
             for v in voos_all
             if v.drone_id == d.id
         )
@@ -1157,8 +1157,8 @@ def drones(request):
         drones_lista.append({
             "obj": d,
             "horas": (
-                f"{mins // 60}h "
-                f"{mins % 60:02d}min"
+                f"{segundos // 3600}h "
+                f"{(segundos % 3600) // 60:02d}min"
             ),
             "ultimo_historico": ultimo_historico,
         })
@@ -2028,10 +2028,11 @@ def alocacao_concluir(request, pk):
 # =========================================================
 
 def _filtrar_voos_relatorio(request):
-    qs = Voo.objects.select_related(
+    from .voo_service import filtrar_voos_realizados
+    qs = filtrar_voos_realizados(Voo.objects.select_related(
         "piloto",
         "drone"
-    ).filter(data__isnull=False, hora_inicio__isnull=False, hora_fim__isnull=False)
+    )).filter(data__isnull=False, hora_inicio__isnull=False, hora_fim__isnull=False)
 
     inicio = request.GET.get("inicio")
     fim = request.GET.get("fim")
@@ -2057,8 +2058,8 @@ def _filtrar_voos_relatorio(request):
 def relatorios(request):
     voos_qs = _filtrar_voos_relatorio(request)
 
-    total_minutos = sum(
-        voo.duracao_minutos
+    total_segundos = sum(
+        voo.duracao_segundos_operacionais
         for voo in voos_qs
     )
 
@@ -2084,8 +2085,8 @@ def relatorios(request):
             if voo.piloto_id == piloto.id
         ]
 
-        minutos_piloto = sum(
-            voo.duracao_minutos
+        segundos_piloto = sum(
+            voo.duracao_segundos_operacionais
             for voo in voos_piloto
         )
 
@@ -2093,7 +2094,7 @@ def relatorios(request):
             "nome": piloto.nome,
             "voos": len(voos_piloto),
             "horas": round(
-                minutos_piloto / 60,
+                segundos_piloto / 3600,
                 2
             ),
         })
@@ -2115,8 +2116,8 @@ def relatorios(request):
             if voo.drone_id == drone.id
         ]
 
-        minutos_drone = sum(
-            voo.duracao_minutos
+        segundos_drone = sum(
+            voo.duracao_segundos_operacionais
             for voo in voos_drone
         )
 
@@ -2124,7 +2125,7 @@ def relatorios(request):
             "nome": drone.nome,
             "voos": len(voos_drone),
             "horas": round(
-                minutos_drone / 60,
+                segundos_drone / 3600,
                 2
             ),
         })
@@ -2132,7 +2133,7 @@ def relatorios(request):
     ctx = {
         "total_voos": voos_qs.count(),
         "total_horas": round(
-            total_minutos / 60,
+            total_segundos / 3600,
             2
         ),
         "distancia_km": round(
@@ -2165,8 +2166,8 @@ def relatorios_exportar_pdf(request):
     voos_qs = _filtrar_voos_relatorio(request)
 
     total_voos = voos_qs.count()
-    total_minutos = sum(voo.duracao_minutos for voo in voos_qs)
-    total_horas = round(total_minutos / 60, 2)
+    total_segundos = sum(voo.duracao_segundos_operacionais for voo in voos_qs)
+    total_horas = round(total_segundos / 3600, 2)
     distancia_total_m = sum(float(voo.distancia_m or 0) for voo in voos_qs)
     distancia_total_km = round(distancia_total_m / 1000, 2)
 

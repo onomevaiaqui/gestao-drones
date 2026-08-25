@@ -46,7 +46,14 @@ def solicitacao_voo_nova(request):
         obj.criado_por = request.user
         obj.status = "solicitado"
         obj.save()
-        messages.success(request, "Solicitação de voo enviada com sucesso.")
+        if obj.requer_avaliacao_risco:
+            messages.success(request, "Solicitação registrada. Preencha a avaliação de risco para liberar o voo.")
+        else:
+            try:
+                liberar_solicitacao(obj, request.user)
+                messages.success(request, "Voo registrado e adicionado ao calendário.")
+            except LiberacaoVooErro as erro:
+                messages.error(request, f"A solicitação foi salva, mas o voo não pôde ser liberado: {erro}")
         return redirect("solicitacoes_voo")
     ctx = {"form": form, "titulo": "Solicitar voo"}
     ctx.update(_base_context(request))
@@ -76,6 +83,12 @@ def solicitacao_voo_editar(request, pk):
         if not eh_admin:
             obj.piloto = request.user.piloto
         obj.save()
+        if obj.status == "solicitado" and not obj.requer_avaliacao_risco:
+            try:
+                liberar_solicitacao(obj, request.user)
+            except LiberacaoVooErro as erro:
+                messages.error(request, f"A solicitação foi atualizada, mas o voo não pôde ser liberado: {erro}")
+                return redirect("solicitacoes_voo")
         if eh_admin and obj.status == "aprovado" and obj.alocacao_id:
             aloc = obj.alocacao
             aloc.data = obj.data
@@ -100,16 +113,7 @@ def solicitacao_voo_aprovar(request, pk):
     if obj.status != "solicitado":
         messages.warning(request, "Esta solicitação já foi analisada.")
         return redirect("solicitacoes_voo")
-    avaliacao = getattr(obj, "avaliacao_risco", None)
-    if obj.requer_avaliacao_risco and (not avaliacao or avaliacao.status != "aprovada"):
-        messages.error(request, "A avaliação de risco precisa ser preenchida e aprovada antes do voo.")
-        return redirect("avaliacao_risco", solicitacao_id=obj.pk)
-    try:
-        liberar_solicitacao(obj, request.user)
-    except LiberacaoVooErro as erro:
-        messages.error(request, str(erro))
-        return redirect("solicitacoes_voo")
-    messages.success(request, "Solicitação aprovada e adicionada ao calendário.")
+    messages.info(request, "A liberação agora é automática. Quando exigida, aprove somente a avaliação de risco.")
     return redirect("solicitacoes_voo")
 
 @admin_required

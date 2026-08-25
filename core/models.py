@@ -277,7 +277,20 @@ class Voo(models.Model):
         )
 
     @property
-    def duracao_minutos(self):
+    def duracao_segundos_operacionais(self):
+        logs_carregados = getattr(self, "logs_concluidos", None)
+        if logs_carregados is None:
+            duracoes = list(
+                self.importacoes_log.filter(status="concluida", duracao_segundos__isnull=False)
+                .values_list("duracao_segundos", flat=True)
+            )
+        else:
+            duracoes = [
+                log.duracao_segundos for log in logs_carregados
+                if log.duracao_segundos is not None
+            ]
+        if duracoes:
+            return sum(duracoes)
         if not self.data or not self.hora_inicio or not self.hora_fim:
             return 0
         inicio = datetime.combine(
@@ -295,12 +308,11 @@ class Voo(models.Model):
                 days=1
             )
 
-        return int(
-            (
-                fim - inicio
-            ).total_seconds()
-            // 60
-        )
+        return int((fim - inicio).total_seconds())
+
+    @property
+    def duracao_minutos(self):
+        return self.duracao_segundos_operacionais // 60
 
     @property
     def consumo_bateria(self):

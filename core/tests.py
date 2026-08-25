@@ -157,10 +157,10 @@ class SegurancaOperacionalTests(TestCase):
         self.assertEqual(avaliacao.risco_residual, 6)
         self.assertEqual(avaliacao.nivel_residual, "medio")
 
-    def test_aprovacao_exige_risco_aprovado(self):
+    def test_nao_existe_aprovacao_administrativa_separada(self):
         self.client.force_login(self.admin)
         resposta = self.client.post(reverse("solicitacao_voo_aprovar", args=[self.solicitacao.pk]))
-        self.assertRedirects(resposta, reverse("avaliacao_risco", kwargs={"solicitacao_id": self.solicitacao.pk}))
+        self.assertRedirects(resposta, reverse("solicitacoes_voo"))
         self.solicitacao.refresh_from_db()
         self.assertEqual(self.solicitacao.status, "solicitado")
 
@@ -190,16 +190,19 @@ class SegurancaOperacionalTests(TestCase):
         self.assertContains(self.client.get(reverse("calendario")), self.drone.nome)
         self.assertContains(self.client.get(reverse("telemetria_importar")), f"Voo #{voo.pk}")
 
-    def test_solicitacao_sem_avaliacao_pode_ser_liberada_diretamente(self):
-        self.solicitacao.requer_avaliacao_risco = False
-        self.solicitacao.save(update_fields=["requer_avaliacao_risco"])
-        self.client.force_login(self.admin)
-        resposta = self.client.post(reverse("solicitacao_voo_aprovar", args=[self.solicitacao.pk]))
+    def test_solicitacao_sem_avaliacao_e_liberada_ao_ser_criada(self):
+        data_voo = timezone.localdate() + timedelta(days=5)
+        self.client.force_login(self.usuario)
+        resposta = self.client.post(reverse("solicitacao_voo_nova"), {
+            "data": data_voo.isoformat(), "hora_inicio": "14:00", "hora_fim": "15:00",
+            "piloto": self.piloto.pk, "drone": self.drone.pk, "finalidade": "Fotografia",
+            "local": "Área fotográfica", "observacoes": "",
+        })
         self.assertRedirects(resposta, reverse("solicitacoes_voo"))
-        self.solicitacao.refresh_from_db()
-        self.assertEqual(self.solicitacao.status, "aprovado")
+        solicitacao = SolicitacaoVoo.objects.get(data=data_voo, piloto=self.piloto)
+        self.assertEqual(solicitacao.status, "aprovado")
         self.assertTrue(Voo.objects.filter(
-            data=self.solicitacao.data, piloto=self.piloto, drone=self.drone
+            data=data_voo, piloto=self.piloto, drone=self.drone
         ).exists())
 
     def test_incidente_do_piloto_aparece_na_central(self):
@@ -235,8 +238,33 @@ class QualificacaoPilotoTests(TestCase):
         self.client.force_login(self.usuario)
         resposta = self.client.get(reverse("meu_perfil_operacional"), follow=True)
         self.assertEqual(resposta.status_code, 200)
-        self.assertContains(resposta, "1,5 h")
+        self.assertContains(resposta, "1h 30min 00s")
         self.assertContains(resposta, "Drone Experiência")
+
+    def test_perfil_soma_logs_e_ignora_reserva_nao_realizada(self):
+        voo = Voo.objects.get(piloto=self.piloto)
+        ImportacaoLog.objects.create(
+            voo=voo, nome_original="trecho-1.txt", formato="txt", importado_por=self.usuario,
+            status="concluida", duracao_segundos=125,
+        )
+        ImportacaoLog.objects.create(
+            voo=voo, nome_original="trecho-2.txt", formato="txt", importado_por=self.usuario,
+            status="concluida", duracao_segundos=70,
+        )
+        alocacao_futura = Alocacao.objects.create(
+            data=timezone.localdate() + timedelta(days=1), hora_inicio=time(8), hora_fim=time(18),
+            piloto=self.piloto, drone=self.drone, finalidade="Reserva futura", status="reservado",
+            criado_por=self.admin,
+        )
+        Voo.objects.create(
+            data=alocacao_futura.data, piloto=self.piloto, drone=self.drone, finalidade="outro",
+            local="Área futura", hora_inicio=time(8), hora_fim=time(18), criado_por=self.admin,
+            alocacao_calendario=alocacao_futura,
+        )
+        self.client.force_login(self.usuario)
+        resposta = self.client.get(reverse("meu_perfil_operacional"), follow=True)
+        self.assertContains(resposta, "0h 03min 15s")
+        self.assertContains(resposta, ">1<", count=2)
 
     def test_qualificacao_vencida_gera_alerta(self):
         qualificacao = QualificacaoPiloto.objects.create(
@@ -542,18 +570,18 @@ class FluxoOperacionalCompletoTests(TestCase):
         self.solicitacao = SolicitacaoVoo.objects.create(
             piloto=self.piloto, drone=self.drone, data=timezone.localdate() + timedelta(days=1),
             hora_inicio=time(9), hora_fim=time(10), finalidade="inspecao", local="Área de teste",
-            criado_por=self.usuario,
+            criado_por=self.usuario, requer_avaliacao_risco=True,
         )
         AvaliacaoRisco.objects.create(
             solicitacao=self.solicitacao, perigos_identificados="Obstáculos",
             probabilidade_inicial=3, impacto_inicial=3, medidas_mitigadoras="Isolar área",
-            probabilidade_residual=1, impacto_residual=2, status="aprovada",
+            probabilidade_residual=1, impacto_residual=2, status="submetida",
             preenchido_por=self.usuario, analisado_por=self.admin,
         )
 
     def test_solicitacao_ate_pos_voo_com_manutencao(self):
         self.client.force_login(self.admin)
-        resposta = self.client.post(reverse("solicitacao_voo_aprovar", args=[self.solicitacao.pk]))
+        resposta = self.client.post(reverse("avaliacao_risco", args=[self.solicitacao.pk]), {"acao": "aprovar"})
         self.assertRedirects(resposta, reverse("solicitacoes_voo"))
         self.solicitacao.refresh_from_db()
         self.assertEqual(self.solicitacao.status, "aprovado")
