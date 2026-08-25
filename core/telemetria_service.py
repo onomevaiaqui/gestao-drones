@@ -152,13 +152,21 @@ def _concluir_importacao(importacao, pontos, atualizar_voo):
     segundos = [p.segundos for p in pontos if p.segundos is not None]
     baterias = [p.bateria_percentual for p in pontos if p.bateria_percentual is not None]
     importacao.total_pontos = len(pontos)
-    importacao.duracao_segundos = int((max(instantes) - min(instantes)).total_seconds()) if len(instantes) >= 2 else int(max(segundos) - min(segundos)) if len(segundos) >= 2 else None
+    # O relógio interno de alguns DJI Pilot 2 pode saltar entre quadros. O tempo
+    # decorrido do voo é a fonte estável sempre que estiver disponível.
+    importacao.duracao_segundos = int(max(segundos) - min(segundos)) if len(segundos) >= 2 else int((max(instantes) - min(instantes)).total_seconds()) if len(instantes) >= 2 else None
     importacao.altitude_maxima_m = max((p.altitude_m for p in pontos if p.altitude_m is not None), default=None)
     importacao.velocidade_maxima_ms = max((p.velocidade_ms for p in pontos if p.velocidade_ms is not None), default=None)
     importacao.distancia_calculada_m = Decimal(str(round(distancia, 2))) if coordenadas else None
     importacao.bateria_inicial = baterias[0] if baterias else None
     importacao.bateria_final = baterias[-1] if baterias else None
-    importacao.total_alertas = sum(bool(p.alerta) for p in pontos)
+    alertas, alerta_anterior = 0, ""
+    for ponto in pontos:
+        alerta_atual = (ponto.alerta or "").strip()
+        if alerta_atual and alerta_atual != alerta_anterior:
+            alertas += 1
+        alerta_anterior = alerta_atual
+    importacao.total_alertas = alertas
     importacao.status = "concluida"
     importacao.mensagem_erro = ""
     importacao.save()

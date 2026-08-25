@@ -261,6 +261,13 @@ class TelemetriaTests(TestCase):
         self.voo.refresh_from_db()
         self.assertEqual(self.voo.bateria_final, 90)
 
+        self.client.force_login(self.usuario)
+        resposta = self.client.get(reverse("telemetria_detalhe", args=[importacao.pk]))
+        self.assertContains(resposta, "00h 00min 20s")
+        self.assertContains(resposta, "telemetry-alerts")
+        self.assertContains(resposta, "Vento forte")
+        self.assertContains(resposta, "tiles.openfreemap.org")
+
     def test_piloto_visualiza_apenas_telemetria_dos_proprios_voos(self):
         importacao = processar_importacao(self._importacao())
         outro_user = User.objects.create_user(username="outro_telemetria", password="teste123")

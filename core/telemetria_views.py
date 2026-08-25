@@ -68,13 +68,29 @@ def telemetria_detalhe(request, pk):
     importacao = get_object_or_404(_importacoes_permitidas(request.user), pk=pk)
     pontos = list(importacao.pontos.all())
     rota = [
-        {"lat": float(p.latitude), "lon": float(p.longitude), "alt": float(p.altitude_m) if p.altitude_m is not None else None, "battery": p.bateria_percentual}
+        {
+            "lat": float(p.latitude), "lon": float(p.longitude),
+            "alt": float(p.altitude_m) if p.altitude_m is not None else None,
+            "battery": p.bateria_percentual, "seconds": float(p.segundos) if p.segundos is not None else None,
+            "alert": p.alerta,
+        }
         for p in pontos if p.latitude is not None and p.longitude is not None
     ]
+    alertas_mapa, alerta_anterior = [], ""
+    for ponto in rota:
+        alerta_atual = (ponto["alert"] or "").strip()
+        if alerta_atual and alerta_atual != alerta_anterior:
+            alertas_mapa.append(ponto)
+        alerta_anterior = alerta_atual
     duracao = None
     if importacao.duracao_segundos is not None:
-        duracao = f"{importacao.duracao_segundos // 60}min {importacao.duracao_segundos % 60:02d}s"
-    ctx = {"importacao": importacao, "pontos": pontos[:500], "rota": rota, "duracao_formatada": duracao}
+        horas, restante = divmod(importacao.duracao_segundos, 3600)
+        minutos, segundos = divmod(restante, 60)
+        duracao = f"{horas:02d}h {minutos:02d}min {segundos:02d}s"
+    ctx = {
+        "importacao": importacao, "pontos": pontos[:500], "rota": rota,
+        "alertas_mapa": alertas_mapa, "duracao_formatada": duracao,
+    }
     ctx.update(_base_context(request))
     return render(request, "telemetria/detalhe.html", ctx)
 

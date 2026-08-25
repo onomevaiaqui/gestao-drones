@@ -19,3 +19,15 @@ body {
     background:#ffe8ea;
     color:#bd3945;
 }
+.telemetry-alert-marker {
+  width: 30px;
+  height: 30px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #dc3545;
+  color: #fff;
+  font-weight: 800;
+  line-height: 22px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+  cursor: pointer;
+}
