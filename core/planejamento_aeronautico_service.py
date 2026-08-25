@@ -123,3 +123,16 @@ def consultar_condicionantes_aeronauticas(planejamento):
         "aviso":"Esta é uma triagem para planejamento. Não substitui a consulta às publicações aeronáuticas, NOTAM nem a autorização no SARPAS.",
         "referencia":"ICA 100-40/2026 e dados aeronáuticos AISWEB/DECEA",
     }
+
+
+def camadas_aeronauticas_bbox(bbox):
+    features = []
+    for tipo, camada in CAMADAS.items():
+        for feature in _consultar_camada(camada, bbox):
+            prop = feature.setdefault("properties", {})
+            prop["tipo_zona"] = tipo
+            if tipo == "aerodromo": prop["raio_atencao_m"] = 9260
+            elif tipo == "heliponto": prop["raio_atencao_m"] = 2000
+            features.append(feature)
+    return {"type":"FeatureCollection", "features":features,
+            "aviso":"Raios de atenção para triagem visual; não representam proibição automática."}

@@ -5,10 +5,12 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from .models import PlanejamentoVoo, Piloto
 from .planejamento_service import calcular_geometria, consultar_previsao
 from .planejamento_aeronautico_service import consultar_condicionantes_aeronauticas
+from .planejamento_kml import extrair_poligono_kml
 
 
 AREA = {"type": "Polygon", "coordinates": [[
@@ -85,6 +87,12 @@ class PlanejamentoVooTests(TestCase):
         self.assertEqual(form.initial["hora_fim"], self.obj.hora_fim)
         self.assertEqual(form.initial["local"], "Parque Ambiental, Guarapuava/PR")
         self.assertContains(resposta, "Reservar drone")
+
+    def test_importa_poligono_kml(self):
+        conteudo = b'''<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>-51.47,-25.40,0 -51.45,-25.40,0 -51.45,-25.38,0 -51.47,-25.38,0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>'''
+        geometria = extrair_poligono_kml(SimpleUploadedFile("area.kml", conteudo))
+        self.assertEqual(geometria["type"], "Polygon")
+        self.assertEqual(geometria["coordinates"][0][0], geometria["coordinates"][0][-1])
 
     @patch("core.planejamento_aeronautico_service.urlopen")
     def test_aerodromo_proximo_e_area_proibida_sao_detectados(self, urlopen):

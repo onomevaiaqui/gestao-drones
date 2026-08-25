@@ -2,13 +2,13 @@
 {% block title %}{{ titulo }}{% endblock %}
 {% block content %}
 <div class="page-header"><div><h1>{{ titulo }}</h1><p>Informe o período e desenhe uma única área fechada no mapa.</p></div></div>
-<form method="post" id="planning-form">{% csrf_token %}
+<form method="post" enctype="multipart/form-data" id="planning-form">{% csrf_token %}
 <div class="planning-form-grid">
 <div class="panel"><div class="form-layout">
 {% for field in form %}{% if field.name != "area_geojson_texto" %}<div class="mb-3"><label>{{ field.label }}</label>{{ field }}{% if field.help_text %}<div class="text-muted small mt-1">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endif %}{% endfor %}
 {{ form.area_geojson_texto }}{% for error in form.area_geojson_texto.errors %}<div class="text-danger small planning-map-error">{{ error }}</div>{% endfor %}
 </div></div>
-<div class="panel planning-draw-panel"><h3>Área planejada</h3><p class="text-muted small">Use o polígono ou retângulo. Você pode editar os pontos depois de desenhar.</p><div id="planning-map"></div></div>
+<div class="panel planning-draw-panel"><h3>Área planejada</h3><p class="text-muted small">Use o polígono ou retângulo, ou importe um KML/KMZ. As zonas coloridas são alertas aeronáuticos para triagem.</p><div class="airspace-legend"><span class="airport">● Aeródromo/raio de atenção</span><span class="danger">■ Área perigosa</span><span class="restricted">■ Área restrita</span><span class="prohibited">■ Área proibida</span></div><div id="planning-map"></div><p class="text-muted small mt-2">Localização: © OpenStreetMap contributors · Dados aeronáuticos: AISWEB/DECEA. Os raios não representam proibição automática.</p></div>
 </div>
 <div class="form-actions"><a class="btn btn-light" href="{% url 'planejamentos' %}">Cancelar</a><button class="btn btn-primary" type="submit">Salvar e consultar previsão</button></div>
 </form>
@@ -25,11 +25,17 @@
  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap',referrerPolicy:'origin'}).addTo(map);
  map.pm.addControls({position:'topleft',drawMarker:false,drawCircleMarker:false,drawPolyline:false,drawCircle:false,drawText:false,cutPolygon:false,rotateMode:false});
  const input=document.getElementById('id_area_geojson_texto'); let area=null;
+ const airspace=L.layerGroup().addTo(map); let lastBox=''; let timer;
  function store(){input.value=area?JSON.stringify(area.toGeoJSON().geometry):'';}
  function use(layer){if(area&&area!==layer)map.removeLayer(area);area=layer;area.addTo(map);area.on('pm:edit pm:dragend',store);store();}
  map.on('pm:create',e=>use(e.layer)); map.on('pm:remove',e=>{if(e.layer===area){area=null;store();}});
  const initial=JSON.parse(document.getElementById('planning-initial-geometry').textContent);
  if(initial){const group=L.geoJSON(initial).addTo(map);const layer=group.getLayers()[0];group.removeLayer(layer);map.removeLayer(group);use(layer);map.fitBounds(layer.getBounds(),{padding:[30,30]});}
+ const localInput=document.getElementById('id_local');
+ if(localInput){const button=document.createElement('button');button.type='button';button.className='btn btn-light mt-2';button.textContent='Localizar no mapa';localInput.insertAdjacentElement('afterend',button);button.addEventListener('click',async()=>{if(localInput.value.trim().length<3)return;button.disabled=true;button.textContent='Localizando…';try{const r=await fetch('{% url "planejamento_buscar_local" %}?q='+encodeURIComponent(localInput.value));const d=await r.json();if(!r.ok)throw new Error(d.erro);map.setView([d.latitude,d.longitude],14);localInput.title=d.nome;}catch(e){alert(e.message||'Local não encontrado.');}finally{button.disabled=false;button.textContent='Localizar no mapa';}});}
+ function styleZone(f){const t=f.properties.tipo_zona;return{color:t==='proibida'?'#a40021':t==='restrita'?'#e03131':'#f59f00',weight:2,fillOpacity:.2};}
+ async function loadAirspace(){if(map.getZoom()<9)return;const b=map.getBounds();const key=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].map(v=>v.toFixed(2)).join(',');if(key===lastBox)return;lastBox=key;const q=new URLSearchParams({oeste:b.getWest(),sul:b.getSouth(),leste:b.getEast(),norte:b.getNorth()});try{const r=await fetch('{% url "planejamento_camadas_aeronauticas" %}?'+q);const data=await r.json();if(!r.ok)return;airspace.clearLayers();L.geoJSON(data,{style:styleZone,pointToLayer:(f,ll)=>{const t=f.properties.tipo_zona;const marker=L.circleMarker(ll,{radius:6,color:t==='aerodromo'?'#d63384':'#6f42c1',fillOpacity:.9});if(f.properties.raio_atencao_m)L.circle(ll,{radius:f.properties.raio_atencao_m,color:t==='aerodromo'?'#d63384':'#6f42c1',weight:1,fillOpacity:.07,dashArray:'6 5'}).bindPopup('Raio de atenção para triagem').addTo(airspace);return marker;},onEachFeature:(f,l)=>{const p=f.properties;l.bindPopup('<strong>'+((p.tipo_zona||'').toUpperCase())+'</strong><br>'+((p.localidade_id||p.id||'')+' '+(p.nome||'')));}}).addTo(airspace);}catch(e){}}
+ map.on('moveend',()=>{clearTimeout(timer);timer=setTimeout(loadAirspace,800);});loadAirspace();
  setTimeout(()=>map.invalidateSize(),100);
 })();
 </script>

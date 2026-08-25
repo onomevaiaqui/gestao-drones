@@ -3,11 +3,17 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
+from django.http import JsonResponse
+from django.core.cache import cache
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+import json
+import hashlib
 
 from .models import PlanejamentoVoo, Piloto
 from .planejamento_forms import PlanejamentoVooForm
 from .planejamento_service import consultar_previsao
-from .planejamento_aeronautico_service import consultar_condicionantes_aeronauticas
+from .planejamento_aeronautico_service import consultar_condicionantes_aeronauticas, camadas_aeronauticas_bbox
 from .views import _base_context, usuario_e_admin
 
 
@@ -57,7 +63,7 @@ def _form_planejamento(request, obj=None):
         if obj and obj.piloto_id != piloto.pk:
             messages.error(request, "Você só pode alterar seus próprios planejamentos.")
             return redirect("planejamentos")
-    form = PlanejamentoVooForm(request.POST or None, instance=obj)
+    form = PlanejamentoVooForm(request.POST or None, request.FILES or None, instance=obj)
     if piloto:
         form.fields["piloto"].queryset = Piloto.objects.filter(pk=piloto.pk)
         form.fields["piloto"].initial = piloto
@@ -114,3 +120,38 @@ def planejamento_atualizar_previsao(request, pk):
     else:
         messages.error(request, f"Não foi possível atualizar a previsão: {erro}")
     return redirect("planejamento_detalhe", pk=obj.pk)
+
+
+@login_required
+def planejamento_buscar_local(request):
+    termo = request.GET.get("q", "").strip()
+    if len(termo) < 3:
+        return JsonResponse({"erro":"Informe ao menos três caracteres."}, status=400)
+    chave = "geocode:" + hashlib.sha256(termo.casefold().encode()).hexdigest()
+    dados = cache.get(chave)
+    if dados is None:
+        params = urlencode({"q":termo, "format":"jsonv2", "limit":1, "countrycodes":"br"})
+        req = Request("https://nominatim.openstreetmap.org/search?" + params,
+                      headers={"User-Agent":"GestaoDrones/1.0 (planejamento de voo)"})
+        try:
+            with urlopen(req, timeout=12) as resposta: resultado = json.loads(resposta.read().decode())
+            dados = {"latitude":float(resultado[0]["lat"]), "longitude":float(resultado[0]["lon"]),
+                     "nome":resultado[0]["display_name"]} if resultado else {}
+            cache.set(chave, dados, 86400)
+        except Exception:
+            return JsonResponse({"erro":"Serviço de localização temporariamente indisponível."}, status=503)
+    if not dados: return JsonResponse({"erro":"Local não encontrado."}, status=404)
+    return JsonResponse(dados)
+
+
+@login_required
+def planejamento_camadas_aeronauticas(request):
+    try:
+        bbox = tuple(float(request.GET[n]) for n in ("oeste","sul","leste","norte"))
+        if not (-180 <= bbox[0] < bbox[2] <= 180 and -90 <= bbox[1] < bbox[3] <= 90): raise ValueError
+        if bbox[2]-bbox[0] > 2 or bbox[3]-bbox[1] > 2: raise ValueError
+        return JsonResponse(camadas_aeronauticas_bbox(bbox))
+    except ValueError:
+        return JsonResponse({"erro":"Área de consulta inválida."}, status=400)
+    except Exception:
+        return JsonResponse({"erro":"Camadas do AISWEB temporariamente indisponíveis."}, status=503)

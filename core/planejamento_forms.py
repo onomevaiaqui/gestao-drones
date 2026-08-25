@@ -4,10 +4,14 @@ from django import forms
 
 from .models import PlanejamentoVoo, Piloto
 from .planejamento_service import calcular_geometria
+from .planejamento_kml import extrair_poligono_kml
 
 
 class PlanejamentoVooForm(forms.ModelForm):
-    area_geojson_texto = forms.CharField(widget=forms.HiddenInput(), required=True)
+    area_geojson_texto = forms.CharField(widget=forms.HiddenInput(), required=False)
+    arquivo_area = forms.FileField(required=False, label="Importar área KML/KMZ", widget=forms.FileInput(
+        attrs={"class":"form-control", "accept":".kml,.kmz"}
+    ), help_text="Opcional. O maior polígono do arquivo será usado como área planejada.")
 
     class Meta:
         model = PlanejamentoVoo
@@ -38,13 +42,22 @@ class PlanejamentoVooForm(forms.ModelForm):
         if inicio and fim and fim <= inicio:
             self.add_error("hora_fim", "O horário final deve ser posterior ao inicial.")
         bruto = dados.get("area_geojson_texto")
-        if bruto:
+        arquivo = dados.get("arquivo_area")
+        if arquivo:
+            try:
+                geometria = extrair_poligono_kml(arquivo)
+                dados["geometria_calculada"] = calcular_geometria(geometria)
+            except (TypeError, ValueError) as erro:
+                self.add_error("arquivo_area", str(erro))
+        elif bruto:
             try:
                 geometria = json.loads(bruto)
                 calculada = calcular_geometria(geometria)
                 dados["geometria_calculada"] = calculada
             except (TypeError, ValueError, json.JSONDecodeError) as erro:
                 self.add_error("area_geojson_texto", str(erro))
+        else:
+            self.add_error("area_geojson_texto", "Desenhe a área no mapa ou envie um KML/KMZ.")
         return dados
 
     def save(self, commit=True):
