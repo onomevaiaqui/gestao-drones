@@ -18,16 +18,9 @@
     </div>
 
     <div class="panel">
-        <h3>Horários</h3>
-        <div class="mb-3"><label>Hora de início</label>{{ form.hora_inicio }}{{ form.hora_inicio.errors }}</div>
-        <div class="mb-3"><label>Hora de término</label>{{ form.hora_fim }}{{ form.hora_fim.errors }}</div>
-        <div class="info-box">A duração será calculada automaticamente ao salvar o voo.</div>
-    </div>
-
-    <div class="panel">
-        <h3>Dados do Voo</h3>
-        <div class="mb-3"><label>Distância percorrida (m)</label>{{ form.distancia_m }}{{ form.distancia_m.errors }}</div>
+        <h3>Observações</h3>
         <div class="mb-3"><label>Observações</label>{{ form.observacoes }}{{ form.observacoes.errors }}</div>
+        <div class="info-box">Data, horários, duração, distância e percentuais de bateria serão preenchidos pela telemetria.</div>
     </div>
 </div>
 

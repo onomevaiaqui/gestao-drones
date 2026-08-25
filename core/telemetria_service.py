@@ -3,6 +3,7 @@ import io
 import logging
 import math
 import unicodedata
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
@@ -141,6 +142,8 @@ def _processar_dji(importacao, bruto):
     importacao.colunas_reconhecidas = [
         "tempo", "gps", "altitude", "velocidade", "bateria", "satelites", "sinal", "alertas"
     ]
+    importacao._inicio_dji = detalhes.start_time
+    importacao._duracao_dji = max(0, float(detalhes.total_time or 0))
     return pontos
 
 
@@ -154,10 +157,11 @@ def _concluir_importacao(importacao, pontos, atualizar_voo):
     importacao.total_pontos = len(pontos)
     # O relógio interno de alguns DJI Pilot 2 pode saltar entre quadros. O tempo
     # decorrido do voo é a fonte estável sempre que estiver disponível.
-    if segundos:
-        # No Flight Record DJI o contador pode continuar de um arquivo anterior;
-        # o controle exibe o valor final acumulado, não apenas o trecho do arquivo.
-        importacao.duracao_segundos = int(max(segundos)) if importacao.origem == "dji_flight_record" else int(max(segundos) - min(segundos))
+    duracao_dji = getattr(importacao, "_duracao_dji", None)
+    if duracao_dji is not None:
+        importacao.duracao_segundos = int(round(duracao_dji))
+    elif segundos:
+        importacao.duracao_segundos = int(max(segundos) - min(segundos))
     else:
         importacao.duracao_segundos = int((max(instantes) - min(instantes)).total_seconds()) if len(instantes) >= 2 else None
     importacao.altitude_maxima_m = max((p.altitude_m for p in pontos if p.altitude_m is not None), default=None)
@@ -178,6 +182,14 @@ def _concluir_importacao(importacao, pontos, atualizar_voo):
     if atualizar_voo:
         voo = importacao.voo
         campos = []
+        inicio_dji = getattr(importacao, "_inicio_dji", None)
+        if inicio_dji:
+            inicio_local = timezone.localtime(inicio_dji)
+            fim_local = inicio_local + timedelta(seconds=importacao.duracao_segundos or 0)
+            voo.data = inicio_local.date()
+            voo.hora_inicio = inicio_local.time().replace(tzinfo=None)
+            voo.hora_fim = fim_local.time().replace(tzinfo=None)
+            campos.extend(["data", "hora_inicio", "hora_fim"])
         for campo, valor in [("distancia_m", importacao.distancia_calculada_m), ("bateria_inicial", importacao.bateria_inicial), ("bateria_final", importacao.bateria_final)]:
             if valor is not None:
                 setattr(voo, campo, valor); campos.append(campo)

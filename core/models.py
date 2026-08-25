@@ -184,11 +184,12 @@ class Voo(models.Model):
         ("monitoramento", "Monitoramento"),
         ("inspecao", "Inspeção"),
         ("mapeamento", "Mapeamento"),
+        ("fotografia", "Fotografia"),
         ("treinamento", "Treinamento"),
         ("outro", "Outro"),
     ]
 
-    data = models.DateField()
+    data = models.DateField(null=True, blank=True)
 
     piloto = models.ForeignKey(
         Piloto,
@@ -209,9 +210,9 @@ class Voo(models.Model):
         max_length=200
     )
 
-    hora_inicio = models.TimeField()
+    hora_inicio = models.TimeField(null=True, blank=True)
 
-    hora_fim = models.TimeField()
+    hora_fim = models.TimeField(null=True, blank=True)
 
     bateria_inicial = models.PositiveIntegerField(
         null=True,
@@ -270,6 +271,8 @@ class Voo(models.Model):
 
     @property
     def duracao_minutos(self):
+        if not self.data or not self.hora_inicio or not self.hora_fim:
+            return 0
         inicio = datetime.combine(
             self.data,
             self.hora_inicio

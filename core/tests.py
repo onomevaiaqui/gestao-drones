@@ -496,17 +496,25 @@ class SincronizacaoCalendarioTests(TestCase):
     def test_voo_manual_cria_vinculo_e_exclusao_limpa_calendario(self):
         self.client.force_login(self.admin)
         resposta = self.client.post(reverse("voo_novo"), {
-            "data": timezone.localdate().isoformat(), "piloto": self.piloto.pk, "drone": self.drone.pk,
-            "finalidade": "inspecao", "local": "Área", "hora_inicio": "14:00", "hora_fim": "15:00",
-            "bateria_inicial": 95, "bateria_final": 50, "distancia_m": "1000", "observacoes": "",
+            "piloto": self.piloto.pk, "drone": self.drone.pk,
+            "finalidade": "fotografia", "local": "Área", "observacoes": "",
         })
         self.assertRedirects(resposta, reverse("voos"))
         voo = Voo.objects.get(piloto=self.piloto)
-        self.assertIsNotNone(voo.alocacao_calendario_id)
-        alocacao_id = voo.alocacao_calendario_id
+        self.assertIsNone(voo.data)
+        self.assertIsNone(voo.hora_inicio)
+        self.assertIsNone(voo.alocacao_calendario_id)
+        self.assertEqual(voo.finalidade, "fotografia")
         self.client.post(reverse("voo_excluir", args=[voo.pk]))
         self.assertFalse(Voo.objects.filter(pk=voo.pk).exists())
-        self.assertFalse(Alocacao.objects.filter(pk=alocacao_id).exists())
+
+    def test_formulario_manual_mantem_apenas_dados_nao_fornecidos_pela_telemetria(self):
+        from .forms import VooForm
+
+        self.assertEqual(
+            list(VooForm().fields),
+            ["piloto", "drone", "finalidade", "local", "observacoes"],
+        )
 
     def test_piloto_solicita_em_vez_de_registrar_voo_direto(self):
         self.client.force_login(self.usuario)

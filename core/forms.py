@@ -143,16 +143,12 @@ class DroneForm(forms.ModelForm):
 class VooForm(forms.ModelForm):
     class Meta:
         model = Voo
-        exclude = ["criado_por", "alocacao_calendario", "bateria_inicial", "bateria_final"]
+        fields = ["piloto", "drone", "finalidade", "local", "observacoes"]
         widgets = {
-            "data": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
-            "hora_inicio": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
-            "hora_fim": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
             "piloto": forms.Select(attrs={"class": "form-select"}),
             "drone": forms.Select(attrs={"class": "form-select"}),
             "finalidade": forms.Select(attrs={"class": "form-select"}),
             "local": forms.TextInput(attrs={"class": "form-control"}),
-            "distancia_m": forms.NumberInput(attrs={"class": "form-control"}),
             "observacoes": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
 

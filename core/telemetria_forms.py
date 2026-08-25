@@ -6,11 +6,6 @@ from .models import ImportacaoLog, Voo
 
 
 class ImportacaoLogForm(forms.ModelForm):
-    atualizar_voo = forms.BooleanField(
-        required=False, label="Atualizar distância e bateria do voo com o resumo importado",
-        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
-    )
-
     class Meta:
         model = ImportacaoLog
         fields = ["voo", "arquivo"]

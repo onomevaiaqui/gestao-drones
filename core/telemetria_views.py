@@ -9,7 +9,7 @@ from django.views.decorators.http import require_POST
 from .models import ImportacaoLog, Voo
 from .telemetria_forms import ImportacaoLogForm
 from .telemetria_service import processar_importacao
-from .views import _base_context, usuario_e_admin
+from .views import _base_context, _sincronizar_voo_com_calendario, usuario_e_admin
 
 
 def _voos_permitidos(user):
@@ -50,7 +50,8 @@ def telemetria_importar(request):
         importacao.importado_por = request.user
         importacao.save()
         try:
-            processar_importacao(importacao, atualizar_voo=form.cleaned_data["atualizar_voo"])
+            processar_importacao(importacao, atualizar_voo=True)
+            _sincronizar_voo_com_calendario(importacao.voo, request.user)
             messages.success(request, f"Log importado: {importacao.total_pontos} pontos reconhecidos.")
         except Exception as exc:
             importacao.status = "erro"

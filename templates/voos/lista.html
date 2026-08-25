@@ -51,13 +51,13 @@
             <tbody>
             {% for v in voos %}
             <tr>
-                <td>{{ v.data|date:"d/m/Y" }}</td>
+                <td>{% if v.data %}{{ v.data|date:"d/m/Y" }}{% else %}<span class="badge-soft orange">Aguardando telemetria</span>{% endif %}</td>
                 <td>{{ v.piloto }}</td>
                 <td>{{ v.drone }}</td>
                 <td>{{ v.get_finalidade_display }}</td>
-                <td>{{ v.hora_inicio|time:"H:i" }}</td>
-                <td>{{ v.hora_fim|time:"H:i" }}</td>
-                <td>{{ v.duracao_minutos }} min</td>
+                <td>{{ v.hora_inicio|time:"H:i"|default:"—" }}</td>
+                <td>{{ v.hora_fim|time:"H:i"|default:"—" }}</td>
+                <td>{% if v.data %}{{ v.duracao_minutos }} min{% else %}—{% endif %}</td>
                 <td>{% if v.distancia_m %}{{ v.distancia_m }} m{% else %}-{% endif %}</td>
 
                 {% if eh_admin or user.is_superuser %}

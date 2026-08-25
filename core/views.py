@@ -365,7 +365,9 @@ def dashboard(request):
     if primeiro:
         return primeiro
 
-    voos_qs = Voo.objects.select_related("piloto", "drone")
+    voos_qs = Voo.objects.select_related("piloto", "drone").filter(
+        data__isnull=False, hora_inicio__isnull=False, hora_fim__isnull=False,
+    )
 
     inicio = request.GET.get("inicio")
     fim = request.GET.get("fim")
@@ -551,6 +553,8 @@ def minha_agenda(request):
 
 
 def _sincronizar_voo_com_calendario(voo, usuario):
+    if not voo.data or not voo.hora_inicio or not voo.hora_fim:
+        return None
     agora = timezone.localtime()
 
     inicio_voo = timezone.make_aware(
@@ -848,7 +852,7 @@ def voo_editar(request, pk):
         "form": form,
         "titulo": (
             f"Editar voo - "
-            f"{voo.data.strftime('%d/%m/%Y')}"
+            f"{voo.data.strftime('%d/%m/%Y') if voo.data else 'aguardando telemetria'}"
         ),
         "voo": voo,
     }
@@ -2027,7 +2031,7 @@ def _filtrar_voos_relatorio(request):
     qs = Voo.objects.select_related(
         "piloto",
         "drone"
-    )
+    ).filter(data__isnull=False, hora_inicio__isnull=False, hora_fim__isnull=False)
 
     inicio = request.GET.get("inicio")
     fim = request.GET.get("fim")
