@@ -259,6 +259,13 @@ class Voo(models.Model):
             "-data",
             "-hora_inicio",
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["data", "piloto", "drone"],
+                condition=models.Q(data__isnull=False),
+                name="voo_unico_por_data_piloto_drone",
+            ),
+        ]
         verbose_name = "Voo"
         verbose_name_plural = "Voos"
 

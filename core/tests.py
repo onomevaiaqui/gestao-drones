@@ -1,4 +1,4 @@
-from datetime import time, timedelta
+from datetime import date, time, timedelta
 import tempfile
 
 from django.contrib.auth.models import User
@@ -336,6 +336,29 @@ class TelemetriaTests(TestCase):
         self.assertIn(self.voo, form.fields["voo"].queryset)
         self.assertIn(pendente, form.fields["voo"].queryset)
         self.assertIn(f"Voo #{pendente.pk}", form.fields["voo"].label_from_instance(pendente))
+
+    def test_telemetria_consolida_mesmo_drone_piloto_e_dia(self):
+        self.voo.data = date(2026, 8, 24)
+        self.voo.save(update_fields=["data"])
+        rascunho = Voo.objects.create(
+            piloto=self.piloto, drone=self.drone, finalidade="fotografia",
+            local="Área", criado_por=self.usuario,
+        )
+        conteudo = (
+            "timestamp,seconds,latitude,longitude,altitude,battery\n"
+            "2026-08-24T15:00:00-03:00,0,-25.30,-51.27,10,95\n"
+            "2026-08-24T15:00:10-03:00,10,-25.31,-51.28,20,90\n"
+        ).encode()
+        importacao = ImportacaoLog.objects.create(
+            voo=rascunho,
+            arquivo=SimpleUploadedFile("trecho.csv", conteudo, content_type="text/csv"),
+            nome_original="trecho.csv", formato="csv", importado_por=self.usuario,
+        )
+        processar_importacao(importacao, atualizar_voo=True)
+        importacao.refresh_from_db()
+        self.assertEqual(importacao.voo_id, self.voo.pk)
+        self.assertFalse(Voo.objects.filter(pk=rascunho.pk).exists())
+        self.assertEqual(Voo.objects.filter(data=date(2026, 8, 24), piloto=self.piloto, drone=self.drone).count(), 1)
 
 
 class ComponenteTests(TestCase):

@@ -188,6 +188,22 @@ def _concluir_importacao(importacao, pontos, atualizar_voo):
     importacao.save()
     if atualizar_voo:
         voo = importacao.voo
+        inicio_importado = importacao.inicio_registro
+        if inicio_importado:
+            data_importada = timezone.localtime(inicio_importado).date()
+            voo_existente = type(voo).objects.filter(
+                data=data_importada, piloto_id=voo.piloto_id, drone_id=voo.drone_id,
+            ).exclude(pk=voo.pk).order_by("pk").first()
+            if voo_existente:
+                voo_original = voo
+                voo_original.importacoes_log.update(voo=voo_existente)
+                importacao.voo = voo_existente
+                voo = voo_existente
+                if not hasattr(voo_original, "registro_pos_voo"):
+                    alocacao = voo_original.alocacao_calendario
+                    voo_original.delete()
+                    if alocacao and not hasattr(alocacao, "solicitacao_voo") and not hasattr(alocacao, "registro_pos_voo"):
+                        alocacao.delete()
         importacoes = list(
             voo.importacoes_log.filter(status="concluida").order_by("inicio_registro", "criado_em")
         )
