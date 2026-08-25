@@ -235,6 +235,11 @@ class QualificacaoPilotoTests(TestCase):
         )
 
     def test_perfil_calcula_experiencia(self):
+        voo = Voo.objects.get(piloto=self.piloto)
+        ImportacaoLog.objects.create(
+            voo=voo, nome_original="treinamento.txt", formato="txt", importado_por=self.usuario,
+            status="concluida", duracao_segundos=5400,
+        )
         self.client.force_login(self.usuario)
         resposta = self.client.get(reverse("meu_perfil_operacional"), follow=True)
         self.assertEqual(resposta.status_code, 200)
@@ -265,6 +270,12 @@ class QualificacaoPilotoTests(TestCase):
         resposta = self.client.get(reverse("meu_perfil_operacional"), follow=True)
         self.assertContains(resposta, "0h 03min 15s")
         self.assertContains(resposta, ">1<", count=2)
+
+    def test_perfil_nao_contabiliza_voo_sem_log(self):
+        self.client.force_login(self.usuario)
+        resposta = self.client.get(reverse("meu_perfil_operacional"), follow=True)
+        self.assertContains(resposta, "0h 00min 00s")
+        self.assertContains(resposta, "O piloto ainda não possui voos registrados")
 
     def test_qualificacao_vencida_gera_alerta(self):
         qualificacao = QualificacaoPiloto.objects.create(

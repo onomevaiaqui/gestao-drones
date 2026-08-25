@@ -291,24 +291,7 @@ class Voo(models.Model):
             ]
         if duracoes:
             return sum(duracoes)
-        if not self.data or not self.hora_inicio or not self.hora_fim:
-            return 0
-        inicio = datetime.combine(
-            self.data,
-            self.hora_inicio
-        )
-
-        fim = datetime.combine(
-            self.data,
-            self.hora_fim
-        )
-
-        if fim < inicio:
-            fim += timedelta(
-                days=1
-            )
-
-        return int((fim - inicio).total_seconds())
+        return 0
 
     @property
     def duracao_minutos(self):
