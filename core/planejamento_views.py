@@ -22,14 +22,14 @@ from .views import _base_context, usuario_e_admin, usuario_e_coordenador, usuari
 
 
 def _planejamentos_visiveis(request):
-    qs = PlanejamentoVoo.objects.select_related("piloto", "criado_por", "solicitacao_voo")
+    qs = PlanejamentoVoo.objects.select_related("piloto", "criado_por")
     if usuario_tem_visao_global(request.user):
         return qs
     return qs.filter(piloto__user=request.user)
 
 
 def _planejamentos_editaveis(request):
-    qs = PlanejamentoVoo.objects.select_related("piloto", "criado_por", "solicitacao_voo")
+    qs = PlanejamentoVoo.objects.select_related("piloto", "criado_por")
     if usuario_e_admin(request.user):
         return qs
     if usuario_e_coordenador(request.user):

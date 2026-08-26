@@ -111,6 +111,7 @@ class PlanejamentoVooTests(TestCase):
         resposta = self.client.get(reverse("solicitacao_voo_nova"), {"planejamento": self.obj.pk})
         form = resposta.context["form"]
         self.assertEqual(form.initial["data"], self.obj.data)
+        self.assertEqual(form.initial["data_fim"], self.obj.data)
         self.assertEqual(form.initial["hora_inicio"], self.obj.hora_inicio)
         self.assertEqual(form.initial["hora_fim"], self.obj.hora_fim)
         self.assertEqual(form.initial["local"], "Parque Ambiental, Guarapuava/PR")

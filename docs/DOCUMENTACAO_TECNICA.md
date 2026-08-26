@@ -1,6 +1,6 @@
 # Documentação técnica do SISMOD
 
-Versão documental: 1.0
+Versão documental: 1.1
 Última revisão: 26/08/2026
 
 ## 1. Finalidade
@@ -104,11 +104,12 @@ gestao_drones/
 ### Dashboard
 
 - métricas somente de voos comprovados por logs;
-- mapa e operações previstas do dia;
+- mapa com todas as operações em andamento e futuras; a linha da agenda centraliza a área planejada no mapa;
 - situação de pilotos, qualificações, frota, inspeções e documentos;
 - avaliações de risco e incidentes pendentes;
 - últimos 30 dias comparados aos 30 anteriores;
-- gráficos por piloto, aeronave, finalidade e período.
+- gráficos por piloto, aeronave, finalidade e período;
+- filtro próprio de data para o gráfico de horas de voo ao longo do tempo.
 
 ### Planejamento de voo
 
@@ -121,9 +122,11 @@ gestao_drones/
 ### Reservas, calendário e checklist
 
 - reserva representa disponibilidade prevista, não voo realizado;
+- possui data/hora inicial e data/hora final, inclusive para períodos com mais de um dia;
+- permite escolher vários drones por caixas de seleção; é criada uma reserva independente por aeronave;
 - reserva comum é liberada sem aprovação administrativa;
 - quando exigida, a avaliação de risco é preenchida e aceita pelo piloto;
-- calendário impede conflito da mesma aeronave;
+- calendário impede sobreposição de períodos da mesma aeronave e exibe reservas em todos os dias abrangidos;
 - checklist concluído só pode ser alterado pelo administrador.
 
 ### Avaliação de risco

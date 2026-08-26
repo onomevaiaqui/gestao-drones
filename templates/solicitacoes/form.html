@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-header"><div><h1>{{ titulo }}</h1><p>Informe os dados da operação desejada</p></div></div>
 <form method="post">{% csrf_token %}
-<div class="panel"><div class="form-layout">
-{% for field in form %}<div class="mb-3">{% if field.name == "requer_avaliacao_risco" %}<label class="form-check">{{ field }} <span>{{ field.label }}</span></label>{% else %}<label>{{ field.label }}</label>{{ field }}{% endif %}{% if field.help_text %}<div class="text-muted small mt-1">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}
+<div class="panel"><div class="form-layout reservation-form-layout">
+{% for field in form %}<div class="mb-3 reservation-field field-{{ field.name }}">{% if field.name == "requer_avaliacao_risco" %}<label class="form-check">{{ field }} <span>{{ field.label }}</span></label>{% elif field.name == "drones" %}<label>{{ field.label }}</label><div class="drone-checkbox-grid">{{ field }}</div>{% else %}<label>{{ field.label }}</label>{{ field }}{% endif %}{% if field.help_text %}<div class="text-muted small mt-1">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}
 </div><div class="form-actions"><a class="btn btn-light" href="{% url 'solicitacoes_voo' %}">Cancelar</a><button type="submit" class="btn btn-primary">Salvar reserva</button></div></div>
 </form>{% endblock %}

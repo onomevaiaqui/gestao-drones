@@ -1,6 +1,7 @@
 import unicodedata
+from datetime import datetime
 
-from django.db import transaction
+from django.db import models, transaction
 
 from .models import Alocacao, Voo
 
@@ -33,19 +34,26 @@ def liberar_solicitacao(solicitacao, usuario):
         raise LiberacaoVooErro("O drone selecionado não está disponível.")
 
     conflitos = Alocacao.objects.filter(
-        data=solicitacao.data,
+        data__lte=solicitacao.data_final,
         drone=solicitacao.drone,
         status="reservado",
-        hora_inicio__lt=solicitacao.hora_fim,
-        hora_fim__gt=solicitacao.hora_inicio,
+    ).filter(
+        models.Q(data_fim__gte=solicitacao.data) | models.Q(data_fim__isnull=True, data__gte=solicitacao.data)
     )
     if solicitacao.alocacao_id:
         conflitos = conflitos.exclude(pk=solicitacao.alocacao_id)
-    if conflitos.exists():
+    inicio_novo = datetime.combine(solicitacao.data, solicitacao.hora_inicio)
+    fim_novo = datetime.combine(solicitacao.data_final, solicitacao.hora_fim)
+    if any(
+        datetime.combine(item.data, item.hora_inicio) < fim_novo
+        and datetime.combine(item.data_final, item.hora_fim) > inicio_novo
+        for item in conflitos
+    ):
         raise LiberacaoVooErro("Existe outra reserva para este drone no horário.")
 
     dados_alocacao = {
         "data": solicitacao.data,
+        "data_fim": solicitacao.data_final,
         "hora_inicio": solicitacao.hora_inicio,
         "hora_fim": solicitacao.hora_fim,
         "piloto": solicitacao.piloto,

@@ -2,12 +2,21 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
+from django.db import transaction
 from django.db.models import Q
 
 from .models import Piloto, Alocacao, SolicitacaoVoo, PlanejamentoVoo
 from .solicitacao_service import LiberacaoVooErro, liberar_solicitacao
 from .solicitacao_forms import SolicitacaoVooForm
 from .views import usuario_e_admin, usuario_e_coordenador, usuario_tem_visao_global, admin_required, _base_context
+
+
+def _planejamento_exige_risco(planejamento):
+    return bool(planejamento and (
+        planejamento.status_meteorologico in ("atencao", "desfavoravel")
+        or planejamento.resumo_meteorologico.get("aeronautica", {}).get("status") in ("atencao", "desfavoravel")
+        or planejamento.resumo_meteorologico.get("sisclaten", {}).get("status") in ("aafa_necessaria", "confirmar")
+    ))
 
 @login_required
 def solicitacoes_voo(request):
@@ -39,6 +48,7 @@ def solicitacao_voo_nova(request):
     initial = {}
     if planejamento_inicial:
         initial = {"planejamento": planejamento_inicial, "data": planejamento_inicial.data,
+                   "data_fim": planejamento_inicial.data,
                    "hora_inicio": planejamento_inicial.hora_inicio, "hora_fim": planejamento_inicial.hora_fim,
                    "piloto": planejamento_inicial.piloto, "local": planejamento_inicial.local,
                    "finalidade": planejamento_inicial.finalidade}
@@ -52,30 +62,31 @@ def solicitacao_voo_nova(request):
         form.fields["piloto"].queryset = Piloto.objects.filter(pk=piloto.pk)
         form.fields["piloto"].initial = piloto
         form.fields["piloto"].disabled = True
-        form.fields["planejamento"].queryset = PlanejamentoVoo.objects.filter(
-            piloto=piloto, solicitacao_voo__isnull=True
-        )
+        form.fields["planejamento"].queryset = PlanejamentoVoo.objects.filter(piloto=piloto)
     else:
-        form.fields["planejamento"].queryset = PlanejamentoVoo.objects.filter(solicitacao_voo__isnull=True)
+        form.fields["planejamento"].queryset = PlanejamentoVoo.objects.all()
     if form.is_valid():
-        obj = form.save(commit=False)
+        base = form.save(commit=False)
         if not eh_admin:
-            obj.piloto = request.user.piloto
-        obj.criado_por = request.user
-        if obj.planejamento and (obj.planejamento.status_meteorologico in ("atencao", "desfavoravel") or
-                obj.planejamento.resumo_meteorologico.get("aeronautica", {}).get("status") in ("atencao", "desfavoravel") or
-                obj.planejamento.resumo_meteorologico.get("sisclaten", {}).get("status") in ("aafa_necessaria", "confirmar")):
-            obj.requer_avaliacao_risco = True
-        obj.status = "solicitado"
-        obj.save()
-        if obj.requer_avaliacao_risco:
-            messages.success(request, "Reserva registrada. Preencha a avaliação de risco para liberar a operação.")
+            base.piloto = request.user.piloto
+        drones = list(form.cleaned_data["drones"])
+        criadas = []
+        with transaction.atomic():
+            for drone in drones:
+                obj = SolicitacaoVoo.objects.create(
+                    planejamento=base.planejamento, data=base.data, data_fim=base.data_fim,
+                    hora_inicio=base.hora_inicio, hora_fim=base.hora_fim, piloto=base.piloto,
+                    drone=drone, finalidade=base.finalidade, local=base.local,
+                    observacoes=base.observacoes, requer_avaliacao_risco=(base.requer_avaliacao_risco or _planejamento_exige_risco(base.planejamento)),
+                    status="solicitado", criado_por=request.user,
+                )
+                criadas.append(obj)
+                if not obj.requer_avaliacao_risco:
+                    liberar_solicitacao(obj, request.user)
+        if any(obj.requer_avaliacao_risco for obj in criadas):
+            messages.success(request, f"{len(criadas)} reserva(s) registrada(s). Preencha as avaliações de risco pendentes.")
         else:
-            try:
-                liberar_solicitacao(obj, request.user)
-                messages.success(request, "Drone reservado e operação adicionada ao calendário.")
-            except LiberacaoVooErro as erro:
-                messages.error(request, f"A reserva foi salva, mas a operação não pôde ser liberada: {erro}")
+            messages.success(request, f"{len(criadas)} drone(s) reservado(s) e adicionados ao calendário.")
         return redirect("solicitacoes_voo")
     ctx = {"form": form, "titulo": "Reservar drone"}
     ctx.update(_base_context(request))
@@ -100,21 +111,29 @@ def solicitacao_voo_editar(request, pk):
             messages.error(request, "Somente solicitações pendentes podem ser editadas.")
             return redirect("solicitacoes_voo")
     form = SolicitacaoVooForm(request.POST or None, instance=obj)
-    form.fields["planejamento"].queryset = PlanejamentoVoo.objects.filter(
-        Q(solicitacao_voo__isnull=True) | Q(pk=obj.planejamento_id)
-    )
+    form.fields["planejamento"].queryset = PlanejamentoVoo.objects.all()
     if not eh_admin:
         form.fields["piloto"].queryset = Piloto.objects.filter(pk=request.user.piloto.pk)
         form.fields["piloto"].disabled = True
         form.fields["planejamento"].queryset = form.fields["planejamento"].queryset.filter(piloto=request.user.piloto)
     if form.is_valid():
         obj = form.save(commit=False)
+        drones = list(form.cleaned_data["drones"])
+        obj.drone = drones[0]
         if not eh_admin:
             obj.piloto = request.user.piloto
-        if obj.planejamento and (obj.planejamento.status_meteorologico in ("atencao", "desfavoravel") or
-                obj.planejamento.resumo_meteorologico.get("aeronautica", {}).get("status") in ("atencao", "desfavoravel")):
+        if _planejamento_exige_risco(obj.planejamento):
             obj.requer_avaliacao_risco = True
         obj.save()
+        for drone in drones[1:]:
+            adicional = SolicitacaoVoo.objects.create(
+                planejamento=obj.planejamento, data=obj.data, data_fim=obj.data_fim,
+                hora_inicio=obj.hora_inicio, hora_fim=obj.hora_fim, piloto=obj.piloto,
+                drone=drone, finalidade=obj.finalidade, local=obj.local, observacoes=obj.observacoes,
+                requer_avaliacao_risco=obj.requer_avaliacao_risco, status="solicitado", criado_por=request.user,
+            )
+            if not adicional.requer_avaliacao_risco:
+                liberar_solicitacao(adicional, request.user)
         if obj.status == "solicitado" and not obj.requer_avaliacao_risco:
             try:
                 liberar_solicitacao(obj, request.user)
@@ -124,6 +143,7 @@ def solicitacao_voo_editar(request, pk):
         if eh_admin and obj.status == "aprovado" and obj.alocacao_id:
             aloc = obj.alocacao
             aloc.data = obj.data
+            aloc.data_fim = obj.data_final
             aloc.hora_inicio = obj.hora_inicio
             aloc.hora_fim = obj.hora_fim
             aloc.piloto = obj.piloto

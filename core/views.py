@@ -324,7 +324,7 @@ def _atualizar_reservas_vencidas():
     for reserva in abertas:
         fim = timezone.make_aware(
             datetime.combine(
-                reserva.data,
+                reserva.data_final,
                 reserva.hora_fim
             ),
             timezone.get_current_timezone(),
@@ -346,16 +346,20 @@ def _atualizar_reservas_vencidas():
 
 def _atualizar_status_drones_por_reserva():
     agora = timezone.localtime()
-    reservas_ativas = (
+    candidatas = (
         Alocacao.objects
         .filter(
             status="reservado",
-            data=agora.date(),
-            hora_inicio__lte=agora.time(),
-            hora_fim__gt=agora.time(),
+            data__lte=agora.date(),
         )
+        .filter(Q(data_fim__gte=agora.date()) | Q(data_fim__isnull=True, data=agora.date()))
         .select_related("drone")
     )
+    reservas_ativas = [
+        reserva for reserva in candidatas
+        if timezone.make_aware(datetime.combine(reserva.data, reserva.hora_inicio)) <= agora
+        < timezone.make_aware(datetime.combine(reserva.data_final, reserva.hora_fim))
+    ]
 
     drones_em_reserva = set()
 
@@ -396,6 +400,18 @@ def _atualizar_status_drones_por_reserva():
         )
 
 
+def _drone_tem_reserva_em_andamento(drone, agora=None):
+    agora = agora or timezone.localtime()
+    candidatas = Alocacao.objects.filter(
+        drone=drone, status="reservado", data__lte=agora.date(),
+    ).filter(Q(data_fim__gte=agora.date()) | Q(data_fim__isnull=True, data=agora.date()))
+    return any(
+        timezone.make_aware(datetime.combine(item.data, item.hora_inicio)) <= agora
+        < timezone.make_aware(datetime.combine(item.data_final, item.hora_fim))
+        for item in candidatas
+    )
+
+
 # =========================================================
 # DASHBOARD
 # =========================================================
@@ -424,6 +440,8 @@ def dashboard(request):
         except Piloto.DoesNotExist:
             voos_qs = voos_qs.none()
 
+    voos_tempo_qs = voos_qs
+
     inicio = request.GET.get("inicio")
     fim = request.GET.get("fim")
 
@@ -432,6 +450,13 @@ def dashboard(request):
 
     if fim:
         voos_qs = voos_qs.filter(data__lte=fim)
+
+    grafico_inicio = request.GET.get("grafico_inicio")
+    grafico_fim = request.GET.get("grafico_fim")
+    if grafico_inicio:
+        voos_tempo_qs = voos_tempo_qs.filter(data__gte=grafico_inicio)
+    if grafico_fim:
+        voos_tempo_qs = voos_tempo_qs.filter(data__lte=grafico_fim)
 
     total_voos = voos_qs.count()
     total_segundos = sum(voo.duracao_segundos_operacionais for voo in voos_qs)
@@ -485,7 +510,7 @@ def dashboard(request):
     ]
 
     dias = defaultdict(int)
-    for voo in voos_qs:
+    for voo in voos_tempo_qs:
         dias[voo.data.isoformat()] += voo.duracao_segundos_operacionais
 
     tempo_data = [
@@ -505,31 +530,43 @@ def dashboard(request):
 
     agora_dashboard = timezone.localtime()
 
-    operacoes_agora_qs = (
+    operacoes_dia_qs = (
         Alocacao.objects
         .select_related("piloto", "drone")
         .filter(
             status="reservado",
-            data=agora_dashboard.date(),
-            hora_inicio__lte=agora_dashboard.time(),
-            hora_fim__gt=agora_dashboard.time(),
+            data__lte=agora_dashboard.date(),
         )
+        .filter(Q(data_fim__gte=agora_dashboard.date()) | Q(data_fim__isnull=True, data=agora_dashboard.date()))
         .order_by("hora_inicio", "piloto__nome")
     )
     if piloto_sessao:
-        operacoes_agora_qs = operacoes_agora_qs.filter(piloto=piloto_sessao)
-    operacoes_agora = list(operacoes_agora_qs)
+        operacoes_dia_qs = operacoes_dia_qs.filter(piloto=piloto_sessao)
+    operacoes_dia = list(operacoes_dia_qs)
+    instante_atual = agora_dashboard
+    operacoes_agora = [
+        reserva for reserva in operacoes_dia
+        if timezone.make_aware(datetime.combine(reserva.data, reserva.hora_inicio)) <= instante_atual
+        < timezone.make_aware(datetime.combine(reserva.data_final, reserva.hora_fim))
+    ]
+
+    operacoes_previstas_qs = (
+        Alocacao.objects
+        .select_related("piloto", "drone", "solicitacao_voo__planejamento")
+        .filter(status="reservado")
+        .filter(Q(data_fim__gte=agora_dashboard.date()) | Q(data_fim__isnull=True, data__gte=agora_dashboard.date()))
+        .order_by("data", "hora_inicio", "piloto__nome")
+    )
+    if piloto_sessao:
+        operacoes_previstas_qs = operacoes_previstas_qs.filter(piloto=piloto_sessao)
+    reservas_previstas = [
+        reserva for reserva in operacoes_previstas_qs
+        if timezone.make_aware(datetime.combine(reserva.data_final, reserva.hora_fim)) > agora_dashboard
+    ]
 
     operacoes_mapa = []
     if visao_global:
-        reservas_mapa = (
-            Alocacao.objects
-            .select_related("piloto", "drone", "solicitacao_voo__planejamento")
-            .filter(data=agora_dashboard.date())
-            .exclude(status="cancelado")
-            .order_by("hora_inicio")
-        )
-        for reserva in reservas_mapa:
+        for reserva in reservas_previstas:
             try:
                 solicitacao = reserva.solicitacao_voo
             except SolicitacaoVoo.DoesNotExist:
@@ -537,26 +574,37 @@ def dashboard(request):
             planejamento = solicitacao.planejamento
             if not planejamento or not planejamento.area_geojson:
                 continue
-            em_andamento = (
-                reserva.status == "reservado"
-                and reserva.hora_inicio <= agora_dashboard.time() < reserva.hora_fim
-            )
+            inicio_reserva = timezone.make_aware(datetime.combine(reserva.data, reserva.hora_inicio))
+            fim_reserva = timezone.make_aware(datetime.combine(reserva.data_final, reserva.hora_fim))
+            em_andamento = reserva.status == "reservado" and inicio_reserva <= agora_dashboard < fim_reserva
             operacoes_mapa.append({
                 "id": reserva.pk,
                 "piloto": reserva.piloto.nome,
                 "drone": reserva.drone.nome,
                 "prefixo": reserva.drone.prefixo,
                 "local": reserva.local or planejamento.local or "Local não informado",
-                "horario": f"{reserva.hora_inicio.strftime('%H:%M')}–{reserva.hora_fim.strftime('%H:%M')}",
+                "horario": f"{reserva.data.strftime('%d/%m/%Y')} {reserva.hora_inicio.strftime('%H:%M')}–{reserva.data_final.strftime('%d/%m/%Y')} {reserva.hora_fim.strftime('%H:%M')}",
                 "finalidade": reserva.finalidade,
                 "situacao": "em_andamento" if em_andamento else reserva.status,
                 "area": planejamento.area_geojson,
                 "centro": [float(planejamento.centro_latitude), float(planejamento.centro_longitude)],
             })
 
-    reservas_hoje_qs = Alocacao.objects.filter(
-        data=agora_dashboard.date(),
-        status="reservado",
+    ids_com_mapa = {item["id"] for item in operacoes_mapa}
+    operacoes_previstas = []
+    for reserva in reservas_previstas:
+        inicio_reserva = timezone.make_aware(datetime.combine(reserva.data, reserva.hora_inicio))
+        fim_reserva = timezone.make_aware(datetime.combine(reserva.data_final, reserva.hora_fim))
+        if inicio_reserva <= agora_dashboard < fim_reserva:
+            situacao, situacao_label = "em_andamento", "Em andamento"
+        elif agora_dashboard < inicio_reserva:
+            situacao, situacao_label = "reservado", "Prevista"
+        else:
+            situacao, situacao_label = "concluido", "Finalizada"
+        operacoes_previstas.append({"reserva": reserva, "situacao": situacao, "situacao_label": situacao_label, "tem_mapa": reserva.pk in ids_com_mapa})
+
+    reservas_hoje_qs = Alocacao.objects.filter(status="reservado", data__lte=agora_dashboard.date()).filter(
+        Q(data_fim__gte=agora_dashboard.date()) | Q(data_fim__isnull=True, data=agora_dashboard.date())
     )
     if piloto_sessao:
         reservas_hoje_qs = reservas_hoje_qs.filter(piloto=piloto_sessao)
@@ -567,7 +615,7 @@ def dashboard(request):
         .select_related("piloto", "drone")
         .filter(
             status="reservado",
-            data__gte=agora_dashboard.date(),
+            data_fim__gte=agora_dashboard.date(),
         )
     )
     if piloto_sessao:
@@ -667,6 +715,7 @@ def dashboard(request):
         "drones_em_manutencao": status_drones["manutencao"],
         "operacoes_agora": operacoes_agora,
         "operacoes_agora_total": len(operacoes_agora),
+        "operacoes_previstas": operacoes_previstas,
         "operacoes_mapa": operacoes_mapa,
         "pilotos_ativos_total": Piloto.objects.filter(ativo=True).count() if visao_global else (1 if piloto_sessao else 0),
         "operacoes_sem_log": concluidas_sem_log_qs.distinct().count(),
@@ -684,6 +733,8 @@ def dashboard(request):
         "ultimos_voos": voos_qs[:6],
         "inicio": inicio or "",
         "fim": fim or "",
+        "grafico_inicio": grafico_inicio or "",
+        "grafico_fim": grafico_fim or "",
     }
 
     ctx.update(_base_context(request))
@@ -708,7 +759,8 @@ def minha_agenda(request):
         reservas = (
             Alocacao.objects
             .select_related("piloto", "drone")
-            .filter(status="reservado", data__gte=hoje)
+            .filter(status="reservado")
+            .filter(Q(data_fim__gte=hoje) | Q(data_fim__isnull=True, data__gte=hoje))
             .order_by("data", "hora_inicio")[:20]
         )
         voos_recentes = (
@@ -728,11 +780,8 @@ def minha_agenda(request):
         reservas = (
             Alocacao.objects
             .select_related("piloto", "drone")
-            .filter(
-                piloto=piloto,
-                status="reservado",
-                data__gte=hoje,
-            )
+            .filter(piloto=piloto, status="reservado")
+            .filter(Q(data_fim__gte=hoje) | Q(data_fim__isnull=True, data__gte=hoje))
             .order_by("data", "hora_inicio")[:20]
         )
         voos_recentes = (
@@ -793,6 +842,7 @@ def _sincronizar_voo_com_calendario(voo, usuario):
 
     if alocacao:
         alocacao.data = voo.data
+        alocacao.data_fim = fim_voo.date()
         alocacao.hora_inicio = voo.hora_inicio
         alocacao.hora_fim = voo.hora_fim
         alocacao.piloto = voo.piloto
@@ -806,7 +856,7 @@ def _sincronizar_voo_com_calendario(voo, usuario):
 
         alocacao.save(
             update_fields=[
-                "data", "hora_inicio", "hora_fim", "piloto", "drone",
+                "data", "data_fim", "hora_inicio", "hora_fim", "piloto", "drone",
                 "finalidade",
                 "local",
                 "observacoes",
@@ -820,6 +870,7 @@ def _sincronizar_voo_com_calendario(voo, usuario):
 
     alocacao = Alocacao.objects.create(
         data=voo.data,
+        data_fim=fim_voo.date(),
         hora_inicio=voo.hora_inicio,
         hora_fim=voo.hora_fim,
         piloto=voo.piloto,
@@ -1539,13 +1590,7 @@ def drone_status_atualizar(request, pk):
         return redirect("drones")
 
     agora = timezone.localtime()
-    reserva_ativa = Alocacao.objects.filter(
-        drone=drone,
-        status="reservado",
-        data=agora.date(),
-        hora_inicio__lte=agora.time(),
-        hora_fim__gt=agora.time(),
-    ).exists()
+    reserva_ativa = _drone_tem_reserva_em_andamento(drone, agora)
 
     if novo_status == "ativo" and reserva_ativa:
         _atualizar_status_drones_por_reserva()
@@ -1701,10 +1746,8 @@ def calendario(request):
     alocacoes = (
         Alocacao.objects
         .select_related("piloto", "drone")
-        .filter(
-            data__gte=inicio_periodo,
-            data__lte=fim_periodo,
-        )
+        .filter(data__lte=fim_periodo)
+        .filter(Q(data_fim__gte=inicio_periodo) | Q(data_fim__isnull=True, data__gte=inicio_periodo))
         .order_by(
             "data",
             "hora_inicio",
@@ -1721,7 +1764,11 @@ def calendario(request):
     por_dia = defaultdict(list)
 
     for reserva in alocacoes:
-        por_dia[reserva.data].append(reserva)
+        dia_reserva = max(reserva.data, inicio_periodo)
+        ultimo_dia = min(reserva.data_final, fim_periodo)
+        while dia_reserva <= ultimo_dia:
+            por_dia[dia_reserva].append(reserva)
+            dia_reserva += timedelta(days=1)
 
     semanas = []
 
@@ -2645,13 +2692,7 @@ def manutencao_concluir(request, pk):
     status_anterior = drone.status
     agora = timezone.localtime()
 
-    reserva_ativa = Alocacao.objects.filter(
-        drone=drone,
-        status="reservado",
-        data=agora.date(),
-        hora_inicio__lte=agora.time(),
-        hora_fim__gt=agora.time(),
-    ).exists()
+    reserva_ativa = _drone_tem_reserva_em_andamento(drone, agora)
 
     novo_status = "em_campo" if reserva_ativa else "ativo"
 
@@ -2724,13 +2765,7 @@ def manutencao_excluir(request, pk):
 
         if not outra_aberta and drone.status == "manutencao":
             agora = timezone.localtime()
-            reserva_ativa = Alocacao.objects.filter(
-                drone=drone,
-                status="reservado",
-                data=agora.date(),
-                hora_inicio__lte=agora.time(),
-                hora_fim__gt=agora.time(),
-            ).exists()
+            reserva_ativa = _drone_tem_reserva_em_andamento(drone, agora)
 
             novo_status = "em_campo" if reserva_ativa else "ativo"
             drone.status = novo_status

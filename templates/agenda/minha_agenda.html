@@ -27,7 +27,8 @@
             <table class="modern-table">
                 <thead>
                 <tr>
-                    <th>Data</th>
+                    <th>Início</th>
+                    <th>Finalização</th>
                     <th>Horário</th>
                     {% if visao_global %}<th>Piloto</th>{% endif %}
                     <th>Drone</th>
@@ -39,6 +40,7 @@
                 {% for r in reservas %}
                 <tr>
                     <td>{{ r.data|date:"d/m/Y" }}</td>
+                    <td>{{ r.data_final|date:"d/m/Y" }}</td>
                     <td>{{ r.hora_inicio|time:"H:i" }} - {{ r.hora_fim|time:"H:i" }}</td>
                     {% if visao_global %}<td>{{ r.piloto.nome }}</td>{% endif %}
                     <td>{{ r.drone.nome }}</td>
@@ -46,7 +48,7 @@
                     <td>{{ r.local|default:"-" }}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="6">Nenhuma reserva futura.</td></tr>
+                <tr><td colspan="7">Nenhuma reserva futura.</td></tr>
                 {% endfor %}
                 </tbody>
             </table>

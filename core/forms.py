@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from django import forms
 from django.contrib.auth.forms import SetPasswordForm
 from django.contrib.auth.models import User
@@ -181,6 +183,7 @@ class AlocacaoForm(forms.ModelForm):
         exclude = ["criado_por", "status"]
         widgets = {
             "data": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "data_fim": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "hora_inicio": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
             "hora_fim": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
             "piloto": forms.Select(attrs={"class": "form-select"}),
@@ -207,24 +210,34 @@ class AlocacaoForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         data = cleaned.get("data")
+        data_fim = cleaned.get("data_fim") or data
         inicio = cleaned.get("hora_inicio")
         fim = cleaned.get("hora_fim")
         drone = cleaned.get("drone")
 
-        if inicio and fim and fim <= inicio:
+        if data and data_fim and data_fim < data:
+            self.add_error("data_fim", "A data final não pode ser anterior à data inicial.")
+
+        if data and data_fim == data and inicio and fim and fim <= inicio:
             self.add_error("hora_fim", "A hora final deve ser posterior à hora inicial.")
 
-        if data and inicio and fim and drone:
+        if data and data_fim and inicio and fim and drone:
             qs = Alocacao.objects.filter(
-                data=data,
                 drone=drone,
                 status="reservado",
-                hora_inicio__lt=fim,
-                hora_fim__gt=inicio,
-            )
+                data__lte=data_fim,
+            ).filter(Q(data_fim__gte=data) | Q(data_fim__isnull=True, data__gte=data))
             if self.instance and self.instance.pk:
                 qs = qs.exclude(pk=self.instance.pk)
-            if qs.exists():
+
+            novo_inicio = datetime.combine(data, inicio)
+            novo_fim = datetime.combine(data_fim, fim)
+            existe_conflito = any(
+                datetime.combine(item.data, item.hora_inicio) < novo_fim
+                and datetime.combine(item.data_final, item.hora_fim) > novo_inicio
+                for item in qs
+            )
+            if existe_conflito:
                 self.add_error(
                     "drone",
                     "Este drone já possui uma reserva nesse intervalo de horário."

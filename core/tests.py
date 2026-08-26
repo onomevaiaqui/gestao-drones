@@ -110,6 +110,10 @@ class SelecaoPerfilAcessoTests(TestCase):
         self.assertEqual(painel.context["reservas_hoje"], 1)
         self.assertEqual(len(painel.context["operacoes_mapa"]), 1)
         self.assertContains(painel, "coordinator-operations-map")
+        self.assertContains(painel, f'data-operation-id="{self.reserva_outro.pk}"')
+        self.assertContains(painel, "Operações previstas e em andamento")
+        self.assertContains(painel, 'name="grafico_inicio"')
+        self.assertContains(painel, 'name="grafico_fim"')
         self.assertContains(painel, "Situação dos pilotos")
         self.assertContains(painel, "Piloto de Outro Usuário")
         self.assertContains(painel, "Horas comprovadas por telemetria")
@@ -380,8 +384,9 @@ class SegurancaOperacionalTests(TestCase):
         data_voo = timezone.localdate() + timedelta(days=5)
         self.client.force_login(self.usuario)
         resposta = self.client.post(reverse("solicitacao_voo_nova"), {
-            "data": data_voo.isoformat(), "hora_inicio": "14:00", "hora_fim": "15:00",
-            "piloto": self.piloto.pk, "drone": self.drone.pk, "finalidade": "fotografia",
+            "data": data_voo.isoformat(), "data_fim": data_voo.isoformat(),
+            "hora_inicio": "14:00", "hora_fim": "15:00",
+            "piloto": self.piloto.pk, "drones": [self.drone.pk], "finalidade": "fotografia",
             "local": "Área fotográfica", "observacoes": "",
         })
         self.assertRedirects(resposta, reverse("solicitacoes_voo"))
@@ -390,6 +395,24 @@ class SegurancaOperacionalTests(TestCase):
         self.assertTrue(Voo.objects.filter(
             data=data_voo, piloto=self.piloto, drone=self.drone
         ).exists())
+
+    def test_reserva_periodo_com_varios_drones(self):
+        outro_drone = Drone.objects.create(nome="Segundo drone", modelo="Modelo", status="ativo")
+        data_inicio = timezone.localdate() + timedelta(days=6)
+        data_fim = data_inicio + timedelta(days=2)
+        self.client.force_login(self.usuario)
+        resposta = self.client.post(reverse("solicitacao_voo_nova"), {
+            "data": data_inicio.isoformat(), "data_fim": data_fim.isoformat(),
+            "hora_inicio": "08:00", "hora_fim": "17:00", "piloto": self.piloto.pk,
+            "drones": [self.drone.pk, outro_drone.pk], "finalidade": "inspecao",
+            "local": "Área de inspeção", "observacoes": "Operação conjunta",
+        })
+        self.assertRedirects(resposta, reverse("solicitacoes_voo"))
+        reservas = SolicitacaoVoo.objects.filter(data=data_inicio, piloto=self.piloto)
+        self.assertEqual(reservas.count(), 2)
+        self.assertEqual(set(reservas.values_list("drone_id", flat=True)), {self.drone.pk, outro_drone.pk})
+        self.assertTrue(all(item.data_fim == data_fim for item in reservas))
+        self.assertEqual(Alocacao.objects.filter(data=data_inicio, data_fim=data_fim).count(), 2)
 
     def test_incidente_do_piloto_aparece_na_central(self):
         alocacao = Alocacao.objects.create(

@@ -45,29 +45,30 @@
         <div class="coordinator-map-legend"><span><i class="current"></i> Em andamento</span><span><i class="reserved"></i> Reservada</span><span><i class="finished"></i> Concluída</span></div>
     </div>
     <div id="coordinator-operations-map"></div>
-    {% if not operacoes_mapa %}<div class="coordinator-map-empty"><strong>Nenhuma área geográfica disponível para hoje.</strong><span>Vincule a reserva a um planejamento com área desenhada para exibi-la no mapa.</span></div>{% endif %}
+    {% if not operacoes_mapa %}<div class="coordinator-map-empty"><strong>Nenhuma área geográfica disponível nas operações previstas.</strong><span>Vincule a reserva a um planejamento com área desenhada para exibi-la no mapa.</span></div>{% endif %}
 </div>
 
 <div class="panel coordinator-live-panel">
     <div class="panel-title-row">
-        <div><h3>Operações previstas em andamento</h3><p>Quem está operando, onde e com qual aeronave neste momento.</p></div>
-        <span class="live-update-note"><i></i> Baseado nas reservas</span>
+        <div><h3>Operações previstas e em andamento</h3><p>Clique em uma operação com área planejada para localizá-la no mapa.</p></div>
+        <span class="live-update-note"><i></i> Agenda operacional futura</span>
     </div>
     <div class="table-responsive">
         <table class="modern-table">
-            <thead><tr><th>Piloto</th><th>Drone / prefixo</th><th>Local</th><th>Horário</th><th>Finalidade</th><th>Situação</th></tr></thead>
+            <thead><tr><th>Período</th><th>Piloto</th><th>Drone / prefixo</th><th>Local</th><th>Finalidade</th><th>Situação</th></tr></thead>
             <tbody>
-            {% for operacao in operacoes_agora %}
-                <tr>
+            {% for item in operacoes_previstas %}{% with operacao=item.reserva %}
+                <tr class="coordinator-operation-row{% if item.tem_mapa %} has-map{% endif %}"{% if item.tem_mapa %} data-operation-id="{{ operacao.pk }}" tabindex="0" title="Localizar no mapa"{% endif %}>
+                    <td>{{ operacao.data|date:"d/m/Y" }} {{ operacao.hora_inicio|time:"H:i" }}<small class="table-subtext">até {{ operacao.data_final|date:"d/m/Y" }} {{ operacao.hora_fim|time:"H:i" }}</small></td>
                     <td><strong>{{ operacao.piloto.nome }}</strong></td>
                     <td>{{ operacao.drone.nome }}{% if operacao.drone.prefixo %}<small class="table-subtext">{{ operacao.drone.prefixo }}</small>{% endif %}</td>
-                    <td>{{ operacao.local|default:"Local não informado" }}</td>
-                    <td>{{ operacao.hora_inicio|time:"H:i" }}–{{ operacao.hora_fim|time:"H:i" }}</td>
+                    <td>{{ operacao.local|default:"Local não informado" }}{% if item.tem_mapa %}<small class="table-subtext">⌖ Clique para localizar</small>{% endif %}</td>
                     <td>{{ operacao.finalidade }}</td>
-                    <td><span class="badge-soft green">Em andamento</span></td>
+                    <td><span class="badge-soft {% if item.situacao == 'em_andamento' %}green{% elif item.situacao == 'reservado' %}blue{% endif %}">{{ item.situacao_label }}</span></td>
                 </tr>
+            {% endwith %}
             {% empty %}
-                <tr><td colspan="6"><div class="empty-state compact"><strong>Nenhuma operação prevista em andamento</strong><p>As operações aparecerão aqui durante o horário reservado.</p></div></td></tr>
+                <tr><td colspan="6"><div class="empty-state compact"><strong>Nenhuma operação prevista</strong><p>As próximas reservas aparecerão aqui.</p></div></td></tr>
             {% endfor %}
             </tbody>
         </table>
@@ -256,7 +257,7 @@
 
 <div class="chart-grid main">
     <div class="panel">
-        <h3>Horas de Voo ao Longo do Tempo</h3>
+        <div class="panel-title-row"><h3>Horas de Voo ao Longo do Tempo</h3><form method="get" class="chart-date-filter"><input type="date" name="grafico_inicio" value="{{ grafico_inicio }}" aria-label="Início do gráfico"><span>até</span><input type="date" name="grafico_fim" value="{{ grafico_fim }}" aria-label="Fim do gráfico"><button class="btn btn-light" type="submit">Filtrar</button></form></div>
         <canvas id="chartTempo"></canvas>
     </div>
 
@@ -481,6 +482,7 @@ new Chart(
         referrerPolicy: "origin"
     }).addTo(map);
     const layers = [];
+    const layersById = {};
     const colors = {em_andamento: "#1f9d68", reservado: "#2f6df6", concluido: "#77869a"};
     operations.forEach(operation => {
         const color = colors[operation.situacao] || "#2f6df6";
@@ -494,11 +496,23 @@ new Chart(
         });
         layer.bindPopup(popup);
         layers.push(layer);
+        layersById[String(operation.id)] = layer;
     });
     if (layers.length) {
         const group = L.featureGroup(layers);
         map.fitBounds(group.getBounds(), {padding: [28, 28], maxZoom: 15});
     }
+    const focusOperation = row => {
+        const layer = layersById[row.dataset.operationId];
+        if (!layer) return;
+        map.fitBounds(layer.getBounds(), {padding: [55, 55], maxZoom: 16});
+        layer.openPopup();
+        container.scrollIntoView({behavior: "smooth", block: "center"});
+    };
+    document.querySelectorAll(".coordinator-operation-row.has-map").forEach(row => {
+        row.addEventListener("click", () => focusOperation(row));
+        row.addEventListener("keydown", event => {if (event.key === "Enter" || event.key === " ") {event.preventDefault(); focusOperation(row);}});
+    });
     setTimeout(() => map.invalidateSize(), 100);
 })();
 {% endif %}

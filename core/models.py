@@ -328,6 +328,8 @@ class Alocacao(models.Model):
 
     data = models.DateField()
 
+    data_fim = models.DateField(null=True, blank=True, verbose_name="Data de finalização")
+
     hora_inicio = models.TimeField()
 
     hora_fim = models.TimeField()
@@ -385,20 +387,29 @@ class Alocacao(models.Model):
             f"{self.piloto}"
         )
 
+    @property
+    def data_final(self):
+        return self.data_fim or self.data
+
     def conflita(self):
-        return (
+        inicio = datetime.combine(self.data, self.hora_inicio)
+        fim = datetime.combine(self.data_final, self.hora_fim)
+        candidatas = (
             Alocacao.objects
             .filter(
-                data=self.data,
+                data__lte=self.data_final,
                 drone=self.drone,
                 status="reservado",
-                hora_inicio__lt=self.hora_fim,
-                hora_fim__gt=self.hora_inicio,
             )
+            .filter(models.Q(data_fim__gte=self.data) | models.Q(data_fim__isnull=True, data__gte=self.data))
             .exclude(
                 pk=self.pk
             )
-            .exists()
+        )
+        return any(
+            datetime.combine(item.data, item.hora_inicio) < fim
+            and datetime.combine(item.data_final, item.hora_fim) > inicio
+            for item in candidatas
         )
 
 
@@ -531,17 +542,18 @@ class SolicitacaoVoo(models.Model):
     piloto = models.ForeignKey(Piloto, on_delete=models.PROTECT, related_name="solicitacoes_voo")
     drone = models.ForeignKey(Drone, on_delete=models.PROTECT, related_name="solicitacoes_voo")
     data = models.DateField()
+    data_fim = models.DateField(null=True, blank=True, verbose_name="Data de finalização")
     hora_inicio = models.TimeField()
     hora_fim = models.TimeField()
     finalidade = models.CharField(max_length=100, choices=Voo.FINALIDADE_CHOICES)
     local = models.CharField(max_length=200, blank=True)
     observacoes = models.TextField(blank=True)
-    planejamento = models.OneToOneField(
+    planejamento = models.ForeignKey(
         PlanejamentoVoo,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="solicitacao_voo",
+        related_name="solicitacoes_voo",
     )
     requer_avaliacao_risco = models.BooleanField(
         default=False,
@@ -560,6 +572,10 @@ class SolicitacaoVoo(models.Model):
 
     def __str__(self):
         return f"{self.data} - {self.piloto} - {self.drone} - {self.get_status_display()}"
+
+    @property
+    def data_final(self):
+        return self.data_fim or self.data
 
 # =========================================================
 # CHECKLIST PRÉ-VOO
