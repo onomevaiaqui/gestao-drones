@@ -222,17 +222,19 @@ class SegurancaOperacionalTests(TestCase):
         self.solicitacao.refresh_from_db()
         self.assertEqual(self.solicitacao.status, "solicitado")
 
-    def test_aprovacao_da_avaliacao_libera_voo_no_calendario_e_telemetria(self):
+    def test_aceite_do_piloto_libera_voo_no_calendario_e_telemetria(self):
         avaliacao = AvaliacaoRisco.objects.create(
             solicitacao=self.solicitacao, perigos_identificados="Obstáculos",
             probabilidade_inicial=3, impacto_inicial=3, medidas_mitigadoras="Isolar área",
-            probabilidade_residual=1, impacto_residual=2, status="submetida",
+            probabilidade_residual=1, impacto_residual=2, status="rascunho",
             preenchido_por=self.usuario,
         )
-        self.client.force_login(self.admin)
+        self.client.force_login(self.usuario)
         resposta = self.client.post(
             reverse("avaliacao_risco", args=[self.solicitacao.pk]),
-            {"acao": "aprovar"},
+            {"perigos_identificados":"Obstáculos", "probabilidade_inicial":3, "impacto_inicial":3,
+             "medidas_mitigadoras":"Isolar área", "probabilidade_residual":1, "impacto_residual":2,
+             "condicoes_meteorologicas":"Favoráveis", "acao":"aceitar"},
         )
         self.assertRedirects(resposta, reverse("solicitacoes_voo"))
         self.solicitacao.refresh_from_db()
@@ -609,7 +611,7 @@ class PermissoesOperacionaisTests(TestCase):
         self.assertTrue(checklist.concluido)
         self.assertEqual(checklist.observacoes, "")
 
-    def test_avaliacao_submetida_fica_bloqueada_para_piloto(self):
+    def test_avaliacao_aceita_fica_bloqueada_para_piloto(self):
         solicitacao = SolicitacaoVoo.objects.create(
             piloto=self.piloto, drone=self.drone, data=timezone.localdate() + timedelta(days=1),
             hora_inicio=time(11), hora_fim=time(12), finalidade="Inspeção", local="Área",
@@ -618,7 +620,7 @@ class PermissoesOperacionaisTests(TestCase):
         avaliacao = AvaliacaoRisco.objects.create(
             solicitacao=solicitacao, perigos_identificados="Risco original",
             probabilidade_inicial=3, impacto_inicial=3, medidas_mitigadoras="Isolar área",
-            probabilidade_residual=1, impacto_residual=2, status="submetida", preenchido_por=self.usuario,
+            probabilidade_residual=1, impacto_residual=2, status="aprovada", preenchido_por=self.usuario,
         )
         self.client.force_login(self.usuario)
         resposta = self.client.post(reverse("avaliacao_risco", args=[solicitacao.pk]), {
@@ -666,13 +668,17 @@ class FluxoOperacionalCompletoTests(TestCase):
         AvaliacaoRisco.objects.create(
             solicitacao=self.solicitacao, perigos_identificados="Obstáculos",
             probabilidade_inicial=3, impacto_inicial=3, medidas_mitigadoras="Isolar área",
-            probabilidade_residual=1, impacto_residual=2, status="submetida",
-            preenchido_por=self.usuario, analisado_por=self.admin,
+            probabilidade_residual=1, impacto_residual=2, status="rascunho",
+            preenchido_por=self.usuario,
         )
 
     def test_solicitacao_ate_pos_voo_com_manutencao(self):
-        self.client.force_login(self.admin)
-        resposta = self.client.post(reverse("avaliacao_risco", args=[self.solicitacao.pk]), {"acao": "aprovar"})
+        self.client.force_login(self.usuario)
+        resposta = self.client.post(reverse("avaliacao_risco", args=[self.solicitacao.pk]), {
+            "perigos_identificados":"Obstáculos", "probabilidade_inicial":3, "impacto_inicial":3,
+            "medidas_mitigadoras":"Isolar área", "probabilidade_residual":1, "impacto_residual":2,
+            "condicoes_meteorologicas":"Favoráveis", "acao":"aceitar",
+        })
         self.assertRedirects(resposta, reverse("solicitacoes_voo"))
         self.solicitacao.refresh_from_db()
         self.assertEqual(self.solicitacao.status, "aprovado")

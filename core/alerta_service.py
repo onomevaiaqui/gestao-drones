@@ -58,9 +58,6 @@ def gerar_alertas():
         if not checklist or not checklist.concluido:
             adicionar("Checklist", "alto" if alocacao.data == hoje else "medio", f"Checklist pendente: {alocacao.drone.nome}", f"{alocacao.piloto.nome} · {alocacao.data.strftime('%d/%m/%Y')} às {alocacao.hora_inicio.strftime('%H:%M')}", reverse("checklist_pre_voo", args=[alocacao.pk]), f"checklist-{alocacao.pk}", alocacao.data)
 
-    for avaliacao in AvaliacaoRisco.objects.select_related("solicitacao__drone", "solicitacao__piloto").filter(status="submetida"):
-        prioridade = "alto" if avaliacao.solicitacao.data <= hoje + timedelta(days=2) else "medio"
-        adicionar("Risco", prioridade, f"Avaliação aguardando análise: {avaliacao.solicitacao.drone.nome}", f"{avaliacao.solicitacao.piloto.nome} · risco residual {avaliacao.risco_residual}", reverse("avaliacao_risco", kwargs={"solicitacao_id": avaliacao.solicitacao_id}), f"risco-{avaliacao.pk}", avaliacao.solicitacao.data)
 
     for incidente in Incidente.objects.select_related("alocacao__drone", "alocacao__piloto").exclude(status="encerrado"):
         prioridade = "critico" if incidente.gravidade in ["grave", "critico"] else "alto"

@@ -167,7 +167,7 @@ def solicitacao_voo_cancelar(request, pk):
             messages.error(request, "Você só pode cancelar suas próprias solicitações.")
             return redirect("solicitacoes_voo")
         if obj.status != "solicitado":
-            messages.error(request, "Depois de aprovada, somente um administrador pode cancelar.")
+            messages.error(request, "Depois de reservada, somente um administrador pode cancelar.")
             return redirect("solicitacoes_voo")
     if obj.alocacao_id and obj.alocacao.status != "concluido":
         obj.alocacao.status = "cancelado"

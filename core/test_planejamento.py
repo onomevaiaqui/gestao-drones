@@ -11,6 +11,7 @@ from .models import PlanejamentoVoo, Piloto
 from .planejamento_service import calcular_geometria, consultar_previsao
 from .planejamento_aeronautico_service import consultar_condicionantes_aeronauticas
 from .planejamento_kml import extrair_poligono_kml
+from .avaliacao_risco_service import dados_automaticos_avaliacao
 
 
 AREA = {"type": "Polygon", "coordinates": [[
@@ -104,6 +105,20 @@ class PlanejamentoVooTests(TestCase):
         self.assertEqual(resposta["Content-Type"].split(";")[0], "application/vnd.google-earth.kml+xml")
         self.assertIn(b"<Polygon>", resposta.content)
         self.assertIn(b"Parque Ambiental", resposta.content)
+
+    def test_avaliacao_automatica_indica_coordenacao_aeronautica(self):
+        from types import SimpleNamespace
+        self.obj.resumo_meteorologico = {
+            "status":"atencao", "visibilidade_min_m":2500, "rajada_max_kmh":28,
+            "horas":[{"hora":"09:00", "status":"atencao", "motivos":["Risco de neblina."]}],
+            "aeronautica":{"status":"atencao", "itens":[{
+                "tipo":"aerodromo", "id":"SBGU", "nome":"Guarapuava", "distancia_km":5.4,
+            }]},
+        }
+        dados = dados_automaticos_avaliacao(SimpleNamespace(planejamento=self.obj))
+        self.assertIn("SBGU", dados["perigos_identificados"])
+        self.assertIn("coordenação", dados["medidas_mitigadoras"])
+        self.assertIn("SARPAS", dados["medidas_mitigadoras"])
 
     @patch("core.planejamento_aeronautico_service.urlopen")
     def test_aerodromo_proximo_e_area_proibida_sao_detectados(self, urlopen):

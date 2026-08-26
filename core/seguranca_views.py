@@ -7,6 +7,7 @@ from .models import Alocacao, AvaliacaoRisco, Incidente, Piloto, SolicitacaoVoo
 from .seguranca_forms import AvaliacaoRiscoForm, IncidenteForm
 from .solicitacao_service import LiberacaoVooErro, liberar_solicitacao
 from .views import _base_context, usuario_e_admin
+from .avaliacao_risco_service import dados_automaticos_avaliacao
 
 
 def _pode_acessar_solicitacao(user, solicitacao):
@@ -21,40 +22,27 @@ def avaliacao_risco(request, solicitacao_id):
         return redirect("solicitacoes_voo")
     avaliacao = AvaliacaoRisco.objects.filter(solicitacao=solicitacao).first()
     eh_admin = usuario_e_admin(request.user)
-    somente_leitura = bool(
-        avaliacao and avaliacao.status in ["submetida", "aprovada"] and not eh_admin
-    )
+    somente_leitura = bool(eh_admin or (avaliacao and avaliacao.status == "aprovada"))
 
     if request.method == "POST" and not somente_leitura:
-        acao = request.POST.get("acao", "salvar")
-        if eh_admin and avaliacao and acao in ["aprovar", "revisao"]:
-            avaliacao.status = "aprovada" if acao == "aprovar" else "revisao"
-            avaliacao.analisado_por = request.user
-            avaliacao.analisado_em = timezone.now()
-            avaliacao.save(update_fields=["status", "analisado_por", "analisado_em", "atualizado_em"])
-            if acao == "aprovar":
-                try:
-                    liberar_solicitacao(solicitacao, request.user)
-                    messages.success(request, "Avaliação aprovada, voo liberado e adicionado ao calendário.")
-                except LiberacaoVooErro as erro:
-                    messages.error(request, f"Avaliação aprovada, mas o voo não pôde ser liberado: {erro}")
-            else:
-                messages.success(request, "Avaliação devolvida para revisão.")
-            return redirect("solicitacoes_voo")
         form = AvaliacaoRiscoForm(request.POST, instance=avaliacao)
         if form.is_valid():
             avaliacao = form.save(commit=False)
             avaliacao.solicitacao = solicitacao
-            if not avaliacao.pk:
-                avaliacao.preenchido_por = request.user
-            avaliacao.status = "submetida" if acao == "submeter" else "rascunho"
+            avaliacao.preenchido_por = request.user
+            avaliacao.status = "aprovada"
+            avaliacao.aceito_em = timezone.now()
             avaliacao.analisado_por = None
             avaliacao.analisado_em = None
             avaliacao.save()
-            messages.success(request, "Avaliação enviada para análise." if acao == "submeter" else "Rascunho salvo.")
-            return redirect("avaliacao_risco", solicitacao_id=solicitacao.pk)
+            try:
+                liberar_solicitacao(solicitacao, request.user)
+                messages.success(request, "Risco aceito pelo piloto. Drone reservado e operação adicionada ao calendário.")
+            except LiberacaoVooErro as erro:
+                messages.error(request, f"Avaliação salva, mas a reserva não pôde ser liberada: {erro}")
+            return redirect("solicitacoes_voo")
     else:
-        form = AvaliacaoRiscoForm(instance=avaliacao)
+        form = AvaliacaoRiscoForm(instance=avaliacao, initial=dados_automaticos_avaliacao(solicitacao) if not avaliacao else None)
     ctx = {"form": form, "solicitacao": solicitacao, "avaliacao": avaliacao, "somente_leitura": somente_leitura}
     ctx.update(_base_context(request))
     return render(request, "seguranca/avaliacao_risco.html", ctx)

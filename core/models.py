@@ -501,7 +501,7 @@ class PlanejamentoVoo(models.Model):
 class SolicitacaoVoo(models.Model):
     STATUS_CHOICES = [
         ("solicitado", "Pendente de avaliação"),
-        ("aprovado", "Aprovado"),
+        ("aprovado", "Reservado"),
         ("rejeitado", "Rejeitado"),
         ("cancelado", "Cancelado"),
         ("concluido", "Concluído"),
@@ -863,9 +863,7 @@ class Documento(models.Model):
 class AvaliacaoRisco(models.Model):
     STATUS_CHOICES = [
         ("rascunho", "Rascunho"),
-        ("submetida", "Aguardando análise"),
-        ("aprovada", "Aprovada"),
-        ("revisao", "Requer revisão"),
+        ("aprovada", "Aceita pelo piloto"),
     ]
     NIVEL_CHOICES = [(1, "1 - Muito baixo"), (2, "2 - Baixo"), (3, "3 - Moderado"), (4, "4 - Alto"), (5, "5 - Muito alto")]
 
@@ -884,6 +882,7 @@ class AvaliacaoRisco(models.Model):
     preenchido_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="avaliacoes_risco_preenchidas")
     analisado_por = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True, related_name="avaliacoes_risco_analisadas")
     analisado_em = models.DateTimeField(null=True, blank=True)
+    aceito_em = models.DateTimeField(null=True, blank=True)
     atualizado_em = models.DateTimeField(auto_now=True)
 
     def __str__(self):

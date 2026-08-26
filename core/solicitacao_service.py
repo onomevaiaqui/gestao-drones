@@ -27,7 +27,7 @@ def liberar_solicitacao(solicitacao, usuario):
     if solicitacao.requer_avaliacao_risco:
         avaliacao = getattr(solicitacao, "avaliacao_risco", None)
         if not avaliacao or avaliacao.status != "aprovada":
-            raise LiberacaoVooErro("A avaliação de risco precisa ser aprovada antes da liberação do voo.")
+            raise LiberacaoVooErro("O piloto precisa preencher e aceitar a avaliação de risco antes da liberação do voo.")
 
     if solicitacao.drone.status != "ativo":
         raise LiberacaoVooErro("O drone selecionado não está disponível.")
