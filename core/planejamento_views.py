@@ -17,6 +17,7 @@ from .models import PlanejamentoVoo, Piloto
 from .planejamento_forms import PlanejamentoVooForm
 from .planejamento_service import consultar_previsao
 from .planejamento_aeronautico_service import consultar_condicionantes_aeronauticas, camadas_aeronauticas_bbox
+from .planejamento_sisclaten import classificar_sisclaten
 from .views import _base_context, usuario_e_admin
 
 
@@ -33,7 +34,7 @@ def _atualizar_previsao(obj):
         resumo = consultar_previsao(obj)
     except Exception as erro:
         obj.status_meteorologico = "indisponivel"
-        obj.resumo_meteorologico = {"erro": str(erro), "aeronautica": resumo_atual.get("aeronautica", {})}
+        obj.resumo_meteorologico = {"erro": str(erro), "aeronautica": resumo_atual.get("aeronautica", {}), "sisclaten": classificar_sisclaten(obj)}
         obj.previsao_consultada_em = timezone.now()
         obj.save(update_fields=["status_meteorologico", "resumo_meteorologico", "previsao_consultada_em"])
         return False, str(erro)
@@ -41,6 +42,7 @@ def _atualizar_previsao(obj):
         resumo["aeronautica"] = consultar_condicionantes_aeronauticas(obj)
     except Exception as erro:
         resumo["aeronautica"] = {"status":"indisponivel", "erro":str(erro), "itens":[], "geojson":{"type":"FeatureCollection", "features":[]}}
+    resumo["sisclaten"] = classificar_sisclaten(obj)
     obj.status_meteorologico = resumo["status"]
     obj.resumo_meteorologico = resumo
     obj.previsao_consultada_em = timezone.now()
@@ -108,7 +110,8 @@ def planejamento_editar(request, pk):
 def planejamento_detalhe(request, pk):
     obj = get_object_or_404(_planejamentos_do_usuario(request), pk=pk)
     meteo = obj.resumo_meteorologico or {}
-    ctx = {"planejamento": obj, "meteo": meteo, "aeronautica": meteo.get("aeronautica", {})}
+    sisclaten = meteo.get("sisclaten") or classificar_sisclaten(obj)
+    ctx = {"planejamento": obj, "meteo": meteo, "aeronautica": meteo.get("aeronautica", {}), "sisclaten": sisclaten}
     ctx.update(_base_context(request))
     return render(request, "planejamentos/detalhe.html", ctx)
 

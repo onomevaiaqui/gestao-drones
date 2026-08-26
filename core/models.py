@@ -471,6 +471,12 @@ class PlanejamentoVoo(models.Model):
         ("desfavoravel", "Desfavorável"),
         ("indisponivel", "Previsão indisponível"),
     ]
+    CONFIRMACAO_CHOICES = [("sim", "Sim"), ("nao", "Não"), ("nao_sei", "Não sei / confirmar")]
+    TIPO_AEROLEVANTAMENTO_CHOICES = [
+        ("fotogrametrico", "Aerofotogramétrico / ortomosaico / modelo 3D"),
+        ("laser", "Varredura a laser / LiDAR"), ("espectral", "Pancromático ou espectral"),
+        ("geofisico", "Aerogeofísico"), ("outro", "Outro aerolevantamento"),
+    ]
 
     titulo = models.CharField(max_length=150)
     piloto = models.ForeignKey(Piloto, on_delete=models.PROTECT, related_name="planejamentos_voo")
@@ -478,12 +484,23 @@ class PlanejamentoVoo(models.Model):
     hora_inicio = models.TimeField()
     hora_fim = models.TimeField()
     altura_maxima_m = models.PositiveIntegerField(default=120)
+    finalidade = models.CharField(max_length=100, choices=Voo.FINALIDADE_CHOICES, default="outro")
     local = models.CharField(max_length=200, blank=True, verbose_name="Local/região")
     area_geojson = models.JSONField()
     centro_latitude = models.DecimalField(max_digits=10, decimal_places=7)
     centro_longitude = models.DecimalField(max_digits=10, decimal_places=7)
     area_hectares = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     observacoes = models.TextField(blank=True)
+    gera_dados_aerolevantamento = models.BooleanField(
+        default=False, verbose_name="A operação produzirá dados de aerolevantamento",
+        help_text="Marque se haverá captura destinada a ortomosaico, mapa, modelo 3D, nuvem de pontos, LiDAR, dado espectral ou geofísico.",
+    )
+    tipo_aerolevantamento = models.CharField(max_length=30, choices=TIPO_AEROLEVANTAMENTO_CHOICES, blank=True)
+    atividade_agroflorestal = models.BooleanField(default=False, verbose_name="Atividade agroflorestal")
+    exclusivo_proprietario_rural = models.CharField(max_length=12, choices=CONFIRMACAO_CHOICES, default="nao_sei", verbose_name="Destinado exclusivamente ao proprietário do imóvel rural")
+    dentro_condicionantes_ica = models.CharField(max_length=12, choices=CONFIRMACAO_CHOICES, default="nao_sei", verbose_name="Operação dentro das condicionantes da ICA 100-40")
+    interseca_area_sensivel_defesa = models.CharField(max_length=12, choices=CONFIRMACAO_CHOICES, default="nao_sei", verbose_name="Interseção com área/instalação sensível à Defesa")
+    projeto_contiguo_12_meses = models.CharField(max_length=12, choices=CONFIRMACAO_CHOICES, default="nao_sei", verbose_name="Projeto contíguo executado nos últimos 12 meses")
     status_meteorologico = models.CharField(
         max_length=20, choices=STATUS_METEO_CHOICES, default="nao_consultado"
     )

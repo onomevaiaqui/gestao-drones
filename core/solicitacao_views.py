@@ -37,7 +37,8 @@ def solicitacao_voo_nova(request):
     if planejamento_inicial:
         initial = {"planejamento": planejamento_inicial, "data": planejamento_inicial.data,
                    "hora_inicio": planejamento_inicial.hora_inicio, "hora_fim": planejamento_inicial.hora_fim,
-                   "piloto": planejamento_inicial.piloto, "local": planejamento_inicial.local}
+                   "piloto": planejamento_inicial.piloto, "local": planejamento_inicial.local,
+                   "finalidade": planejamento_inicial.finalidade}
     form = SolicitacaoVooForm(request.POST or None, initial=initial)
     if not eh_admin:
         try:
@@ -59,7 +60,8 @@ def solicitacao_voo_nova(request):
             obj.piloto = request.user.piloto
         obj.criado_por = request.user
         if obj.planejamento and (obj.planejamento.status_meteorologico in ("atencao", "desfavoravel") or
-                obj.planejamento.resumo_meteorologico.get("aeronautica", {}).get("status") in ("atencao", "desfavoravel")):
+                obj.planejamento.resumo_meteorologico.get("aeronautica", {}).get("status") in ("atencao", "desfavoravel") or
+                obj.planejamento.resumo_meteorologico.get("sisclaten", {}).get("status") in ("aafa_necessaria", "confirmar")):
             obj.requer_avaliacao_risco = True
         obj.status = "solicitado"
         obj.save()

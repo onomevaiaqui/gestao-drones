@@ -16,8 +16,10 @@ class PlanejamentoVooForm(forms.ModelForm):
     class Meta:
         model = PlanejamentoVoo
         fields = [
-            "titulo", "piloto", "local", "data", "hora_inicio", "hora_fim",
-            "altura_maxima_m", "observacoes",
+            "titulo", "piloto", "local", "data", "hora_inicio", "hora_fim", "finalidade",
+            "altura_maxima_m", "gera_dados_aerolevantamento", "tipo_aerolevantamento",
+            "atividade_agroflorestal", "exclusivo_proprietario_rural", "dentro_condicionantes_ica",
+            "interseca_area_sensivel_defesa", "projeto_contiguo_12_meses", "observacoes",
         ]
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control"}),
@@ -26,25 +28,40 @@ class PlanejamentoVooForm(forms.ModelForm):
             "data": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "hora_inicio": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
             "hora_fim": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
+            "finalidade": forms.Select(attrs={"class": "form-select"}),
             "altura_maxima_m": forms.NumberInput(attrs={"class": "form-control", "min": 1, "max": 500}),
+            "gera_dados_aerolevantamento": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "tipo_aerolevantamento": forms.Select(attrs={"class": "form-select"}),
+            "atividade_agroflorestal": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "exclusivo_proprietario_rural": forms.Select(attrs={"class": "form-select"}),
+            "dentro_condicionantes_ica": forms.Select(attrs={"class": "form-select"}),
+            "interseca_area_sensivel_defesa": forms.Select(attrs={"class": "form-select"}),
+            "projeto_contiguo_12_meses": forms.Select(attrs={"class": "form-select"}),
             "observacoes": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.order_fields([
-            "titulo", "piloto", "local", "data", "hora_inicio", "hora_fim",
-            "altura_maxima_m", "arquivo_area", "observacoes", "area_geojson_texto",
+            "titulo", "piloto", "local", "data", "hora_inicio", "hora_fim", "finalidade",
+            "altura_maxima_m", "arquivo_area", "gera_dados_aerolevantamento", "tipo_aerolevantamento",
+            "atividade_agroflorestal", "exclusivo_proprietario_rural", "dentro_condicionantes_ica",
+            "interseca_area_sensivel_defesa", "projeto_contiguo_12_meses", "observacoes", "area_geojson_texto",
         ])
         self.fields["piloto"].queryset = Piloto.objects.filter(ativo=True)
         if self.instance and self.instance.pk:
             self.fields["area_geojson_texto"].initial = json.dumps(self.instance.area_geojson)
+        self.fields["tipo_aerolevantamento"].required = False
+        self.fields["tipo_aerolevantamento"].help_text = "Preencha quando a operação produzir dados de aerolevantamento."
+        self.fields["interseca_area_sensivel_defesa"].help_text = "A camada AISWEB não substitui esta confirmação; consulte o SisCLATEN/Ministério da Defesa."
 
     def clean(self):
         dados = super().clean()
         inicio, fim = dados.get("hora_inicio"), dados.get("hora_fim")
         if inicio and fim and fim <= inicio:
             self.add_error("hora_fim", "O horário final deve ser posterior ao inicial.")
+        if dados.get("gera_dados_aerolevantamento") and not dados.get("tipo_aerolevantamento"):
+            self.add_error("tipo_aerolevantamento", "Informe o tipo de aerolevantamento.")
         bruto = dados.get("area_geojson_texto")
         arquivo = dados.get("arquivo_area")
         if arquivo:

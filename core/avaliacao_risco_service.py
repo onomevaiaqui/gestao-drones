@@ -6,6 +6,7 @@ RBAC nº 100, Emenda 00 — requisitos gerais para aeronaves não tripuladas de 
 ICA 100-40/2026 — Aeronaves não tripuladas e o acesso ao espaço aéreo brasileiro.
 ICA 100-48 vigente — obtenção de autorizações no SARPAS.
 Resolução Anatel nº 715/2019 e atos de homologação aplicáveis ao equipamento.
+Portaria GM-MD nº 3.726/2020 e alterações vigentes — procedimentos para aerolevantamento e SisCLATEN.
 IS E94-003A — referência para a estrutura desta avaliação de risco operacional.
 Confirmar antes da operação as revisões vigentes, NOTAM, AIP/AISWEB e autorizações aplicáveis."""
 
@@ -37,6 +38,7 @@ def dados_automaticos_avaliacao(solicitacao):
     planejamento = solicitacao.planejamento
     meteo = planejamento.resumo_meteorologico if planejamento else {}
     aeronautica = meteo.get("aeronautica", {})
+    sisclaten = meteo.get("sisclaten", {})
     perigos, mitigacoes, condicoes = [], [], []
 
     for item in aeronautica.get("itens", []):
@@ -66,6 +68,14 @@ def dados_automaticos_avaliacao(solicitacao):
         if meteo.get("neblina_area_max_percentual"): condicoes.append(f"Possibilidade de neblina em até {meteo['neblina_area_max_percentual']}% da área.")
     if any(h.get("status") != "favoravel" for h in meteo.get("horas", [])):
         mitigacoes.append("Reconfirmar a meteorologia imediatamente antes da decolagem e adiar a operação se os limites do fabricante ou operacionais forem excedidos.")
+    if sisclaten.get("status") == "aafa_necessaria":
+        perigos.append("A análise do planejamento classificou a AAFA como provavelmente necessária no SISCLATEN.")
+        mitigacoes.append("Obter a AAFA no SISCLATEN antes da fase aeroespacial e confirmar a inscrição/categoria da entidade executante.")
+    elif sisclaten.get("status") == "confirmar":
+        perigos.append("A necessidade de AAFA depende de confirmações ainda pendentes no planejamento.")
+        mitigacoes.append("Concluir a triagem de aerolevantamento e confirmar a situação diretamente no SISCLATEN/Ministério da Defesa antes da operação.")
+    elif sisclaten.get("status") == "dispensa_aafa":
+        mitigacoes.append("Registrar os metadados e cumprir as obrigações do SisCLATEN aplicáveis ao projeto pré-autorizado, mantendo a autorização DECEA separadamente.")
     mitigacoes.extend([
         "Realizar consulta ao SARPAS, AISWEB e NOTAM antes da operação.",
         "Manter VLOS, área de decolagem controlada, observador quando necessário e procedimento de interrupção disponível.",

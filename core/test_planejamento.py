@@ -12,6 +12,7 @@ from .planejamento_service import calcular_geometria, consultar_previsao
 from .planejamento_aeronautico_service import consultar_condicionantes_aeronauticas
 from .planejamento_kml import extrair_poligono_kml
 from .avaliacao_risco_service import classificar_matriz, dados_automaticos_avaliacao
+from .planejamento_sisclaten import classificar_sisclaten
 
 
 AREA = {"type": "Polygon", "coordinates": [[
@@ -50,6 +51,26 @@ class PlanejamentoVooTests(TestCase):
         calculada = calcular_geometria(AREA)
         self.assertGreater(calculada["area_hectares"], 400)
         self.assertAlmostEqual(float(calculada["centro_latitude"]), -25.39, places=2)
+
+    def test_sisclaten_nao_se_aplica_sem_aerolevantamento(self):
+        self.assertEqual(classificar_sisclaten(self.obj)["status"], "nao_aplicavel")
+
+    def test_sisclaten_classifica_dispensa_de_aafa_quando_todos_requisitos_atendidos(self):
+        self.obj.gera_dados_aerolevantamento = True
+        self.obj.tipo_aerolevantamento = "fotogrametrico"
+        self.obj.dentro_condicionantes_ica = "sim"
+        self.obj.interseca_area_sensivel_defesa = "nao"
+        self.obj.projeto_contiguo_12_meses = "nao"
+        resultado = classificar_sisclaten(self.obj)
+        self.assertEqual(resultado["status"], "dispensa_aafa")
+        self.assertLessEqual(resultado["raio_maximo_km"], 2.2)
+
+    def test_sisclaten_exige_aafa_para_aerolevantamento_geofisico(self):
+        self.obj.gera_dados_aerolevantamento = True
+        self.obj.tipo_aerolevantamento = "geofisico"
+        resultado = classificar_sisclaten(self.obj)
+        self.assertEqual(resultado["status"], "aafa_necessaria")
+        self.assertTrue(any("geofísico" in motivo for motivo in resultado["motivos"]))
 
     def test_usuario_so_visualiza_o_proprio_planejamento(self):
         outro = User.objects.create_user("outro")
@@ -93,6 +114,7 @@ class PlanejamentoVooTests(TestCase):
         self.assertEqual(form.initial["hora_inicio"], self.obj.hora_inicio)
         self.assertEqual(form.initial["hora_fim"], self.obj.hora_fim)
         self.assertEqual(form.initial["local"], "Parque Ambiental, Guarapuava/PR")
+        self.assertEqual(form.initial["finalidade"], self.obj.finalidade)
         self.assertContains(resposta, "Reservar drone")
         self.assertNotContains(resposta, f"{self.obj.data.isoformat()} - Inspeção")
         self.assertContains(resposta, f'value="{self.obj.data.isoformat()}"')
