@@ -20,13 +20,13 @@ def gerar_pdf_avaliacao(avaliacao):
     styles.add(ParagraphStyle(name="Section", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#0B2B55"), spaceBefore=8, spaceAfter=6))
     styles.add(ParagraphStyle(name="Small", parent=styles["BodyText"], fontSize=7.5, leading=10))
     styles.add(ParagraphStyle(name="BodyDoc", parent=styles["BodyText"], fontSize=8.5, leading=12))
-    doc = SimpleDocTemplate(out, pagesize=A4, rightMargin=14*mm, leftMargin=14*mm, topMargin=17*mm, bottomMargin=18*mm,
+    doc = SimpleDocTemplate(out, pagesize=A4, rightMargin=14*mm, leftMargin=14*mm, topMargin=35*mm, bottomMargin=25*mm,
                             title="Avaliação de Risco Operacional")
 
     def footer(canvas, document):
         canvas.saveState(); canvas.setFont("Helvetica", 7); canvas.setFillColor(colors.HexColor("#52657A"))
-        canvas.drawString(14*mm, 9*mm, "Rubrica: ____________________")
-        canvas.drawRightString(A4[0]-14*mm, 9*mm, f"Página {document.page}")
+        canvas.drawString(14*mm, 18*mm, "Rubrica: ____________________")
+        canvas.drawRightString(A4[0]-14*mm, 18*mm, f"Página {document.page}")
         canvas.restoreState()
 
     def section(title, body):

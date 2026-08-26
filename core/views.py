@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import date, timedelta, datetime
 import calendar as pycalendar
 import csv
+from io import BytesIO
 
 from django.conf import settings
 from django.contrib import messages
@@ -30,8 +31,10 @@ from .models import (
     Alocacao,
     Manutencao,
     Documento,
+    ConfiguracaoPapelTimbrado,
 )
 from .drone_documento_forms import DocumentoDroneForm
+from .papel_timbrado import PapelTimbradoRelatorioForm, aplicar_papel_timbrado
 
 from .forms import (
     PilotoForm,
@@ -2116,6 +2119,14 @@ def _filtrar_voos_relatorio(request):
 
 @admin_required
 def relatorios(request):
+    configuracao_timbre = ConfiguracaoPapelTimbrado.atual()
+    timbre_form = PapelTimbradoRelatorioForm(request.POST or None, request.FILES or None, instance=configuracao_timbre)
+    if request.method == "POST" and timbre_form.is_valid():
+        configuracao = timbre_form.save(commit=False)
+        configuracao.atualizado_por = request.user
+        configuracao.save()
+        messages.success(request, "Modelo de papel timbrado dos relatórios atualizado.")
+        return redirect("relatorios")
     voos_qs = _filtrar_voos_relatorio(request)
 
     total_segundos = sum(
@@ -2208,6 +2219,8 @@ def relatorios(request):
         "drones": Drone.objects.all(),
         "filtros": request.GET,
         "voos_relatorio": voos_qs[:200],
+        "timbre_form": timbre_form,
+        "configuracao_timbre": configuracao_timbre,
     }
 
     ctx.update(
@@ -2231,16 +2244,15 @@ def relatorios_exportar_pdf(request):
     distancia_total_m = sum(float(voo.distancia_m or 0) for voo in voos_qs)
     distancia_total_km = round(distancia_total_m / 1000, 2)
 
-    response = HttpResponse(content_type="application/pdf")
-    response["Content-Disposition"] = 'attachment; filename="relatorio_voos.pdf"'
+    buffer = BytesIO()
 
     doc = SimpleDocTemplate(
-        response,
+        buffer,
         pagesize=landscape(A4),
         rightMargin=12 * mm,
         leftMargin=12 * mm,
-        topMargin=12 * mm,
-        bottomMargin=12 * mm,
+        topMargin=30 * mm,
+        bottomMargin=25 * mm,
     )
 
     styles = getSampleStyleSheet()
@@ -2385,6 +2397,11 @@ def relatorios_exportar_pdf(request):
     )
 
     doc.build(elementos)
+    configuracao = ConfiguracaoPapelTimbrado.atual()
+    conteudo = aplicar_papel_timbrado(buffer.getvalue(), configuracao.modelo_relatorios)
+    response = HttpResponse(conteudo, content_type="application/pdf")
+    disposicao = "inline" if request.GET.get("modo") in {"visualizar", "imprimir"} else "attachment"
+    response["Content-Disposition"] = f'{disposicao}; filename="relatorio_voos.pdf"'
     return response
 
 

@@ -4,12 +4,13 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.http import HttpResponse
 from django.utils import timezone
 
-from .models import Alocacao, AvaliacaoRisco, Incidente, Piloto, SolicitacaoVoo
+from .models import Alocacao, AvaliacaoRisco, ConfiguracaoPapelTimbrado, Incidente, Piloto, SolicitacaoVoo
 from .seguranca_forms import AvaliacaoRiscoForm, IncidenteForm
 from .solicitacao_service import LiberacaoVooErro, liberar_solicitacao
 from .views import _base_context, usuario_e_admin
 from .avaliacao_risco_service import dados_automaticos_avaliacao
 from .avaliacao_risco_pdf import gerar_pdf_avaliacao
+from .papel_timbrado import PapelTimbradoRiscoForm, aplicar_papel_timbrado
 
 
 def _pode_acessar_solicitacao(user, solicitacao):
@@ -24,6 +25,16 @@ def avaliacao_risco(request, solicitacao_id):
         return redirect("solicitacoes_voo")
     avaliacao = AvaliacaoRisco.objects.filter(solicitacao=solicitacao).first()
     eh_admin = usuario_e_admin(request.user)
+    configuracao_timbre = ConfiguracaoPapelTimbrado.atual()
+    timbre_form = PapelTimbradoRiscoForm(instance=configuracao_timbre)
+    if request.method == "POST" and request.POST.get("acao") == "salvar_timbre" and eh_admin:
+        timbre_form = PapelTimbradoRiscoForm(request.POST, request.FILES, instance=configuracao_timbre)
+        if timbre_form.is_valid():
+            configuracao = timbre_form.save(commit=False)
+            configuracao.atualizado_por = request.user
+            configuracao.save()
+            messages.success(request, "Modelo de papel timbrado da avaliação atualizado.")
+            return redirect("avaliacao_risco", solicitacao_id=solicitacao.pk)
     solicitou_edicao = request.GET.get("editar") == "1" or request.POST.get("modo_edicao") == "1"
     pode_corrigir = bool(avaliacao and avaliacao.status == "aprovada" and not eh_admin and solicitacao.piloto.user_id == request.user.id and solicitou_edicao)
     somente_leitura = bool(eh_admin or (avaliacao and avaliacao.status == "aprovada" and not pode_corrigir))
@@ -34,20 +45,26 @@ def avaliacao_risco(request, solicitacao_id):
             avaliacao = form.save(commit=False)
             avaliacao.solicitacao = solicitacao
             avaliacao.preenchido_por = request.user
-            avaliacao.status = "aprovada"
-            avaliacao.aceito_em = timezone.now()
+            acao = request.POST.get("acao", "aceitar")
+            ja_aceita = bool(avaliacao.pk and AvaliacaoRisco.objects.filter(pk=avaliacao.pk, status="aprovada").exists())
+            avaliacao.status = "aprovada" if acao == "aceitar" or ja_aceita else "rascunho"
+            if avaliacao.status == "aprovada":
+                avaliacao.aceito_em = timezone.now()
             avaliacao.analisado_por = None
             avaliacao.analisado_em = None
             avaliacao.save()
+            if avaliacao.status == "rascunho":
+                messages.success(request, "Avaliação salva. Agora você pode visualizar o PDF, continuar editando ou aceitar o risco.")
+                return redirect("avaliacao_risco", solicitacao_id=solicitacao.pk)
             try:
                 liberar_solicitacao(solicitacao, request.user)
-                messages.success(request, "Risco aceito pelo piloto. Drone reservado e operação adicionada ao calendário.")
+                messages.success(request, "Avaliação salva e aceita. Drone reservado e operação adicionada ao calendário.")
             except LiberacaoVooErro as erro:
                 messages.error(request, f"Avaliação salva, mas a reserva não pôde ser liberada: {erro}")
-            return redirect("solicitacoes_voo")
+            return redirect("avaliacao_risco", solicitacao_id=solicitacao.pk)
     else:
         form = AvaliacaoRiscoForm(instance=avaliacao, initial=dados_automaticos_avaliacao(solicitacao) if not avaliacao else None)
-    ctx = {"form": form, "solicitacao": solicitacao, "avaliacao": avaliacao, "somente_leitura": somente_leitura, "pode_corrigir": pode_corrigir}
+    ctx = {"form": form, "solicitacao": solicitacao, "avaliacao": avaliacao, "somente_leitura": somente_leitura, "pode_corrigir": pode_corrigir, "timbre_form": timbre_form, "configuracao_timbre": configuracao_timbre}
     ctx.update(_base_context(request))
     return render(request, "seguranca/avaliacao_risco.html", ctx)
 
@@ -57,8 +74,9 @@ def avaliacao_risco_pdf(request, solicitacao_id):
     solicitacao = get_object_or_404(SolicitacaoVoo.objects.select_related("piloto__user", "drone"), pk=solicitacao_id)
     if not _pode_acessar_solicitacao(request.user, solicitacao):
         return HttpResponse(status=403)
-    avaliacao = get_object_or_404(AvaliacaoRisco, solicitacao=solicitacao, status="aprovada")
-    resposta = HttpResponse(gerar_pdf_avaliacao(avaliacao), content_type="application/pdf")
+    avaliacao = get_object_or_404(AvaliacaoRisco, solicitacao=solicitacao)
+    conteudo = aplicar_papel_timbrado(gerar_pdf_avaliacao(avaliacao), ConfiguracaoPapelTimbrado.atual().modelo_avaliacao_risco)
+    resposta = HttpResponse(conteudo, content_type="application/pdf")
     resposta["Content-Disposition"] = f'attachment; filename="avaliacao-risco-{solicitacao.pk}.pdf"'
     return resposta
 
@@ -68,8 +86,9 @@ def avaliacao_risco_imprimir(request, solicitacao_id):
     solicitacao = get_object_or_404(SolicitacaoVoo.objects.select_related("piloto__user", "drone"), pk=solicitacao_id)
     if not _pode_acessar_solicitacao(request.user, solicitacao):
         return HttpResponse(status=403)
-    avaliacao = get_object_or_404(AvaliacaoRisco, solicitacao=solicitacao, status="aprovada")
-    resposta = HttpResponse(gerar_pdf_avaliacao(avaliacao), content_type="application/pdf")
+    avaliacao = get_object_or_404(AvaliacaoRisco, solicitacao=solicitacao)
+    conteudo = aplicar_papel_timbrado(gerar_pdf_avaliacao(avaliacao), ConfiguracaoPapelTimbrado.atual().modelo_avaliacao_risco)
+    resposta = HttpResponse(conteudo, content_type="application/pdf")
     resposta["Content-Disposition"] = f'inline; filename="avaliacao-risco-{solicitacao.pk}.pdf"'
     return resposta
 

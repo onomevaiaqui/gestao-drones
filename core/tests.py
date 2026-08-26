@@ -1,4 +1,5 @@
 from datetime import date, time, timedelta
+from io import BytesIO
 import tempfile
 
 from django.contrib.auth.models import User
@@ -7,14 +8,17 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from pypdf import PdfReader
+from reportlab.pdfgen import canvas
 
 from .alerta_service import gerar_alertas, resumo_alertas
 from .models import (
-    Alocacao, AvaliacaoRisco, Bateria, ChecklistPreVoo, Componente, Documento, Drone, ExecucaoInspecao,
+    Alocacao, AvaliacaoRisco, Bateria, ChecklistPreVoo, Componente, ConfiguracaoPapelTimbrado, Documento, Drone, ExecucaoInspecao,
     DroneHistorico, ImportacaoLog, Incidente, Manutencao, Piloto, PlanoInspecao, PontoTelemetria,
     MovimentacaoComponente, QualificacaoPiloto, RegistroPosVoo, SolicitacaoVoo, Voo,
 )
 from .telemetria_service import processar_importacao
+from .papel_timbrado import aplicar_papel_timbrado
 
 
 class SelecaoPerfilAcessoTests(TestCase):
@@ -236,7 +240,7 @@ class SegurancaOperacionalTests(TestCase):
              "medidas_mitigadoras":"Isolar área", "probabilidade_residual":1, "impacto_residual":2,
              "condicoes_meteorologicas":"Favoráveis", "acao":"aceitar"},
         )
-        self.assertRedirects(resposta, reverse("solicitacoes_voo"))
+        self.assertRedirects(resposta, reverse("avaliacao_risco", args=[self.solicitacao.pk]))
         self.solicitacao.refresh_from_db()
         avaliacao.refresh_from_db()
         self.assertEqual(avaliacao.status, "aprovada")
@@ -690,7 +694,7 @@ class FluxoOperacionalCompletoTests(TestCase):
             "medidas_mitigadoras":"Isolar área", "probabilidade_residual":1, "impacto_residual":2,
             "condicoes_meteorologicas":"Favoráveis", "acao":"aceitar",
         })
-        self.assertRedirects(resposta, reverse("solicitacoes_voo"))
+        self.assertRedirects(resposta, reverse("avaliacao_risco", args=[self.solicitacao.pk]))
         self.solicitacao.refresh_from_db()
         self.assertEqual(self.solicitacao.status, "aprovado")
         self.assertIsNotNone(self.solicitacao.alocacao_id)
@@ -839,3 +843,38 @@ class DocumentoDroneCadastroTests(TestCase):
         self.assertRedirects(resposta, reverse("drone_editar", args=[self.drone.pk]))
         documento.refresh_from_db()
         self.assertFalse(documento.ativo)
+
+
+class PapelTimbradoTests(TestCase):
+    def _pdf(self, texto):
+        saida = BytesIO()
+        pdf = canvas.Canvas(saida)
+        pdf.drawString(40, 800, texto)
+        pdf.save()
+        return saida.getvalue()
+
+    def test_aplica_primeira_pagina_do_timbre_ao_conteudo(self):
+        class ArquivoMemoria(BytesIO):
+            def open(self, _modo):
+                self.seek(0)
+                return self
+            def __enter__(self): return self
+            def __exit__(self, *_args): return False
+
+        resultado = aplicar_papel_timbrado(self._pdf("CONTEUDO"), ArquivoMemoria(self._pdf("TIMBRE")))
+        texto_pdf = "".join(p.extract_text() or "" for p in PdfReader(BytesIO(resultado)).pages)
+        self.assertIn("TIMBRE", texto_pdf)
+        self.assertIn("CONTEUDO", texto_pdf)
+
+    def test_modelo_de_relatorio_fica_salvo_ate_substituicao(self):
+        media_dir = tempfile.TemporaryDirectory()
+        with override_settings(MEDIA_ROOT=media_dir.name):
+            admin = User.objects.create_superuser(username="admin_timbre", password="teste123")
+            self.client.force_login(admin)
+            arquivo = SimpleUploadedFile("timbre.pdf", self._pdf("PAPEL TIMBRADO"), content_type="application/pdf")
+            resposta = self.client.post(reverse("relatorios"), {"modelo_relatorios": arquivo})
+            self.assertRedirects(resposta, reverse("relatorios"))
+            configuracao = ConfiguracaoPapelTimbrado.atual()
+            self.assertTrue(configuracao.modelo_relatorios.name.endswith("timbre.pdf"))
+            self.assertEqual(configuracao.atualizado_por, admin)
+        media_dir.cleanup()

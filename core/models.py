@@ -934,6 +934,22 @@ class AvaliacaoRisco(models.Model):
         return self.classificar(self.risco_residual)
 
 
+class ConfiguracaoPapelTimbrado(models.Model):
+    modelo_relatorios = models.FileField(upload_to="papel_timbrado/", null=True, blank=True)
+    modelo_avaliacao_risco = models.FileField(upload_to="papel_timbrado/", null=True, blank=True)
+    atualizado_por = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Configuração de papel timbrado"
+        verbose_name_plural = "Configurações de papel timbrado"
+
+    @classmethod
+    def atual(cls):
+        configuracao, _ = cls.objects.get_or_create(pk=1)
+        return configuracao
+
+
 class Incidente(models.Model):
     GRAVIDADE_CHOICES = [("leve", "Leve"), ("moderado", "Moderado"), ("grave", "Grave"), ("critico", "Crítico")]
     STATUS_CHOICES = [("aberto", "Aberto"), ("investigacao", "Em investigação"), ("encerrado", "Encerrado")]
