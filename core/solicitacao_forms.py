@@ -8,12 +8,12 @@ class SolicitacaoVooForm(forms.ModelForm):
         fields = ["planejamento", "data", "hora_inicio", "hora_fim", "piloto", "drone", "finalidade", "local", "observacoes", "requer_avaliacao_risco"]
         widgets = {
             "planejamento": forms.Select(attrs={"class": "form-select"}),
-            "data": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
-            "hora_inicio": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
-            "hora_fim": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
+            "data": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control"}),
+            "hora_inicio": forms.TimeInput(format="%H:%M", attrs={"type": "time", "class": "form-control"}),
+            "hora_fim": forms.TimeInput(format="%H:%M", attrs={"type": "time", "class": "form-control"}),
             "piloto": forms.Select(attrs={"class": "form-select"}),
             "drone": forms.Select(attrs={"class": "form-select"}),
-            "finalidade": forms.TextInput(attrs={"class": "form-control"}),
+            "finalidade": forms.Select(attrs={"class": "form-select"}),
             "local": forms.TextInput(attrs={"class": "form-control"}),
             "observacoes": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
             "requer_avaliacao_risco": forms.CheckboxInput(attrs={"class": "form-check-input"}),

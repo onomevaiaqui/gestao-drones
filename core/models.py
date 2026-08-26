@@ -496,7 +496,7 @@ class PlanejamentoVoo(models.Model):
         verbose_name_plural = "Planejamentos de voo"
 
     def __str__(self):
-        return f"{self.data} - {self.titulo} - {self.piloto}"
+        return f"{self.titulo} - {self.piloto}"
 
 class SolicitacaoVoo(models.Model):
     STATUS_CHOICES = [
@@ -512,7 +512,7 @@ class SolicitacaoVoo(models.Model):
     data = models.DateField()
     hora_inicio = models.TimeField()
     hora_fim = models.TimeField()
-    finalidade = models.CharField(max_length=100)
+    finalidade = models.CharField(max_length=100, choices=Voo.FINALIDADE_CHOICES)
     local = models.CharField(max_length=200, blank=True)
     observacoes = models.TextField(blank=True)
     planejamento = models.OneToOneField(

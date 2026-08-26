@@ -253,7 +253,7 @@ class SegurancaOperacionalTests(TestCase):
         self.client.force_login(self.usuario)
         resposta = self.client.post(reverse("solicitacao_voo_nova"), {
             "data": data_voo.isoformat(), "hora_inicio": "14:00", "hora_fim": "15:00",
-            "piloto": self.piloto.pk, "drone": self.drone.pk, "finalidade": "Fotografia",
+            "piloto": self.piloto.pk, "drone": self.drone.pk, "finalidade": "fotografia",
             "local": "Área fotográfica", "observacoes": "",
         })
         self.assertRedirects(resposta, reverse("solicitacoes_voo"))

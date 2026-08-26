@@ -87,6 +87,9 @@ class PlanejamentoVooTests(TestCase):
         self.assertEqual(form.initial["hora_fim"], self.obj.hora_fim)
         self.assertEqual(form.initial["local"], "Parque Ambiental, Guarapuava/PR")
         self.assertContains(resposta, "Reservar drone")
+        self.assertNotContains(resposta, f"{self.obj.data.isoformat()} - Inspeção")
+        self.assertContains(resposta, f'value="{self.obj.data.isoformat()}"')
+        self.assertContains(resposta, "Fotografia")
 
     def test_importa_poligono_kml(self):
         conteudo = b'''<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>-51.47,-25.40,0 -51.45,-25.40,0 -51.45,-25.38,0 -51.47,-25.38,0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>'''
