@@ -184,6 +184,7 @@
                         </div>
 
                         <div class="calendar-day-item-actions">
+{% if not eh_coordenador %}
 {% if eh_admin or a.piloto.user_id == user.id %}
 <a href="{% url 'checklist_pre_voo' a.pk %}" class="icon-btn">Checklist</a>
 <a href="{% url 'registro_pos_voo' alocacao_id=a.pk %}" class="icon-btn">Pós-voo</a>
@@ -252,6 +253,7 @@
                                 {% endif %}
 
                             {% endif %}
+{% endif %}
 
                         </div>
 

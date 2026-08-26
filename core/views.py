@@ -622,7 +622,7 @@ def minha_agenda(request):
 
     hoje = timezone.localdate()
 
-    if usuario_e_admin(request.user):
+    if usuario_tem_visao_global(request.user):
         reservas = (
             Alocacao.objects
             .select_related("piloto", "drone")
@@ -1630,7 +1630,7 @@ def calendario(request):
             "id",
         )
     )
-    if not usuario_e_admin(request.user):
+    if not usuario_tem_visao_global(request.user):
         try:
             alocacoes = alocacoes.filter(piloto=request.user.piloto)
         except Piloto.DoesNotExist:
@@ -1682,7 +1682,7 @@ def calendario(request):
             "id",
         )
     )
-    if not usuario_e_admin(request.user):
+    if not usuario_tem_visao_global(request.user):
         try:
             lista_alocacoes = lista_alocacoes.filter(piloto=request.user.piloto)
         except Piloto.DoesNotExist:
@@ -1710,6 +1710,9 @@ def calendario(request):
 @login_required
 def alocacao_nova(request):
     _atualizar_status_drones_por_reserva()
+    if usuario_e_coordenador(request.user):
+        messages.error(request, "O perfil de coordenador possui acesso somente para consulta.")
+        return redirect("calendario")
     form = AlocacaoForm(
         request.POST or None
     )
@@ -1819,6 +1822,10 @@ def alocacao_nova(request):
 @login_required
 def alocacao_editar(request, pk):
     _atualizar_reservas_vencidas()
+
+    if usuario_e_coordenador(request.user):
+        messages.error(request, "O perfil de coordenador possui acesso somente para consulta.")
+        return redirect("calendario")
 
     alocacao = get_object_or_404(
         Alocacao,
@@ -1934,6 +1941,10 @@ def alocacao_editar(request, pk):
 @require_POST
 def alocacao_excluir(request, pk):
     _atualizar_reservas_vencidas()
+
+    if usuario_e_coordenador(request.user):
+        messages.error(request, "O perfil de coordenador possui acesso somente para consulta.")
+        return redirect("calendario")
 
     alocacao = get_object_or_404(
         Alocacao,
