@@ -73,6 +73,34 @@
         </table>
     </div>
 </div>
+
+<div class="panel">
+    <div class="panel-title-row">
+        <div><h3>Situação dos pilotos</h3><p>Horas comprovadas por telemetria, recência e qualificações que exigem atenção.</p></div>
+        <a href="{% url 'equipe_operacional' %}">Ver equipe completa →</a>
+    </div>
+    <div class="table-responsive">
+        <table class="modern-table">
+            <thead><tr><th>Piloto</th><th>Voos com log</th><th>Horas de voo</th><th>Última operação</th><th>Qualificações</th><th></th></tr></thead>
+            <tbody>
+            {% for item in equipe_resumo %}
+                <tr>
+                    <td><strong>{{ item.piloto.nome }}</strong></td>
+                    <td>{{ item.total_voos }}</td>
+                    <td>{{ item.total_horas }}</td>
+                    <td>{{ item.ultimo_voo|date:"d/m/Y"|default:"Sem operações" }}</td>
+                    <td>
+                        {% if item.qualificacoes_vencidas %}<span class="badge-soft red">{{ item.qualificacoes_vencidas }} vencida(s)</span>
+                        {% elif item.qualificacoes_vencendo %}<span class="badge-soft orange">{{ item.qualificacoes_vencendo }} a vencer</span>
+                        {% else %}<span class="badge-soft green">Em dia</span>{% endif %}
+                    </td>
+                    <td><a class="icon-btn" href="{% url 'perfil_operacional' item.piloto.pk %}">Visualizar</a></td>
+                </tr>
+            {% empty %}<tr><td colspan="6">Nenhum piloto ativo cadastrado.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 {% endif %}
 
 <div class="kpi-grid">

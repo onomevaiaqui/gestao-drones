@@ -58,6 +58,29 @@ def _perfil_contexto(piloto):
     }
 
 
+def resumo_equipe_operacional(limite=None):
+    equipe = []
+    pilotos = Piloto.objects.filter(ativo=True).select_related("user").order_by("nome")
+    for piloto in pilotos:
+        perfil = _perfil_contexto(piloto)
+        qualificacoes = perfil["qualificacoes"]
+        vencidas = sum(q.situacao == "vencida" for q in qualificacoes)
+        vencendo = sum(q.situacao == "vencendo" for q in qualificacoes)
+        equipe.append({
+            "piloto": piloto,
+            "total_voos": perfil["total_voos_piloto"],
+            "total_horas": perfil["total_horas_piloto"],
+            "ultimo_voo": perfil["ultimo_voo"],
+            "dias_sem_voar": perfil["dias_sem_voar"],
+            "qualificacoes_validas": perfil["qualificacoes_validas"],
+            "qualificacoes_vencendo": vencendo,
+            "qualificacoes_vencidas": vencidas,
+            "prioridade": (2 if vencidas else 1 if vencendo else 0),
+        })
+    equipe.sort(key=lambda item: (-item["prioridade"], item["piloto"].nome.lower()))
+    return equipe[:limite] if limite else equipe
+
+
 @login_required
 def meu_perfil_operacional(request):
     if not hasattr(request.user, "piloto"):
@@ -80,24 +103,7 @@ def perfil_operacional(request, pk):
 
 @visao_global_required
 def equipe_operacional(request):
-    equipe = []
-    pilotos = Piloto.objects.filter(ativo=True).select_related("user").order_by("nome")
-    for piloto in pilotos:
-        perfil = _perfil_contexto(piloto)
-        qualificacoes = perfil["qualificacoes"]
-        vencidas = sum(q.situacao == "vencida" for q in qualificacoes)
-        vencendo = sum(q.situacao == "vencendo" for q in qualificacoes)
-        equipe.append({
-            "piloto": piloto,
-            "total_voos": perfil["total_voos_piloto"],
-            "total_horas": perfil["total_horas_piloto"],
-            "ultimo_voo": perfil["ultimo_voo"],
-            "dias_sem_voar": perfil["dias_sem_voar"],
-            "qualificacoes_validas": perfil["qualificacoes_validas"],
-            "qualificacoes_vencendo": vencendo,
-            "qualificacoes_vencidas": vencidas,
-        })
-    ctx = {"equipe": equipe}
+    ctx = {"equipe": resumo_equipe_operacional()}
     ctx.update(_base_context(request))
     return render(request, "qualificacoes/equipe.html", ctx)
 

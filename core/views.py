@@ -580,6 +580,11 @@ def dashboard(request):
     if piloto_sessao:
         concluidas_sem_log_qs = concluidas_sem_log_qs.filter(piloto=piloto_sessao)
 
+    equipe_resumo = []
+    if visao_global:
+        from .qualificacao_views import resumo_equipe_operacional
+        equipe_resumo = resumo_equipe_operacional(limite=6)
+
     ctx = {
         "total_voos": total_voos,
         "total_horas": f"{horas}h {minutos:02d}min",
@@ -593,6 +598,7 @@ def dashboard(request):
         "operacoes_mapa": operacoes_mapa,
         "pilotos_ativos_total": Piloto.objects.filter(ativo=True).count() if visao_global else (1 if piloto_sessao else 0),
         "operacoes_sem_log": concluidas_sem_log_qs.distinct().count(),
+        "equipe_resumo": equipe_resumo,
         "pilotos_data": pilotos_data,
         "drones_data": drones_data,
         "finalidades_data": finalidades_data,
