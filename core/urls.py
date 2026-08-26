@@ -22,6 +22,7 @@ urlpatterns = [
     path("planejamentos/<int:pk>/", planejamento_views.planejamento_detalhe, name="planejamento_detalhe"),
     path("planejamentos/<int:pk>/editar/", planejamento_views.planejamento_editar, name="planejamento_editar"),
     path("planejamentos/<int:pk>/atualizar-previsao/", planejamento_views.planejamento_atualizar_previsao, name="planejamento_atualizar_previsao"),
+    path("planejamentos/<int:pk>/baixar-kml/", planejamento_views.planejamento_baixar_kml, name="planejamento_baixar_kml"),
     path("planejamentos/api/buscar-local/", planejamento_views.planejamento_buscar_local, name="planejamento_buscar_local"),
     path("planejamentos/api/camadas-aeronauticas/", planejamento_views.planejamento_camadas_aeronauticas, name="planejamento_camadas_aeronauticas"),
     path("solicitacoes/nova/", solicitacao_views.solicitacao_voo_nova, name="solicitacao_voo_nova"),

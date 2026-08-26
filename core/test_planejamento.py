@@ -94,6 +94,14 @@ class PlanejamentoVooTests(TestCase):
         self.assertEqual(geometria["type"], "Polygon")
         self.assertEqual(geometria["coordinates"][0][0], geometria["coordinates"][0][-1])
 
+    def test_baixa_kml_do_planejamento(self):
+        self.client.force_login(self.user)
+        resposta = self.client.get(reverse("planejamento_baixar_kml", args=[self.obj.pk]))
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(resposta["Content-Type"].split(";")[0], "application/vnd.google-earth.kml+xml")
+        self.assertIn(b"<Polygon>", resposta.content)
+        self.assertIn(b"Parque Ambiental", resposta.content)
+
     @patch("core.planejamento_aeronautico_service.urlopen")
     def test_aerodromo_proximo_e_area_proibida_sao_detectados(self, urlopen):
         import json

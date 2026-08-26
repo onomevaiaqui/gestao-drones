@@ -32,6 +32,10 @@ class PlanejamentoVooForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.order_fields([
+            "titulo", "piloto", "local", "data", "hora_inicio", "hora_fim",
+            "altura_maxima_m", "arquivo_area", "observacoes", "area_geojson_texto",
+        ])
         self.fields["piloto"].queryset = Piloto.objects.filter(ativo=True)
         if self.instance and self.instance.pk:
             self.fields["area_geojson_texto"].initial = json.dumps(self.instance.area_geojson)

@@ -4,11 +4,14 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse
+from django.http import HttpResponse
 from django.core.cache import cache
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import json
 import hashlib
+from django.utils.text import slugify
+from xml.sax.saxutils import escape
 
 from .models import PlanejamentoVoo, Piloto
 from .planejamento_forms import PlanejamentoVooForm
@@ -155,3 +158,21 @@ def planejamento_camadas_aeronauticas(request):
         return JsonResponse({"erro":"Área de consulta inválida."}, status=400)
     except Exception:
         return JsonResponse({"erro":"Camadas do AISWEB temporariamente indisponíveis."}, status=503)
+
+
+@login_required
+def planejamento_baixar_kml(request, pk):
+    obj = get_object_or_404(_planejamentos_do_usuario(request), pk=pk)
+    coordenadas = " ".join(
+        f"{float(lon):.7f},{float(lat):.7f},0"
+        for lon, lat in obj.area_geojson["coordinates"][0]
+    )
+    conteudo = f'''<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+<name>{escape(obj.titulo)}</name><Placemark><name>{escape(obj.titulo)}</name>
+<description>{escape(obj.local or "Área planejada")}</description>
+<Polygon><outerBoundaryIs><LinearRing><coordinates>{coordenadas}</coordinates></LinearRing></outerBoundaryIs></Polygon>
+</Placemark></Document></kml>'''
+    resposta = HttpResponse(conteudo, content_type="application/vnd.google-earth.kml+xml; charset=utf-8")
+    resposta["Content-Disposition"] = f'attachment; filename="{slugify(obj.titulo) or "planejamento"}.kml"'
+    return resposta
