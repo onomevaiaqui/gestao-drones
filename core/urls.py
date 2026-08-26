@@ -90,6 +90,7 @@ urlpatterns = [
     path("incidentes/novo/", seguranca_views.incidente_novo, name="incidente_novo"),
     path("incidentes/<int:pk>/editar/", seguranca_views.incidente_editar, name="incidente_editar"),
     path("meu-perfil-operacional/", qualificacao_views.meu_perfil_operacional, name="meu_perfil_operacional"),
+    path("equipe-operacional/", qualificacao_views.equipe_operacional, name="equipe_operacional"),
     path("pilotos/<int:pk>/perfil-operacional/", qualificacao_views.perfil_operacional, name="perfil_operacional"),
     path("pilotos/<int:piloto_id>/qualificacoes/nova/", qualificacao_views.qualificacao_nova, name="qualificacao_nova"),
     path("qualificacoes/<int:pk>/editar/", qualificacao_views.qualificacao_editar, name="qualificacao_editar"),

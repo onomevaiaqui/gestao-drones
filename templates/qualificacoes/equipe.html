@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Equipe operacional{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Equipe operacional</h1>
+        <p>Experiência comprovada por telemetria e situação das qualificações.</p>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel-title-row">
+        <h3>Pilotos ativos</h3>
+        <span>Consulta operacional · sem dados pessoais</span>
+    </div>
+    <div class="table-responsive">
+        <table class="modern-table">
+            <thead><tr><th>Piloto</th><th>Voos com log</th><th>Horas por telemetria</th><th>Última operação</th><th>Recência</th><th>Qualificações</th><th></th></tr></thead>
+            <tbody>
+            {% for item in equipe %}
+                <tr>
+                    <td><strong>{{ item.piloto.nome }}</strong></td>
+                    <td>{{ item.total_voos }}</td>
+                    <td>{{ item.total_horas }}</td>
+                    <td>{{ item.ultimo_voo|date:"d/m/Y"|default:"Sem operações" }}</td>
+                    <td>
+                        {% if item.dias_sem_voar is None %}<span class="badge-soft">Sem dados</span>
+                        {% elif item.dias_sem_voar <= 90 %}<span class="badge-soft green">{{ item.dias_sem_voar }} dia(s)</span>
+                        {% else %}<span class="badge-soft red">{{ item.dias_sem_voar }} dias</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if item.qualificacoes_vencidas %}<span class="badge-soft red">{{ item.qualificacoes_vencidas }} vencida(s)</span>{% endif %}
+                        {% if item.qualificacoes_vencendo %}<span class="badge-soft orange">{{ item.qualificacoes_vencendo }} a vencer</span>{% endif %}
+                        {% if not item.qualificacoes_vencidas and not item.qualificacoes_vencendo %}<span class="badge-soft green">{{ item.qualificacoes_validas }} válida(s)</span>{% endif %}
+                    </td>
+                    <td><a class="icon-btn" href="{% url 'perfil_operacional' item.piloto.pk %}">Visualizar</a></td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="7">Nenhum piloto ativo cadastrado.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

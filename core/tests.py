@@ -86,6 +86,7 @@ class SelecaoPerfilAcessoTests(TestCase):
         self.assertRedirects(self.client.get(reverse("pilotos")), reverse("dashboard"))
         self.assertRedirects(self.client.get("/admin/"), reverse("dashboard"))
         self.assertRedirects(self.client.get(reverse("alertas")), reverse("dashboard"))
+        self.assertRedirects(self.client.get(reverse("equipe_operacional")), reverse("dashboard"))
         painel = self.client.get(reverse("dashboard"))
         self.assertEqual(painel.context["reservas_hoje"], 0)
 
@@ -137,6 +138,16 @@ class SelecaoPerfilAcessoTests(TestCase):
         self.assertEqual(alertas.status_code, 200)
         self.assertContains(alertas, "Somente leitura")
         self.assertNotContains(alertas, "Resolver →")
+        equipe = self.client.get(reverse("equipe_operacional"))
+        self.assertEqual(equipe.status_code, 200)
+        self.assertContains(equipe, "Piloto de Outro Usuário")
+        self.assertContains(equipe, "Horas por telemetria")
+        self.assertNotContains(equipe, "CPF")
+        perfil = self.client.get(reverse("perfil_operacional", args=[self.outro_piloto.pk]))
+        self.assertEqual(perfil.status_code, 200)
+        self.assertContains(perfil, "Piloto de Outro Usuário")
+        self.assertNotContains(perfil, "+ Nova qualificação")
+        self.assertNotContains(perfil, ">Editar<", html=False)
 
     def test_coordenador_abre_dashboard_global_sem_acesso_administrativo(self):
         resposta = self.client.post(reverse("login"), {

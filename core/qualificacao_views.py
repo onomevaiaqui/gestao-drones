@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from .models import ImportacaoLog, Piloto, QualificacaoPiloto, Voo
 from .qualificacao_forms import QualificacaoPilotoForm
-from .views import _base_context, admin_required, usuario_e_admin
+from .views import _base_context, admin_required, usuario_e_admin, usuario_tem_visao_global, visao_global_required
 from .voo_service import filtrar_voos_realizados
 
 
@@ -17,7 +17,7 @@ def _duracao_voo_segundos(voo):
     duracoes = [log.duracao_segundos for log in logs if log.duracao_segundos is not None]
     if duracoes:
         return sum(duracoes)
-    return voo.duracao_minutos * 60
+    return 0
 
 
 def _formatar_duracao(total_segundos):
@@ -69,12 +69,37 @@ def meu_perfil_operacional(request):
 @login_required
 def perfil_operacional(request, pk):
     piloto = get_object_or_404(Piloto.objects.select_related("user"), pk=pk)
-    if not usuario_e_admin(request.user) and piloto.user_id != request.user.id:
+    if not usuario_tem_visao_global(request.user) and piloto.user_id != request.user.id:
         messages.error(request, "Você só pode consultar o próprio perfil operacional.")
         return redirect("dashboard")
     ctx = _perfil_contexto(piloto)
+    ctx["perfil_proprio"] = piloto.user_id == request.user.id
     ctx.update(_base_context(request))
     return render(request, "qualificacoes/perfil.html", ctx)
+
+
+@visao_global_required
+def equipe_operacional(request):
+    equipe = []
+    pilotos = Piloto.objects.filter(ativo=True).select_related("user").order_by("nome")
+    for piloto in pilotos:
+        perfil = _perfil_contexto(piloto)
+        qualificacoes = perfil["qualificacoes"]
+        vencidas = sum(q.situacao == "vencida" for q in qualificacoes)
+        vencendo = sum(q.situacao == "vencendo" for q in qualificacoes)
+        equipe.append({
+            "piloto": piloto,
+            "total_voos": perfil["total_voos_piloto"],
+            "total_horas": perfil["total_horas_piloto"],
+            "ultimo_voo": perfil["ultimo_voo"],
+            "dias_sem_voar": perfil["dias_sem_voar"],
+            "qualificacoes_validas": perfil["qualificacoes_validas"],
+            "qualificacoes_vencendo": vencendo,
+            "qualificacoes_vencidas": vencidas,
+        })
+    ctx = {"equipe": equipe}
+    ctx.update(_base_context(request))
+    return render(request, "qualificacoes/equipe.html", ctx)
 
 
 @admin_required
