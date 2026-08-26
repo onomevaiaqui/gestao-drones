@@ -11,7 +11,7 @@ from .models import PlanejamentoVoo, Piloto
 from .planejamento_service import calcular_geometria, consultar_previsao
 from .planejamento_aeronautico_service import consultar_condicionantes_aeronauticas
 from .planejamento_kml import extrair_poligono_kml
-from .avaliacao_risco_service import dados_automaticos_avaliacao
+from .avaliacao_risco_service import classificar_matriz, dados_automaticos_avaliacao
 
 
 AREA = {"type": "Polygon", "coordinates": [[
@@ -28,6 +28,12 @@ class _Resposta:
 
 
 class PlanejamentoVooTests(TestCase):
+    def test_matriz_is_e94_003_classifica_celulas(self):
+        self.assertEqual(classificar_matriz(5, "A"), "Extremo")
+        self.assertEqual(classificar_matriz(3, "A"), "Alto")
+        self.assertEqual(classificar_matriz(2, "B"), "Moderado")
+        self.assertEqual(classificar_matriz(1, "B"), "Baixo")
+        self.assertEqual(classificar_matriz(1, "E"), "Muito baixo")
     def setUp(self):
         self.user = User.objects.create_user("planejador", password="teste")
         self.piloto = Piloto.objects.create(user=self.user, nome="Planejador", primeiro_acesso=False)

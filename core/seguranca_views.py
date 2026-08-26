@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
+from django.http import HttpResponse
 from django.utils import timezone
 
 from .models import Alocacao, AvaliacaoRisco, Incidente, Piloto, SolicitacaoVoo
@@ -8,6 +9,7 @@ from .seguranca_forms import AvaliacaoRiscoForm, IncidenteForm
 from .solicitacao_service import LiberacaoVooErro, liberar_solicitacao
 from .views import _base_context, usuario_e_admin
 from .avaliacao_risco_service import dados_automaticos_avaliacao
+from .avaliacao_risco_pdf import gerar_pdf_avaliacao
 
 
 def _pode_acessar_solicitacao(user, solicitacao):
@@ -25,7 +27,7 @@ def avaliacao_risco(request, solicitacao_id):
     somente_leitura = bool(eh_admin or (avaliacao and avaliacao.status == "aprovada"))
 
     if request.method == "POST" and not somente_leitura:
-        form = AvaliacaoRiscoForm(request.POST, instance=avaliacao)
+        form = AvaliacaoRiscoForm(request.POST, instance=avaliacao, initial=dados_automaticos_avaliacao(solicitacao))
         if form.is_valid():
             avaliacao = form.save(commit=False)
             avaliacao.solicitacao = solicitacao
@@ -46,6 +48,17 @@ def avaliacao_risco(request, solicitacao_id):
     ctx = {"form": form, "solicitacao": solicitacao, "avaliacao": avaliacao, "somente_leitura": somente_leitura}
     ctx.update(_base_context(request))
     return render(request, "seguranca/avaliacao_risco.html", ctx)
+
+
+@login_required
+def avaliacao_risco_pdf(request, solicitacao_id):
+    solicitacao = get_object_or_404(SolicitacaoVoo.objects.select_related("piloto__user", "drone"), pk=solicitacao_id)
+    if not _pode_acessar_solicitacao(request.user, solicitacao):
+        return HttpResponse(status=403)
+    avaliacao = get_object_or_404(AvaliacaoRisco, solicitacao=solicitacao, status="aprovada")
+    resposta = HttpResponse(gerar_pdf_avaliacao(avaliacao), content_type="application/pdf")
+    resposta["Content-Disposition"] = f'attachment; filename="avaliacao-risco-{solicitacao.pk}.pdf"'
+    return resposta
 
 
 @login_required

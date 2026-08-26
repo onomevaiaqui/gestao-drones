@@ -866,6 +866,9 @@ class AvaliacaoRisco(models.Model):
         ("aprovada", "Aceita pelo piloto"),
     ]
     NIVEL_CHOICES = [(1, "1 - Muito baixo"), (2, "2 - Baixo"), (3, "3 - Moderado"), (4, "4 - Alto"), (5, "5 - Muito alto")]
+    AREA_TERCEIROS_CHOICES = [
+        ("sim", "Sim"), ("nao", "Não"), ("nao_aplicavel", "Não aplicável"),
+    ]
 
     solicitacao = models.OneToOneField(SolicitacaoVoo, on_delete=models.CASCADE, related_name="avaliacao_risco")
     perigos_identificados = models.TextField()
@@ -878,6 +881,22 @@ class AvaliacaoRisco(models.Model):
     pessoas_expostas = models.BooleanField(default=False)
     area_controlada = models.BooleanField(default=False)
     observacoes = models.TextField(blank=True)
+    operador_nome = models.CharField(max_length=200, blank=True)
+    operador_documento = models.CharField(max_length=30, blank=True, verbose_name="CPF/CNPJ do operador")
+    aeronave_identificacao = models.TextField(blank=True)
+    cenario_operacional = models.TextField(blank=True)
+    aspectos_gerais = models.TextField(blank=True)
+    legislacao_aplicavel = models.TextField(blank=True)
+    area_distante_terceiros = models.CharField(max_length=20, choices=AREA_TERCEIROS_CHOICES, blank=True)
+    treinamento_requerido = models.BooleanField(default=False)
+    descricao_treinamento = models.TextField(blank=True)
+    procedimento_acidente = models.TextField(blank=True)
+    situacoes_risco = models.JSONField(default=list, blank=True)
+    matriz_risco = models.CharField(max_length=150, blank=True, default="Matriz 5 × 5 da IS E94-003A")
+    declaracao_conformidade = models.BooleanField(default=False)
+    responsavel_informacoes = models.CharField(max_length=200, blank=True)
+    data_avaliacao = models.DateField(default=date.today)
+    validade_ate = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="rascunho")
     preenchido_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="avaliacoes_risco_preenchidas")
     analisado_por = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True, related_name="avaliacoes_risco_analisadas")
