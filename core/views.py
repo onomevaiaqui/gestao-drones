@@ -70,12 +70,15 @@ def usuario_tem_perfil_admin(user):
 def usuario_e_admin(user):
     if not usuario_tem_perfil_admin(user):
         return False
-    return getattr(user, "_modo_acesso", None) not in ("usuario", "pendente")
+    return getattr(user, "_modo_acesso", None) not in ("usuario", "coordenador", "pendente")
 
 
 def usuario_e_coordenador(user):
     if not user.is_authenticated:
         return False
+    modo = getattr(user, "_modo_acesso", None)
+    if usuario_tem_perfil_admin(user):
+        return modo == "coordenador"
     try:
         return user.piloto.perfil == "coordenador" and user.piloto.ativo
     except Piloto.DoesNotExist:

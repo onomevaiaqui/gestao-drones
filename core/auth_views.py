@@ -40,6 +40,8 @@ def selecionar_modo_acesso(request):
         modo = request.POST.get("modo")
         if modo == "admin":
             request.session["modo_acesso"] = "admin"
+        elif modo == "coordenador":
+            request.session["modo_acesso"] = "coordenador"
         elif modo == "usuario" and possui_perfil_usuario:
             request.session["modo_acesso"] = "usuario"
         else:

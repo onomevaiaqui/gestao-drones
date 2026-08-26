@@ -83,6 +83,19 @@ class SelecaoPerfilAcessoTests(TestCase):
         self.assertEqual(self.client.get(reverse("pilotos")).status_code, 200)
         self.assertEqual(self.client.get(reverse("dashboard")).context["reservas_hoje"], 1)
 
+    def test_admin_pode_usar_o_mesmo_login_no_modo_coordenador(self):
+        self.client.force_login(self.admin)
+        resposta = self.client.post(reverse("selecionar_modo_acesso"), {"modo": "coordenador"})
+        self.assertRedirects(resposta, reverse("dashboard"))
+        painel = self.client.get(reverse("dashboard"))
+        self.assertTrue(painel.context["eh_coordenador"])
+        self.assertFalse(painel.context["eh_admin"])
+        self.assertEqual(painel.context["modo_acesso"], "coordenador")
+        self.assertEqual(painel.context["reservas_hoje"], 1)
+        self.assertContains(painel, "Trocar perfil")
+        self.assertNotContains(painel, "Pilotos / Usuários")
+        self.assertRedirects(self.client.get(reverse("pilotos")), reverse("dashboard"))
+
     def test_coordenador_abre_dashboard_global_sem_acesso_administrativo(self):
         resposta = self.client.post(reverse("login"), {
             "username": "coordenador", "password": "teste123",
