@@ -149,6 +149,24 @@
         <div class="kpi-card"><div><span>Graves pendentes</span><strong>{{ seguranca_resumo.incidentes_graves }}</strong></div><div class="kpi-icon alert-critical">!</div></div>
     </div>
 </div>
+
+<div class="panel">
+    <div class="panel-title-row">
+        <div><h3>Indicadores dos últimos 30 dias</h3><p>Comparação com os 30 dias anteriores, usando exclusivamente voos com telemetria.</p></div>
+        {% if eh_admin %}<a href="{% url 'relatorios' %}">Abrir relatórios →</a>{% endif %}
+    </div>
+    <div class="coordinator-kpi-grid">
+        <div class="kpi-card"><div><span>Voos com log</span><strong>{{ indicadores_gerenciais.voos_30 }}</strong><small>{% if indicadores_gerenciais.variacao_voos > 0 %}↑{% elif indicadores_gerenciais.variacao_voos < 0 %}↓{% else %}→{% endif %} {{ indicadores_gerenciais.variacao_voos }}% ante o período anterior</small></div><div class="kpi-icon">✈</div></div>
+        <div class="kpi-card"><div><span>Horas de voo</span><strong>{{ indicadores_gerenciais.horas_30 }}</strong><small>{% if indicadores_gerenciais.variacao_horas > 0 %}↑{% elif indicadores_gerenciais.variacao_horas < 0 %}↓{% else %}→{% endif %} {{ indicadores_gerenciais.variacao_horas }}% ante o período anterior</small></div><div class="kpi-icon green">◷</div></div>
+        <div class="kpi-card"><div><span>Distância percorrida</span><strong>{{ indicadores_gerenciais.distancia_30 }} km</strong><small>Somente telemetria processada</small></div><div class="kpi-icon purple">⌖</div></div>
+        <div class="kpi-card"><div><span>Conformidade dos logs</span><strong>{{ indicadores_gerenciais.conformidade_logs }}%</strong><small>Reservas concluídas com telemetria</small></div><div class="kpi-icon orange">✓</div></div>
+    </div>
+    <div class="chart-grid three">
+        <div class="currency-status current"><strong>Utilização da frota</strong><span>{{ indicadores_gerenciais.utilizacao_frota }}% das aeronaves operacionais voaram</span></div>
+        <div class="currency-status current"><strong>Piloto com maior atividade</strong><span>{{ indicadores_gerenciais.piloto_mais_ativo }}</span></div>
+        <div class="currency-status current"><strong>Aeronave mais utilizada</strong><span>{{ indicadores_gerenciais.drone_mais_utilizado }}</span></div>
+    </div>
+</div>
 {% endif %}
 
 <div class="kpi-grid">

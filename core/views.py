@@ -584,6 +584,7 @@ def dashboard(request):
     inspecoes_atencao = []
     documentos_aeronaves_atencao = []
     seguranca_resumo = {}
+    indicadores_gerenciais = {}
     if visao_global:
         from .qualificacao_views import resumo_equipe_operacional
         from .models import AvaliacaoRisco, Documento, Incidente, PlanoInspecao
@@ -611,6 +612,50 @@ def dashboard(request):
             "incidentes_abertos": Incidente.objects.exclude(status="encerrado").count(),
             "incidentes_graves": Incidente.objects.filter(gravidade__in=["grave", "critico"]).exclude(status="encerrado").count(),
         }
+        hoje_indicadores = agora_dashboard.date()
+        inicio_atual = hoje_indicadores - timedelta(days=29)
+        inicio_anterior = inicio_atual - timedelta(days=30)
+        fim_anterior = inicio_atual - timedelta(days=1)
+        voos_atual = list(filtrar_voos_realizados(
+            Voo.objects.select_related("piloto", "drone").filter(data__range=(inicio_atual, hoje_indicadores))
+        ))
+        voos_anterior = list(filtrar_voos_realizados(
+            Voo.objects.filter(data__range=(inicio_anterior, fim_anterior))
+        ))
+        segundos_atual = sum(voo.duracao_segundos_operacionais for voo in voos_atual)
+        segundos_anterior = sum(voo.duracao_segundos_operacionais for voo in voos_anterior)
+        distancia_atual = sum(float(voo.distancia_m or 0) for voo in voos_atual) / 1000
+        reservas_concluidas_30 = Alocacao.objects.filter(status="concluido", data__range=(inicio_atual, hoje_indicadores))
+        reservas_com_log_30 = reservas_concluidas_30.filter(voo_sincronizado__importacoes_log__status="concluida").distinct().count()
+        total_reservas_concluidas_30 = reservas_concluidas_30.count()
+        uso_pilotos = defaultdict(int)
+        uso_drones = defaultdict(int)
+        drones_com_voo = set()
+        for voo in voos_atual:
+            duracao = voo.duracao_segundos_operacionais
+            uso_pilotos[voo.piloto.nome] += duracao
+            uso_drones[voo.drone.nome] += duracao
+            drones_com_voo.add(voo.drone_id)
+        piloto_mais_ativo = max(uso_pilotos, key=uso_pilotos.get) if uso_pilotos else "Sem dados"
+        drone_mais_utilizado = max(uso_drones, key=uso_drones.get) if uso_drones else "Sem dados"
+        total_frota_operacional = Drone.objects.exclude(status="indisponivel").count()
+
+        def variacao_percentual(atual, anterior):
+            if anterior:
+                return round((atual - anterior) / anterior * 100)
+            return 100 if atual else 0
+
+        indicadores_gerenciais = {
+            "voos_30": len(voos_atual),
+            "variacao_voos": variacao_percentual(len(voos_atual), len(voos_anterior)),
+            "horas_30": f"{segundos_atual // 3600}h {(segundos_atual % 3600) // 60:02d}min",
+            "variacao_horas": variacao_percentual(segundos_atual, segundos_anterior),
+            "distancia_30": round(distancia_atual, 2),
+            "conformidade_logs": round(reservas_com_log_30 / total_reservas_concluidas_30 * 100) if total_reservas_concluidas_30 else 100,
+            "utilizacao_frota": round(len(drones_com_voo) / total_frota_operacional * 100) if total_frota_operacional else 0,
+            "piloto_mais_ativo": piloto_mais_ativo,
+            "drone_mais_utilizado": drone_mais_utilizado,
+        }
 
     ctx = {
         "total_voos": total_voos,
@@ -629,6 +674,7 @@ def dashboard(request):
         "inspecoes_atencao": inspecoes_atencao,
         "documentos_aeronaves_atencao": documentos_aeronaves_atencao,
         "seguranca_resumo": seguranca_resumo,
+        "indicadores_gerenciais": indicadores_gerenciais,
         "pilotos_data": pilotos_data,
         "drones_data": drones_data,
         "finalidades_data": finalidades_data,

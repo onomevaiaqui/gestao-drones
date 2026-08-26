@@ -117,6 +117,9 @@ class SelecaoPerfilAcessoTests(TestCase):
         self.assertContains(painel, "Documentos das aeronaves")
         self.assertNotContains(painel, "Gerenciar →")
         self.assertContains(painel, "Segurança operacional")
+        self.assertContains(painel, "Indicadores dos últimos 30 dias")
+        self.assertContains(painel, "Conformidade dos logs")
+        self.assertContains(painel, "Somente telemetria processada")
         self.solicitacao_outro.requer_avaliacao_risco = True
         self.solicitacao_outro.save(update_fields=["requer_avaliacao_risco"])
         risco = self.client.get(reverse("avaliacao_risco", args=[self.solicitacao_outro.pk]))
