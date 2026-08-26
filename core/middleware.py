@@ -11,6 +11,6 @@ class ModoAcessoMiddleware:
             request.user._modo_acesso = modo
             if modo == "pendente" and request.path not in ("/selecionar-perfil/", "/logout/"):
                 return redirect("selecionar_modo_acesso")
-            if modo == "usuario" and request.path.startswith("/admin/"):
+            if modo in ("usuario", "coordenador") and request.path.startswith("/admin/"):
                 return redirect("dashboard")
         return self.get_response(request)

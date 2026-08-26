@@ -32,6 +32,11 @@ class SelecaoPerfilAcessoTests(TestCase):
         self.outro_piloto = Piloto.objects.create(
             user=self.outro_user, nome="Piloto de Outro Usuário", primeiro_acesso=False,
         )
+        self.coordenador = User.objects.create_user(username="coordenador", password="teste123")
+        self.piloto_coordenador = Piloto.objects.create(
+            user=self.coordenador, nome="Coordenador Operacional", perfil="coordenador",
+            primeiro_acesso=False,
+        )
         self.drone = Drone.objects.create(nome="Drone Perfil Duplo", modelo="Modelo")
         self.voo_admin = Voo.objects.create(
             data=timezone.localdate(), piloto=self.piloto_admin, drone=self.drone,
@@ -77,6 +82,25 @@ class SelecaoPerfilAcessoTests(TestCase):
         self.assertContains(lista, "Piloto de Outro Usuário")
         self.assertEqual(self.client.get(reverse("pilotos")).status_code, 200)
         self.assertEqual(self.client.get(reverse("dashboard")).context["reservas_hoje"], 1)
+
+    def test_coordenador_abre_dashboard_global_sem_acesso_administrativo(self):
+        resposta = self.client.post(reverse("login"), {
+            "username": "coordenador", "password": "teste123",
+        })
+        self.assertRedirects(resposta, reverse("dashboard"))
+        painel = self.client.get(reverse("dashboard"))
+        self.assertEqual(painel.context["modo_acesso"], "coordenador")
+        self.assertTrue(painel.context["eh_coordenador"])
+        self.assertEqual(painel.context["reservas_hoje"], 1)
+        self.assertContains(painel, "Piloto de Outro Usuário")
+        self.assertNotContains(painel, "Pilotos / Usuários")
+        self.assertRedirects(self.client.get(reverse("pilotos")), reverse("dashboard"))
+        self.assertRedirects(self.client.get("/admin/"), reverse("dashboard"))
+
+    def test_coordenador_nao_exibe_tela_de_troca_de_perfil(self):
+        self.client.force_login(self.coordenador)
+        resposta = self.client.get(reverse("selecionar_modo_acesso"))
+        self.assertRedirects(resposta, reverse("dashboard"))
 
 
 class BateriaTests(TestCase):

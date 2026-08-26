@@ -73,6 +73,19 @@ def usuario_e_admin(user):
     return getattr(user, "_modo_acesso", None) not in ("usuario", "pendente")
 
 
+def usuario_e_coordenador(user):
+    if not user.is_authenticated:
+        return False
+    try:
+        return user.piloto.perfil == "coordenador" and user.piloto.ativo
+    except Piloto.DoesNotExist:
+        return False
+
+
+def usuario_tem_visao_global(user):
+    return usuario_e_admin(user) or usuario_e_coordenador(user)
+
+
 def admin_required(view_func):
     @wraps(view_func)
     @login_required
@@ -91,12 +104,15 @@ def admin_required(view_func):
 
 def _base_context(request):
     eh_admin = usuario_e_admin(request.user)
+    eh_coordenador = usuario_e_coordenador(request.user)
     contexto = {
         "eh_admin": eh_admin,
+        "eh_coordenador": eh_coordenador,
+        "visao_global": eh_admin or eh_coordenador,
         "pode_escolher_modo": usuario_tem_perfil_admin(request.user),
-        "modo_acesso": "admin" if eh_admin else "usuario",
+        "modo_acesso": "admin" if eh_admin else ("coordenador" if eh_coordenador else "usuario"),
     }
-    if eh_admin:
+    if eh_admin or eh_coordenador:
         from .alerta_service import resumo_alertas
         contexto["alertas_resumo_global"] = resumo_alertas()
     return contexto
@@ -385,7 +401,8 @@ def dashboard(request):
         data__isnull=False, hora_inicio__isnull=False, hora_fim__isnull=False,
     )
     piloto_sessao = None
-    if not usuario_e_admin(request.user):
+    visao_global = usuario_tem_visao_global(request.user)
+    if not visao_global:
         try:
             piloto_sessao = request.user.piloto
             voos_qs = voos_qs.filter(piloto=piloto_sessao)
@@ -473,6 +490,21 @@ def dashboard(request):
 
     agora_dashboard = timezone.localtime()
 
+    operacoes_agora_qs = (
+        Alocacao.objects
+        .select_related("piloto", "drone")
+        .filter(
+            status="reservado",
+            data=agora_dashboard.date(),
+            hora_inicio__lte=agora_dashboard.time(),
+            hora_fim__gt=agora_dashboard.time(),
+        )
+        .order_by("hora_inicio", "piloto__nome")
+    )
+    if piloto_sessao:
+        operacoes_agora_qs = operacoes_agora_qs.filter(piloto=piloto_sessao)
+    operacoes_agora = list(operacoes_agora_qs)
+
     reservas_hoje_qs = Alocacao.objects.filter(
         data=agora_dashboard.date(),
         status="reservado",
@@ -493,6 +525,12 @@ def dashboard(request):
         proximas_reservas_qs = proximas_reservas_qs.filter(piloto=piloto_sessao)
     proximas_reservas = proximas_reservas_qs.order_by("data", "hora_inicio")[:8]
 
+    concluidas_sem_log_qs = Alocacao.objects.filter(status="concluido").exclude(
+        voo_sincronizado__importacoes_log__status="concluida"
+    )
+    if piloto_sessao:
+        concluidas_sem_log_qs = concluidas_sem_log_qs.filter(piloto=piloto_sessao)
+
     ctx = {
         "total_voos": total_voos,
         "total_horas": f"{horas}h {minutos:02d}min",
@@ -501,6 +539,10 @@ def dashboard(request):
         "reservas_hoje": reservas_hoje,
         "drones_em_campo": status_drones["em_campo"],
         "drones_em_manutencao": status_drones["manutencao"],
+        "operacoes_agora": operacoes_agora,
+        "operacoes_agora_total": len(operacoes_agora),
+        "pilotos_ativos_total": Piloto.objects.filter(ativo=True).count() if visao_global else (1 if piloto_sessao else 0),
+        "operacoes_sem_log": concluidas_sem_log_qs.distinct().count(),
         "pilotos_data": pilotos_data,
         "drones_data": drones_data,
         "finalidades_data": finalidades_data,

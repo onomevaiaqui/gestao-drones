@@ -12,6 +12,7 @@ from django.db import models
 class Piloto(models.Model):
     PERFIL_CHOICES = [
         ("administrador", "Administrador"),
+        ("coordenador", "Coordenador"),
         ("usuario", "Usuário"),
     ]
 

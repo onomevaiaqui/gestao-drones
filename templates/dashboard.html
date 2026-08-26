@@ -17,11 +17,53 @@
     </form>
 </div>
 
-{% if eh_admin and alertas_resumo_global.total %}
+{% if visao_global and alertas_resumo_global.total %}
+{% if eh_admin %}
 <a class="dashboard-alert-summary" href="{% url 'alertas' %}">
     <div><strong>⚠ {{ alertas_resumo_global.total }} alerta{{ alertas_resumo_global.total|pluralize }}</strong><span>{{ alertas_resumo_global.criticos }} crítico{{ alertas_resumo_global.criticos|pluralize }} · {{ alertas_resumo_global.altos }} de alta prioridade</span></div>
     <span>Ver central →</span>
 </a>
+{% else %}
+<div class="dashboard-alert-summary coordinator-alert-summary">
+    <div><strong>⚠ {{ alertas_resumo_global.total }} alerta{{ alertas_resumo_global.total|pluralize }}</strong><span>{{ alertas_resumo_global.criticos }} crítico{{ alertas_resumo_global.criticos|pluralize }} · {{ alertas_resumo_global.altos }} de alta prioridade</span></div>
+    <span>Visão de acompanhamento</span>
+</div>
+{% endif %}
+{% endif %}
+
+{% if visao_global %}
+<div class="coordinator-kpi-grid">
+    <div class="kpi-card"><div><span>Operações agora</span><strong>{{ operacoes_agora_total }}</strong><small>Conforme horário reservado</small></div><div class="kpi-icon live">●</div></div>
+    <div class="kpi-card"><div><span>Reservas hoje</span><strong>{{ reservas_hoje }}</strong><small>Agenda operacional do dia</small></div><div class="kpi-icon">▣</div></div>
+    <div class="kpi-card"><div><span>Pilotos ativos</span><strong>{{ pilotos_ativos_total }}</strong><small>Cadastros liberados</small></div><div class="kpi-icon green">♙</div></div>
+    <div class="kpi-card"><div><span>Operações sem log</span><strong>{{ operacoes_sem_log }}</strong><small>Concluídas sem telemetria</small></div><div class="kpi-icon orange">!</div></div>
+</div>
+
+<div class="panel coordinator-live-panel">
+    <div class="panel-title-row">
+        <div><h3>Operações previstas em andamento</h3><p>Quem está operando, onde e com qual aeronave neste momento.</p></div>
+        <span class="live-update-note"><i></i> Baseado nas reservas</span>
+    </div>
+    <div class="table-responsive">
+        <table class="modern-table">
+            <thead><tr><th>Piloto</th><th>Drone / prefixo</th><th>Local</th><th>Horário</th><th>Finalidade</th><th>Situação</th></tr></thead>
+            <tbody>
+            {% for operacao in operacoes_agora %}
+                <tr>
+                    <td><strong>{{ operacao.piloto.nome }}</strong></td>
+                    <td>{{ operacao.drone.nome }}{% if operacao.drone.prefixo %}<small class="table-subtext">{{ operacao.drone.prefixo }}</small>{% endif %}</td>
+                    <td>{{ operacao.local|default:"Local não informado" }}</td>
+                    <td>{{ operacao.hora_inicio|time:"H:i" }}–{{ operacao.hora_fim|time:"H:i" }}</td>
+                    <td>{{ operacao.finalidade }}</td>
+                    <td><span class="badge-soft green">Em andamento</span></td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="6"><div class="empty-state compact"><strong>Nenhuma operação prevista em andamento</strong><p>As operações aparecerão aqui durante o horário reservado.</p></div></td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 {% endif %}
 
 <div class="kpi-grid">

@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView
 from django.shortcuts import redirect, render
 
-from .views import usuario_tem_perfil_admin
+from .views import usuario_e_coordenador, usuario_tem_perfil_admin
 
 
 class LoginSistemaView(LoginView):
@@ -13,6 +13,8 @@ class LoginSistemaView(LoginView):
         resposta = super().form_valid(form)
         if usuario_tem_perfil_admin(self.request.user):
             self.request.session["modo_acesso"] = "pendente"
+        elif usuario_e_coordenador(self.request.user):
+            self.request.session["modo_acesso"] = "coordenador"
         else:
             self.request.session["modo_acesso"] = "usuario"
         return resposta
