@@ -35,11 +35,11 @@ def gerar_pdf_avaliacao(avaliacao):
     s = avaliacao.solicitacao
     story = [Paragraph("AVALIAÇÃO DE RISCO OPERACIONAL", styles["DocTitle"]),
              Paragraph("Modelo estruturado com base no Apêndice B da IS E94-003A da ANAC", styles["Small"]), Spacer(1, 4*mm)]
-    ident = [[Paragraph("Operador / responsável", styles["Small"]), Paragraph("CPF/CNPJ", styles["Small"])],
-             [Paragraph(_texto(avaliacao.operador_nome), styles["BodyDoc"]), Paragraph(_texto(avaliacao.operador_documento), styles["BodyDoc"])],
-             [Paragraph("Aeronave / cadastro / série", styles["Small"]), Paragraph("Piloto", styles["Small"])],
-             [Paragraph(_texto(avaliacao.aeronave_identificacao), styles["BodyDoc"]), Paragraph(_texto(s.piloto.nome), styles["BodyDoc"])]]
-    t = Table(ident, colWidths=[112*mm, 55*mm]); t.setStyle(TableStyle([("GRID",(0,0),(-1,-1),.4,colors.HexColor("#B8C5D3")),("BACKGROUND",(0,0),(-1,0),colors.HexColor("#EAF1F8")),("BACKGROUND",(0,2),(-1,2),colors.HexColor("#EAF1F8")),("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),5)])); story += [t]
+    ident = [[Paragraph("Operador / responsável", styles["Small"]), Paragraph("CPF", styles["Small"]), Paragraph("Código SARPAS", styles["Small"])],
+             [Paragraph(_texto(avaliacao.operador_nome), styles["BodyDoc"]), Paragraph(_texto(avaliacao.operador_documento), styles["BodyDoc"]), Paragraph(_texto(avaliacao.codigo_sarpas), styles["BodyDoc"])],
+             [Paragraph("Aeronave / cadastro / série", styles["Small"]), Paragraph("Piloto", styles["Small"]), ""],
+             [Paragraph(_texto(avaliacao.aeronave_identificacao), styles["BodyDoc"]), Paragraph(_texto(s.piloto.nome), styles["BodyDoc"]), ""]]
+    t = Table(ident, colWidths=[82*mm, 42*mm, 43*mm]); t.setStyle(TableStyle([("SPAN",(1,2),(2,2)),("SPAN",(1,3),(2,3)),("GRID",(0,0),(-1,-1),.4,colors.HexColor("#B8C5D3")),("BACKGROUND",(0,0),(-1,0),colors.HexColor("#EAF1F8")),("BACKGROUND",(0,2),(-1,2),colors.HexColor("#EAF1F8")),("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),5)])); story += [t]
     story += section("1. Cenário operacional", avaliacao.cenario_operacional)
     story += section("2. Aspectos gerais da operação", avaliacao.aspectos_gerais)
     story += section("3. Legislação e documentos aplicáveis", avaliacao.legislacao_aplicavel)

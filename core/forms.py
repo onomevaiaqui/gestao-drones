@@ -17,9 +17,11 @@ class PilotoForm(forms.ModelForm):
 
     class Meta:
         model = Piloto
-        fields = ["nome", "matricula", "perfil", "ativo"]
+        fields = ["nome", "cpf", "codigo_sarpas", "matricula", "perfil", "ativo"]
         widgets = {
             "nome": forms.TextInput(attrs={"class": "form-control"}),
+            "cpf": forms.TextInput(attrs={"class": "form-control"}),
+            "codigo_sarpas": forms.TextInput(attrs={"class": "form-control"}),
             "matricula": forms.TextInput(attrs={"class": "form-control"}),
             "perfil": forms.Select(attrs={"class": "form-select"}),
             "ativo": forms.CheckboxInput(attrs={"class": "form-check-input"}),
@@ -66,9 +68,11 @@ class PilotoEditForm(forms.ModelForm):
 
     class Meta:
         model = Piloto
-        fields = ["nome", "matricula", "perfil", "ativo"]
+        fields = ["nome", "cpf", "codigo_sarpas", "matricula", "perfil", "ativo"]
         widgets = {
             "nome": forms.TextInput(attrs={"class": "form-control"}),
+            "cpf": forms.TextInput(attrs={"class": "form-control"}),
+            "codigo_sarpas": forms.TextInput(attrs={"class": "form-control"}),
             "matricula": forms.TextInput(attrs={"class": "form-control"}),
             "perfil": forms.Select(attrs={"class": "form-select"}),
             "ativo": forms.CheckboxInput(attrs={"class": "form-check-input"}),

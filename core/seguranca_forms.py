@@ -11,7 +11,7 @@ class AvaliacaoRiscoForm(forms.ModelForm):
     class Meta:
         model = AvaliacaoRisco
         fields = [
-            "operador_nome", "operador_documento", "aeronave_identificacao",
+            "operador_nome", "operador_documento", "codigo_sarpas", "aeronave_identificacao",
             "cenario_operacional", "aspectos_gerais", "legislacao_aplicavel",
             "area_distante_terceiros", "treinamento_requerido", "descricao_treinamento",
             "procedimento_acidente", "condicoes_meteorologicas",
@@ -21,6 +21,7 @@ class AvaliacaoRiscoForm(forms.ModelForm):
         widgets = {
             "operador_nome": forms.TextInput(attrs={"class": "form-control"}),
             "operador_documento": forms.TextInput(attrs={"class": "form-control"}),
+            "codigo_sarpas": forms.TextInput(attrs={"class": "form-control"}),
             "aeronave_identificacao": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
             "cenario_operacional": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "aspectos_gerais": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
@@ -46,7 +47,7 @@ class AvaliacaoRiscoForm(forms.ModelForm):
         situacoes = self.initial.get("situacoes_risco") or (self.instance.situacoes_risco if self.instance.pk else [])
         self.initial["situacoes_risco_json"] = json.dumps(situacoes, ensure_ascii=False)
         modernos = not self.is_bound or "situacoes_risco_json" in self.data
-        for nome in ["operador_nome", "operador_documento", "aeronave_identificacao", "cenario_operacional", "aspectos_gerais", "legislacao_aplicavel", "area_distante_terceiros", "procedimento_acidente", "responsavel_informacoes", "data_avaliacao", "validade_ate", "declaracao_conformidade"]:
+        for nome in ["operador_nome", "operador_documento", "codigo_sarpas", "aeronave_identificacao", "cenario_operacional", "aspectos_gerais", "legislacao_aplicavel", "area_distante_terceiros", "procedimento_acidente", "responsavel_informacoes", "data_avaliacao", "validade_ate", "declaracao_conformidade"]:
             self.fields[nome].required = True
             if self.is_bound and not modernos:
                 self.fields[nome].required = False

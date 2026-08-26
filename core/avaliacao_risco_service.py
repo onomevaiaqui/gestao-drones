@@ -101,6 +101,8 @@ def dados_automaticos_avaliacao(solicitacao):
         "probabilidade_residual":max(1, nivel-2), "impacto_residual":max(2, nivel-1),
         "area_controlada":False, "pessoas_expostas":False,
         "operador_nome": piloto,
+        "operador_documento": getattr(getattr(solicitacao, "piloto", None), "cpf", ""),
+        "codigo_sarpas": getattr(getattr(solicitacao, "piloto", None), "codigo_sarpas", ""),
         "aeronave_identificacao": aeronave,
         "cenario_operacional": f"Operação de {finalidade} em {getattr(solicitacao, 'local', '') or getattr(planejamento, 'local', '') or 'local a confirmar'}, em {data_operacao:%d/%m/%Y}{periodo}{altura}.",
         "aspectos_gerais": "\n".join(filter(None, [f"Área planejada: {planejamento.area_hectares} ha." if planejamento and planejamento.area_hectares else "", *condicoes])) or "Confirmar características da área, obstáculos, terceiros, iluminação e condições locais.",

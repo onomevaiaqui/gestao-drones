@@ -24,7 +24,9 @@ def avaliacao_risco(request, solicitacao_id):
         return redirect("solicitacoes_voo")
     avaliacao = AvaliacaoRisco.objects.filter(solicitacao=solicitacao).first()
     eh_admin = usuario_e_admin(request.user)
-    somente_leitura = bool(eh_admin or (avaliacao and avaliacao.status == "aprovada"))
+    solicitou_edicao = request.GET.get("editar") == "1" or request.POST.get("modo_edicao") == "1"
+    pode_corrigir = bool(avaliacao and avaliacao.status == "aprovada" and not eh_admin and solicitacao.piloto.user_id == request.user.id and solicitou_edicao)
+    somente_leitura = bool(eh_admin or (avaliacao and avaliacao.status == "aprovada" and not pode_corrigir))
 
     if request.method == "POST" and not somente_leitura:
         form = AvaliacaoRiscoForm(request.POST, instance=avaliacao, initial=dados_automaticos_avaliacao(solicitacao))
@@ -45,7 +47,7 @@ def avaliacao_risco(request, solicitacao_id):
             return redirect("solicitacoes_voo")
     else:
         form = AvaliacaoRiscoForm(instance=avaliacao, initial=dados_automaticos_avaliacao(solicitacao) if not avaliacao else None)
-    ctx = {"form": form, "solicitacao": solicitacao, "avaliacao": avaliacao, "somente_leitura": somente_leitura}
+    ctx = {"form": form, "solicitacao": solicitacao, "avaliacao": avaliacao, "somente_leitura": somente_leitura, "pode_corrigir": pode_corrigir}
     ctx.update(_base_context(request))
     return render(request, "seguranca/avaliacao_risco.html", ctx)
 
@@ -58,6 +60,17 @@ def avaliacao_risco_pdf(request, solicitacao_id):
     avaliacao = get_object_or_404(AvaliacaoRisco, solicitacao=solicitacao, status="aprovada")
     resposta = HttpResponse(gerar_pdf_avaliacao(avaliacao), content_type="application/pdf")
     resposta["Content-Disposition"] = f'attachment; filename="avaliacao-risco-{solicitacao.pk}.pdf"'
+    return resposta
+
+
+@login_required
+def avaliacao_risco_imprimir(request, solicitacao_id):
+    solicitacao = get_object_or_404(SolicitacaoVoo.objects.select_related("piloto__user", "drone"), pk=solicitacao_id)
+    if not _pode_acessar_solicitacao(request.user, solicitacao):
+        return HttpResponse(status=403)
+    avaliacao = get_object_or_404(AvaliacaoRisco, solicitacao=solicitacao, status="aprovada")
+    resposta = HttpResponse(gerar_pdf_avaliacao(avaliacao), content_type="application/pdf")
+    resposta["Content-Disposition"] = f'inline; filename="avaliacao-risco-{solicitacao.pk}.pdf"'
     return resposta
 
 

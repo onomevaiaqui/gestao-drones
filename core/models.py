@@ -32,6 +32,9 @@ class Piloto(models.Model):
         blank=True
     )
 
+    cpf = models.CharField(max_length=14, blank=True, verbose_name="CPF")
+    codigo_sarpas = models.CharField(max_length=50, blank=True, verbose_name="Código SARPAS")
+
     perfil = models.CharField(
         max_length=20,
         choices=PERFIL_CHOICES,
@@ -883,6 +886,7 @@ class AvaliacaoRisco(models.Model):
     observacoes = models.TextField(blank=True)
     operador_nome = models.CharField(max_length=200, blank=True)
     operador_documento = models.CharField(max_length=30, blank=True, verbose_name="CPF/CNPJ do operador")
+    codigo_sarpas = models.CharField(max_length=50, blank=True, verbose_name="Código SARPAS")
     aeronave_identificacao = models.TextField(blank=True)
     cenario_operacional = models.TextField(blank=True)
     aspectos_gerais = models.TextField(blank=True)

@@ -632,6 +632,17 @@ class PermissoesOperacionaisTests(TestCase):
         avaliacao.refresh_from_db()
         self.assertEqual(avaliacao.perigos_identificados, "Risco original")
 
+        consulta = self.client.get(reverse("avaliacao_risco", args=[solicitacao.pk]))
+        self.assertContains(consulta, "Editar avaliação")
+        edicao = self.client.get(reverse("avaliacao_risco", args=[solicitacao.pk]) + "?editar=1")
+        self.assertContains(edicao, 'name="modo_edicao" value="1"')
+        self.assertNotContains(edicao, "<fieldset disabled>", html=True)
+
+        pdf = self.client.get(reverse("avaliacao_risco_imprimir", args=[solicitacao.pk]))
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf["Content-Type"], "application/pdf")
+        self.assertTrue(pdf["Content-Disposition"].startswith("inline;"))
+
     def test_menu_oculta_areas_exclusivas_de_administradores(self):
         self.client.force_login(self.usuario)
         resposta = self.client.get(reverse("dashboard"))
@@ -773,12 +784,15 @@ class PerfilUsuarioTests(TestCase):
     def test_usuario_edita_proprio_perfil(self):
         self.client.force_login(self.usuario)
         resposta = self.client.post(reverse("perfil_usuario", args=[self.piloto.pk]), {
-            "nome": "Nome Atualizado", "matricula": "MAT-10", "email": "piloto@example.com",
+            "nome": "Nome Atualizado", "cpf": "123.456.789-00", "codigo_sarpas": "SARPAS-123",
+            "matricula": "MAT-10", "email": "piloto@example.com",
         })
         self.assertRedirects(resposta, reverse("perfil_usuario", args=[self.piloto.pk]))
         self.piloto.refresh_from_db()
         self.usuario.refresh_from_db()
         self.assertEqual(self.piloto.nome, "Nome Atualizado")
+        self.assertEqual(self.piloto.cpf, "123.456.789-00")
+        self.assertEqual(self.piloto.codigo_sarpas, "SARPAS-123")
         self.assertEqual(self.usuario.email, "piloto@example.com")
 
     def test_usuario_adiciona_documento_ao_proprio_perfil(self):
