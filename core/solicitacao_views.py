@@ -7,11 +7,11 @@ from django.db.models import Q
 from .models import Piloto, Alocacao, SolicitacaoVoo, PlanejamentoVoo
 from .solicitacao_service import LiberacaoVooErro, liberar_solicitacao
 from .solicitacao_forms import SolicitacaoVooForm
-from .views import usuario_e_admin, admin_required, _base_context
+from .views import usuario_e_admin, usuario_e_coordenador, usuario_tem_visao_global, admin_required, _base_context
 
 @login_required
 def solicitacoes_voo(request):
-    if usuario_e_admin(request.user):
+    if usuario_tem_visao_global(request.user):
         qs = SolicitacaoVoo.objects.select_related("piloto", "drone", "criado_por", "analisado_por")
     else:
         try:
@@ -29,6 +29,9 @@ def solicitacoes_voo(request):
 
 @login_required
 def solicitacao_voo_nova(request):
+    if usuario_e_coordenador(request.user):
+        messages.info(request, "No perfil de coordenador, as reservas ficam disponíveis somente para consulta.")
+        return redirect("solicitacoes_voo")
     eh_admin = usuario_e_admin(request.user)
     planejamento_inicial = None
     if request.method == "GET" and request.GET.get("planejamento"):
@@ -80,6 +83,9 @@ def solicitacao_voo_nova(request):
 
 @login_required
 def solicitacao_voo_editar(request, pk):
+    if usuario_e_coordenador(request.user):
+        messages.info(request, "No perfil de coordenador, as reservas ficam disponíveis somente para consulta.")
+        return redirect("solicitacoes_voo")
     obj = get_object_or_404(SolicitacaoVoo, pk=pk)
     eh_admin = usuario_e_admin(request.user)
     if not eh_admin:
@@ -158,6 +164,9 @@ def solicitacao_voo_rejeitar(request, pk):
 @login_required
 @require_POST
 def solicitacao_voo_cancelar(request, pk):
+    if usuario_e_coordenador(request.user):
+        messages.info(request, "No perfil de coordenador, as reservas ficam disponíveis somente para consulta.")
+        return redirect("solicitacoes_voo")
     obj = get_object_or_404(SolicitacaoVoo, pk=pk)
     eh_admin = usuario_e_admin(request.user)
     if not eh_admin:

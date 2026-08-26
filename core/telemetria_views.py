@@ -12,19 +12,19 @@ from django.views.decorators.http import require_POST
 from .models import ImportacaoLog, Voo
 from .telemetria_forms import ImportacaoLogForm
 from .telemetria_service import processar_importacao
-from .views import _base_context, _sincronizar_voo_com_calendario, usuario_e_admin
+from .views import _base_context, _sincronizar_voo_com_calendario, usuario_e_admin, usuario_e_coordenador, usuario_tem_visao_global
 
 
 def _voos_permitidos(user):
     qs = Voo.objects.select_related("piloto", "drone").annotate(total_logs=Count("importacoes_log"))
-    if not usuario_e_admin(user):
+    if not usuario_tem_visao_global(user):
         qs = qs.filter(piloto__user=user)
     return qs
 
 
 def _importacoes_permitidas(user):
     qs = ImportacaoLog.objects.select_related("voo__piloto", "voo__drone", "importado_por")
-    if not usuario_e_admin(user):
+    if not usuario_tem_visao_global(user):
         qs = qs.filter(voo__piloto__user=user)
     return qs
 
@@ -112,6 +112,9 @@ def telemetria_lista(request):
 
 @login_required
 def telemetria_importar(request):
+    if usuario_e_coordenador(request.user):
+        messages.info(request, "No perfil de coordenador, a telemetria fica disponível somente para consulta.")
+        return redirect("telemetria_lista")
     voos = _voos_permitidos(request.user).order_by("-data", "-hora_inicio", "-criado_em")
     form = ImportacaoLogForm(request.POST or None, request.FILES or None, voos=voos)
     if form.is_valid():
@@ -187,6 +190,9 @@ def telemetria_detalhe(request, pk):
 @login_required
 @require_POST
 def telemetria_excluir(request, pk):
+    if usuario_e_coordenador(request.user):
+        messages.info(request, "No perfil de coordenador, a telemetria fica disponível somente para consulta.")
+        return redirect("telemetria_lista")
     importacao = get_object_or_404(_importacoes_permitidas(request.user), pk=pk)
     if importacao.arquivo:
         importacao.arquivo.delete(save=False)

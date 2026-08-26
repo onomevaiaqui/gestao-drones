@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Telemetria{% endblock %}
 {% block content %}
-<div class="page-header"><div><h1>Telemetria</h1><p>Importações e resumos dos registros de voo</p></div><a class="btn btn-primary" href="{% url 'telemetria_importar' %}">+ Importar log</a></div>
+<div class="page-header"><div><h1>Telemetria</h1><p>Importações e resumos dos registros de voo</p></div>{% if not eh_coordenador %}<a class="btn btn-primary" href="{% url 'telemetria_importar' %}">+ Importar log</a>{% endif %}</div>
+{% if eh_coordenador %}<div class="alert alert-info">Visão global da telemetria. No perfil de coordenador, as importações são somente para consulta.</div>{% endif %}
 <div class="kpi-grid">
   <div class="kpi-card"><div><span>Importações</span><strong>{{ resumo.total }}</strong></div><div class="kpi-icon">⌁</div></div>
   <div class="kpi-card"><div><span>Concluídas</span><strong>{{ resumo.concluidas }}</strong></div><div class="kpi-icon green">✓</div></div>
