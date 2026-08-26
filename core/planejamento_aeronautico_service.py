@@ -105,7 +105,8 @@ def consultar_condicionantes_aeronauticas(planejamento):
                 nivel = "desfavoravel" if distancia_km <= 2 else "atencao" if distancia_km <= 9.26 else "informativo"
                 item = {"tipo":tipo, "id":prop.get("localidade_id") or prop.get("ciad"),
                         "nome":prop.get("nome") or "Sem nome", "distancia_km":round(distancia_km,2),
-                        "nivel":nivel, "cidade":prop.get("cidade"), "operacao":prop.get("opr")}
+                        "nivel":nivel, "cidade":prop.get("cidade"), "operacao":prop.get("opr"),
+                        "raio_atencao_m":9260 if tipo == "aerodromo" else 2000}
             else:
                 if not _intersecta(area, geom): continue
                 nivel = "desfavoravel" if tipo == "proibida" else "atencao"
