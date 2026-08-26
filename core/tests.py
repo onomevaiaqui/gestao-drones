@@ -15,7 +15,7 @@ from .alerta_service import gerar_alertas, resumo_alertas
 from .models import (
     Alocacao, AvaliacaoRisco, Bateria, ChecklistPreVoo, Componente, ConfiguracaoPapelTimbrado, Documento, Drone, ExecucaoInspecao,
     DroneHistorico, ImportacaoLog, Incidente, Manutencao, Piloto, PlanoInspecao, PontoTelemetria,
-    MovimentacaoComponente, QualificacaoPiloto, RegistroPosVoo, SolicitacaoVoo, Voo,
+    MovimentacaoComponente, PlanejamentoVoo, QualificacaoPiloto, RegistroPosVoo, SolicitacaoVoo, Voo,
 )
 from .telemetria_service import processar_importacao
 from .papel_timbrado import aplicar_papel_timbrado
@@ -52,6 +52,20 @@ class SelecaoPerfilAcessoTests(TestCase):
             data=timezone.localdate(), hora_inicio=time(0), hora_fim=time(23, 59, 59),
             piloto=self.outro_piloto, drone=self.drone, finalidade="Reserva de outro usuário",
             status="reservado", criado_por=self.outro_user,
+        )
+        self.planejamento_outro = PlanejamentoVoo.objects.create(
+            titulo="Área operacional de teste", piloto=self.outro_piloto,
+            data=timezone.localdate(), hora_inicio=time(0), hora_fim=time(23, 59, 59),
+            finalidade="outro", local="Área georreferenciada",
+            area_geojson={"type": "Polygon", "coordinates": [[[-50.1, -25.1], [-50.0, -25.1], [-50.0, -25.0], [-50.1, -25.1]]]},
+            centro_latitude="-25.0500000", centro_longitude="-50.0500000",
+            criado_por=self.outro_user,
+        )
+        self.solicitacao_outro = SolicitacaoVoo.objects.create(
+            piloto=self.outro_piloto, drone=self.drone, data=timezone.localdate(),
+            hora_inicio=time(0), hora_fim=time(23, 59, 59), finalidade="outro",
+            local="Área georreferenciada", planejamento=self.planejamento_outro,
+            status="aprovado", alocacao=self.reserva_outro, criado_por=self.outro_user,
         )
 
     def test_login_admin_exige_escolha_de_perfil(self):
@@ -92,6 +106,8 @@ class SelecaoPerfilAcessoTests(TestCase):
         self.assertFalse(painel.context["eh_admin"])
         self.assertEqual(painel.context["modo_acesso"], "coordenador")
         self.assertEqual(painel.context["reservas_hoje"], 1)
+        self.assertEqual(len(painel.context["operacoes_mapa"]), 1)
+        self.assertContains(painel, "coordinator-operations-map")
         self.assertContains(painel, "Trocar perfil")
         self.assertNotContains(painel, "Pilotos / Usuários")
         self.assertRedirects(self.client.get(reverse("pilotos")), reverse("dashboard"))

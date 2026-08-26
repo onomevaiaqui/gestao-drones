@@ -39,6 +39,15 @@
     <div class="kpi-card"><div><span>Operações sem log</span><strong>{{ operacoes_sem_log }}</strong><small>Concluídas sem telemetria</small></div><div class="kpi-icon orange">!</div></div>
 </div>
 
+<div class="panel coordinator-map-panel">
+    <div class="panel-title-row">
+        <div><h3>Mapa operacional de hoje</h3><p>Áreas provenientes dos planejamentos vinculados às reservas.</p></div>
+        <div class="coordinator-map-legend"><span><i class="current"></i> Em andamento</span><span><i class="reserved"></i> Reservada</span><span><i class="finished"></i> Concluída</span></div>
+    </div>
+    <div id="coordinator-operations-map"></div>
+    {% if not operacoes_mapa %}<div class="coordinator-map-empty"><strong>Nenhuma área geográfica disponível para hoje.</strong><span>Vincule a reserva a um planejamento com área desenhada para exibi-la no mapa.</span></div>{% endif %}
+</div>
+
 <div class="panel coordinator-live-panel">
     <div class="panel-title-row">
         <div><h3>Operações previstas em andamento</h3><p>Quem está operando, onde e com qual aeronave neste momento.</p></div>
@@ -272,10 +281,12 @@
 {{ drones_data|json_script:"drones-data" }}
 {{ finalidades_data|json_script:"finalidades-data" }}
 {{ tempo_data|json_script:"tempo-data" }}
+{% if visao_global %}{{ operacoes_mapa|json_script:"coordinator-map-data" }}{% endif %}
 
 {% endblock %}
 
 {% block scripts %}
+{% if visao_global %}<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>{% endif %}
 <script>
 const pilotos = JSON.parse(
     document.getElementById("pilotos-data").textContent
@@ -364,5 +375,38 @@ new Chart(
         }
     }
 );
+
+{% if visao_global %}
+(function () {
+    const container = document.getElementById("coordinator-operations-map");
+    const operations = JSON.parse(document.getElementById("coordinator-map-data").textContent) || [];
+    const map = L.map(container, {scrollWheelZoom: false}).setView([-14.5, -52.5], 4);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap",
+        referrerPolicy: "origin"
+    }).addTo(map);
+    const layers = [];
+    const colors = {em_andamento: "#1f9d68", reservado: "#2f6df6", concluido: "#77869a"};
+    operations.forEach(operation => {
+        const color = colors[operation.situacao] || "#2f6df6";
+        const layer = L.geoJSON(operation.area, {style: {color, weight: 3, fillColor: color, fillOpacity: .16}}).addTo(map);
+        const popup = document.createElement("div");
+        const title = document.createElement("strong");
+        title.textContent = operation.piloto;
+        popup.appendChild(title);
+        [operation.drone + (operation.prefixo ? " · " + operation.prefixo : ""), operation.local, operation.horario, operation.finalidade].forEach(text => {
+            const line = document.createElement("div"); line.textContent = text; popup.appendChild(line);
+        });
+        layer.bindPopup(popup);
+        layers.push(layer);
+    });
+    if (layers.length) {
+        const group = L.featureGroup(layers);
+        map.fitBounds(group.getBounds(), {padding: [28, 28], maxZoom: 15});
+    }
+    setTimeout(() => map.invalidateSize(), 100);
+})();
+{% endif %}
 </script>
 {% endblock %}

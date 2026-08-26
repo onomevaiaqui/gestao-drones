@@ -32,6 +32,7 @@ from .models import (
     Manutencao,
     Documento,
     ConfiguracaoPapelTimbrado,
+    SolicitacaoVoo,
 )
 from .drone_documento_forms import DocumentoDroneForm
 from .papel_timbrado import PapelTimbradoRelatorioForm, aplicar_papel_timbrado
@@ -508,6 +509,40 @@ def dashboard(request):
         operacoes_agora_qs = operacoes_agora_qs.filter(piloto=piloto_sessao)
     operacoes_agora = list(operacoes_agora_qs)
 
+    operacoes_mapa = []
+    if visao_global:
+        reservas_mapa = (
+            Alocacao.objects
+            .select_related("piloto", "drone", "solicitacao_voo__planejamento")
+            .filter(data=agora_dashboard.date())
+            .exclude(status="cancelado")
+            .order_by("hora_inicio")
+        )
+        for reserva in reservas_mapa:
+            try:
+                solicitacao = reserva.solicitacao_voo
+            except SolicitacaoVoo.DoesNotExist:
+                continue
+            planejamento = solicitacao.planejamento
+            if not planejamento or not planejamento.area_geojson:
+                continue
+            em_andamento = (
+                reserva.status == "reservado"
+                and reserva.hora_inicio <= agora_dashboard.time() < reserva.hora_fim
+            )
+            operacoes_mapa.append({
+                "id": reserva.pk,
+                "piloto": reserva.piloto.nome,
+                "drone": reserva.drone.nome,
+                "prefixo": reserva.drone.prefixo,
+                "local": reserva.local or planejamento.local or "Local não informado",
+                "horario": f"{reserva.hora_inicio.strftime('%H:%M')}–{reserva.hora_fim.strftime('%H:%M')}",
+                "finalidade": reserva.finalidade,
+                "situacao": "em_andamento" if em_andamento else reserva.status,
+                "area": planejamento.area_geojson,
+                "centro": [float(planejamento.centro_latitude), float(planejamento.centro_longitude)],
+            })
+
     reservas_hoje_qs = Alocacao.objects.filter(
         data=agora_dashboard.date(),
         status="reservado",
@@ -544,6 +579,7 @@ def dashboard(request):
         "drones_em_manutencao": status_drones["manutencao"],
         "operacoes_agora": operacoes_agora,
         "operacoes_agora_total": len(operacoes_agora),
+        "operacoes_mapa": operacoes_mapa,
         "pilotos_ativos_total": Piloto.objects.filter(ativo=True).count() if visao_global else (1 if piloto_sessao else 0),
         "operacoes_sem_log": concluidas_sem_log_qs.distinct().count(),
         "pilotos_data": pilotos_data,
