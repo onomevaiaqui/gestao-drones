@@ -18,13 +18,22 @@ from .planejamento_forms import PlanejamentoVooForm
 from .planejamento_service import consultar_previsao
 from .planejamento_aeronautico_service import consultar_condicionantes_aeronauticas, camadas_aeronauticas_bbox
 from .planejamento_sisclaten import classificar_sisclaten
-from .views import _base_context, usuario_e_admin
+from .views import _base_context, usuario_e_admin, usuario_e_coordenador, usuario_tem_visao_global
 
 
-def _planejamentos_do_usuario(request):
+def _planejamentos_visiveis(request):
+    qs = PlanejamentoVoo.objects.select_related("piloto", "criado_por", "solicitacao_voo")
+    if usuario_tem_visao_global(request.user):
+        return qs
+    return qs.filter(piloto__user=request.user)
+
+
+def _planejamentos_editaveis(request):
     qs = PlanejamentoVoo.objects.select_related("piloto", "criado_por", "solicitacao_voo")
     if usuario_e_admin(request.user):
         return qs
+    if usuario_e_coordenador(request.user):
+        return qs.none()
     return qs.filter(piloto__user=request.user)
 
 
@@ -52,7 +61,7 @@ def _atualizar_previsao(obj):
 
 @login_required
 def planejamentos(request):
-    ctx = {"planejamentos": _planejamentos_do_usuario(request)}
+    ctx = {"planejamentos": _planejamentos_visiveis(request)}
     ctx.update(_base_context(request))
     return render(request, "planejamentos/lista.html", ctx)
 
@@ -97,18 +106,21 @@ def _form_planejamento(request, obj=None):
 
 @login_required
 def planejamento_novo(request):
+    if usuario_e_coordenador(request.user):
+        messages.error(request, "O perfil de coordenador possui acesso somente para consulta.")
+        return redirect("planejamentos")
     return _form_planejamento(request)
 
 
 @login_required
 def planejamento_editar(request, pk):
-    obj = get_object_or_404(_planejamentos_do_usuario(request), pk=pk)
+    obj = get_object_or_404(_planejamentos_editaveis(request), pk=pk)
     return _form_planejamento(request, obj)
 
 
 @login_required
 def planejamento_detalhe(request, pk):
-    obj = get_object_or_404(_planejamentos_do_usuario(request), pk=pk)
+    obj = get_object_or_404(_planejamentos_visiveis(request), pk=pk)
     meteo = obj.resumo_meteorologico or {}
     sisclaten = meteo.get("sisclaten") or classificar_sisclaten(obj)
     ctx = {"planejamento": obj, "meteo": meteo, "aeronautica": meteo.get("aeronautica", {}), "sisclaten": sisclaten}
@@ -119,7 +131,7 @@ def planejamento_detalhe(request, pk):
 @login_required
 @require_POST
 def planejamento_atualizar_previsao(request, pk):
-    obj = get_object_or_404(_planejamentos_do_usuario(request), pk=pk)
+    obj = get_object_or_404(_planejamentos_editaveis(request), pk=pk)
     sucesso, erro = _atualizar_previsao(obj)
     if sucesso:
         messages.success(request, "Previsão meteorológica atualizada.")
@@ -165,7 +177,7 @@ def planejamento_camadas_aeronauticas(request):
 
 @login_required
 def planejamento_baixar_kml(request, pk):
-    obj = get_object_or_404(_planejamentos_do_usuario(request), pk=pk)
+    obj = get_object_or_404(_planejamentos_visiveis(request), pk=pk)
     coordenadas = " ".join(
         f"{float(lon):.7f},{float(lat):.7f},0"
         for lon, lat in obj.area_geojson["coordinates"][0]

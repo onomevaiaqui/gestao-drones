@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-header">
     <div><h1>Planejamento de Voo</h1><p>Desenhe a área e avalie as condições antes da operação.</p></div>
-    <a class="btn btn-primary" href="{% url 'planejamento_novo' %}">Novo planejamento</a>
+    {% if not eh_coordenador %}<a class="btn btn-primary" href="{% url 'planejamento_novo' %}">Novo planejamento</a>{% endif %}
 </div>
 <div class="panel"><div class="table-responsive">
 <table class="modern-table planning-list-table">

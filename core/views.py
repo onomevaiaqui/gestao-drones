@@ -765,7 +765,7 @@ def voos(request):
         "drone"
     )
     piloto_sessao = None
-    if not usuario_e_admin(request.user):
+    if not usuario_tem_visao_global(request.user):
         try:
             piloto_sessao = request.user.piloto
             qs = qs.filter(piloto=piloto_sessao)
