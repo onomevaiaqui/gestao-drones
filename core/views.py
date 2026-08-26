@@ -581,9 +581,27 @@ def dashboard(request):
         concluidas_sem_log_qs = concluidas_sem_log_qs.filter(piloto=piloto_sessao)
 
     equipe_resumo = []
+    inspecoes_atencao = []
+    documentos_aeronaves_atencao = []
     if visao_global:
         from .qualificacao_views import resumo_equipe_operacional
+        from .models import Documento, PlanoInspecao
         equipe_resumo = resumo_equipe_operacional(limite=6)
+        planos = list(
+            PlanoInspecao.objects.filter(ativo=True, drone__isnull=False)
+            .select_related("drone")
+        )
+        planos.sort(key=lambda plano: ({"vencido": 0, "proximo": 1, "em_dia": 2}.get(plano.situacao, 3), -plano.progresso))
+        inspecoes_atencao = [plano for plano in planos if plano.situacao in {"vencido", "proximo"}][:6]
+        limite_documentos = agora_dashboard.date() + timedelta(days=30)
+        documentos_aeronaves_atencao = list(
+            Documento.objects.filter(
+                ativo=True,
+                drone__isnull=False,
+                data_validade__isnull=False,
+                data_validade__lte=limite_documentos,
+            ).select_related("drone").order_by("data_validade")[:6]
+        )
 
     ctx = {
         "total_voos": total_voos,
@@ -599,6 +617,8 @@ def dashboard(request):
         "pilotos_ativos_total": Piloto.objects.filter(ativo=True).count() if visao_global else (1 if piloto_sessao else 0),
         "operacoes_sem_log": concluidas_sem_log_qs.distinct().count(),
         "equipe_resumo": equipe_resumo,
+        "inspecoes_atencao": inspecoes_atencao,
+        "documentos_aeronaves_atencao": documentos_aeronaves_atencao,
         "pilotos_data": pilotos_data,
         "drones_data": drones_data,
         "finalidades_data": finalidades_data,

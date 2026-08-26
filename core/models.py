@@ -755,7 +755,8 @@ class PlanoInspecao(models.Model):
 
     def _uso_atual(self):
         if self.drone_id:
-            voos = list(Voo.objects.filter(drone_id=self.drone_id))
+            from .voo_service import filtrar_voos_realizados
+            voos = list(filtrar_voos_realizados(Voo.objects.filter(drone_id=self.drone_id)))
             return len(voos), sum(v.duracao_minutos for v in voos), 0
         return 0, 0, self.bateria.ciclos_totais
 

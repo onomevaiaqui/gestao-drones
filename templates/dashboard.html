@@ -101,6 +101,41 @@
         </table>
     </div>
 </div>
+
+<div class="chart-grid main">
+    <div class="panel">
+        <div class="panel-title-row">
+            <div><h3>Inspeções da frota</h3><p>Planos vencidos ou que atingiram 80% do intervalo programado.</p></div>
+            {% if eh_admin %}<a href="{% url 'planos_inspecao' %}">Gerenciar →</a>{% endif %}
+        </div>
+        <div class="table-responsive">
+            <table class="modern-table">
+                <thead><tr><th>Aeronave</th><th>Plano</th><th>Progresso</th><th>Situação</th></tr></thead>
+                <tbody>
+                {% for plano in inspecoes_atencao %}
+                    <tr><td><strong>{{ plano.drone.nome }}</strong>{% if plano.drone.prefixo %}<small class="table-subtext">{{ plano.drone.prefixo }}</small>{% endif %}</td><td>{{ plano.nome }}</td><td>{{ plano.progresso }}%</td><td>{% if plano.situacao == 'vencido' %}<span class="badge-soft red">Vencida</span>{% else %}<span class="badge-soft orange">Próxima</span>{% endif %}</td></tr>
+                {% empty %}<tr><td colspan="4">Nenhuma inspeção exige atenção.</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="panel">
+        <div class="panel-title-row">
+            <div><h3>Documentos das aeronaves</h3><p>Documentos vencidos ou com validade nos próximos 30 dias.</p></div>
+            {% if eh_admin %}<a href="{% url 'documentos' %}">Gerenciar →</a>{% endif %}
+        </div>
+        <div class="table-responsive">
+            <table class="modern-table">
+                <thead><tr><th>Aeronave</th><th>Documento</th><th>Validade</th><th>Situação</th></tr></thead>
+                <tbody>
+                {% for documento in documentos_aeronaves_atencao %}
+                    <tr><td><strong>{{ documento.drone.nome }}</strong>{% if documento.drone.prefixo %}<small class="table-subtext">{{ documento.drone.prefixo }}</small>{% endif %}</td><td>{{ documento.titulo }}</td><td>{{ documento.data_validade|date:"d/m/Y" }}</td><td>{% if documento.situacao == 'vencido' %}<span class="badge-soft red">Vencido</span>{% else %}<span class="badge-soft orange">{{ documento.dias_para_vencer }} dia(s)</span>{% endif %}</td></tr>
+                {% empty %}<tr><td colspan="4">Nenhum documento exige atenção.</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 {% endif %}
 
 <div class="kpi-grid">
