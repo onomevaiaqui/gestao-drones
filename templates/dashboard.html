@@ -136,6 +136,19 @@
         </div>
     </div>
 </div>
+
+<div class="panel">
+    <div class="panel-title-row">
+        <div><h3>Segurança operacional</h3><p>Avaliações de risco e ocorrências que exigem acompanhamento.</p></div>
+        <a href="{% url 'incidentes' %}">Ver incidentes →</a>
+    </div>
+    <div class="coordinator-kpi-grid">
+        <div class="kpi-card"><div><span>Avaliações pendentes</span><strong>{{ seguranca_resumo.riscos_pendentes }}</strong></div><div class="kpi-icon orange">!</div></div>
+        <div class="kpi-card"><div><span>Riscos residuais altos</span><strong>{{ seguranca_resumo.riscos_altos }}</strong></div><div class="kpi-icon alert-critical">⚠</div></div>
+        <div class="kpi-card"><div><span>Incidentes abertos</span><strong>{{ seguranca_resumo.incidentes_abertos }}</strong></div><div class="kpi-icon">⌕</div></div>
+        <div class="kpi-card"><div><span>Graves pendentes</span><strong>{{ seguranca_resumo.incidentes_graves }}</strong></div><div class="kpi-icon alert-critical">!</div></div>
+    </div>
+</div>
 {% endif %}
 
 <div class="kpi-grid">

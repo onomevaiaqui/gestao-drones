@@ -583,9 +583,10 @@ def dashboard(request):
     equipe_resumo = []
     inspecoes_atencao = []
     documentos_aeronaves_atencao = []
+    seguranca_resumo = {}
     if visao_global:
         from .qualificacao_views import resumo_equipe_operacional
-        from .models import Documento, PlanoInspecao
+        from .models import AvaliacaoRisco, Documento, Incidente, PlanoInspecao
         equipe_resumo = resumo_equipe_operacional(limite=6)
         planos = list(
             PlanoInspecao.objects.filter(ativo=True, drone__isnull=False)
@@ -602,6 +603,14 @@ def dashboard(request):
                 data_validade__lte=limite_documentos,
             ).select_related("drone").order_by("data_validade")[:6]
         )
+        avaliacoes_aceitas = AvaliacaoRisco.objects.filter(status="aprovada")
+        seguranca_resumo = {
+            "riscos_pendentes": SolicitacaoVoo.objects.filter(requer_avaliacao_risco=True)
+                .exclude(avaliacao_risco__status="aprovada").exclude(status__in=["cancelado", "rejeitado", "concluido"]).count(),
+            "riscos_altos": sum(avaliacao.nivel_residual in {"alto", "critico"} for avaliacao in avaliacoes_aceitas),
+            "incidentes_abertos": Incidente.objects.exclude(status="encerrado").count(),
+            "incidentes_graves": Incidente.objects.filter(gravidade__in=["grave", "critico"]).exclude(status="encerrado").count(),
+        }
 
     ctx = {
         "total_voos": total_voos,
@@ -619,6 +628,7 @@ def dashboard(request):
         "equipe_resumo": equipe_resumo,
         "inspecoes_atencao": inspecoes_atencao,
         "documentos_aeronaves_atencao": documentos_aeronaves_atencao,
+        "seguranca_resumo": seguranca_resumo,
         "pilotos_data": pilotos_data,
         "drones_data": drones_data,
         "finalidades_data": finalidades_data,
