@@ -24,10 +24,10 @@
     <span>Ver central →</span>
 </a>
 {% else %}
-<div class="dashboard-alert-summary coordinator-alert-summary">
+<a class="dashboard-alert-summary coordinator-alert-summary" href="{% url 'alertas' %}">
     <div><strong>⚠ {{ alertas_resumo_global.total }} alerta{{ alertas_resumo_global.total|pluralize }}</strong><span>{{ alertas_resumo_global.criticos }} crítico{{ alertas_resumo_global.criticos|pluralize }} · {{ alertas_resumo_global.altos }} de alta prioridade</span></div>
-    <span>Visão de acompanhamento</span>
-</div>
+    <span>Acompanhar →</span>
+</a>
 {% endif %}
 {% endif %}
 

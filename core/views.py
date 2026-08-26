@@ -106,6 +106,17 @@ def admin_required(view_func):
     return wrapper
 
 
+def visao_global_required(view_func):
+    @wraps(view_func)
+    @login_required
+    def wrapper(request, *args, **kwargs):
+        if not usuario_tem_visao_global(request.user):
+            messages.error(request, "Você não tem permissão para acessar esta área.")
+            return redirect("dashboard")
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
+
 def _base_context(request):
     eh_admin = usuario_e_admin(request.user)
     eh_coordenador = usuario_e_coordenador(request.user)

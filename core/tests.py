@@ -85,6 +85,7 @@ class SelecaoPerfilAcessoTests(TestCase):
         self.assertNotContains(lista, "Pilotos / Usuários")
         self.assertRedirects(self.client.get(reverse("pilotos")), reverse("dashboard"))
         self.assertRedirects(self.client.get("/admin/"), reverse("dashboard"))
+        self.assertRedirects(self.client.get(reverse("alertas")), reverse("dashboard"))
         painel = self.client.get(reverse("dashboard"))
         self.assertEqual(painel.context["reservas_hoje"], 0)
 
@@ -111,6 +112,10 @@ class SelecaoPerfilAcessoTests(TestCase):
         self.assertContains(painel, "Trocar perfil")
         self.assertNotContains(painel, "Pilotos / Usuários")
         self.assertRedirects(self.client.get(reverse("pilotos")), reverse("dashboard"))
+        alertas = self.client.get(reverse("alertas"))
+        self.assertEqual(alertas.status_code, 200)
+        self.assertContains(alertas, "Somente leitura")
+        self.assertNotContains(alertas, "Resolver →")
 
     def test_coordenador_abre_dashboard_global_sem_acesso_administrativo(self):
         resposta = self.client.post(reverse("login"), {

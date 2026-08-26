@@ -1,10 +1,10 @@
 from django.shortcuts import render
 
 from .alerta_service import gerar_alertas, resumo_alertas
-from .views import _base_context, admin_required
+from .views import _base_context, visao_global_required
 
 
-@admin_required
+@visao_global_required
 def alertas(request):
     prioridade = request.GET.get("prioridade", "").strip()
     categoria = request.GET.get("categoria", "").strip()
