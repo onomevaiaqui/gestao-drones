@@ -114,7 +114,7 @@ gestao_drones/
 ### Planejamento de voo
 
 - desenho de área fechada e cálculo aproximado;
-- busca de local e importação/exportação KML/KMZ;
+- busca de cidades, endereços e pontos de interesse públicos (portos, igrejas, parques e outros locais do OpenStreetMap), além de importação/exportação KML/KMZ;
 - meteorologia, estimativa de neblina e camadas aeronáuticas;
 - raios de atenção e triagem SISCLATEN;
 - data, horário, região e finalidade reaproveitados na reserva.

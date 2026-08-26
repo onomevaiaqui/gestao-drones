@@ -121,6 +121,33 @@ class PlanejamentoVooTests(TestCase):
         self.assertContains(resposta, f'value="{self.obj.data.isoformat()}"')
         self.assertContains(resposta, "Fotografia")
 
+    @patch("core.planejamento_views.urlopen")
+    def test_busca_local_retorna_pontos_de_interesse_e_cidades(self, urlopen):
+        import json
+        urlopen.return_value = _Resposta(json.dumps([
+            {
+                "lat": "-23.9608", "lon": "-46.3336", "name": "Porto de Santos",
+                "display_name": "Porto de Santos, Santos, São Paulo, Brasil",
+                "type": "harbour", "address": {"city": "Santos", "state": "São Paulo"},
+                "namedetails": {"name": "Porto de Santos"},
+            },
+            {
+                "lat": "-23.5505", "lon": "-46.6333", "name": "Santos",
+                "display_name": "Santos, São Paulo, Brasil", "type": "city",
+                "address": {"city": "Santos", "state": "São Paulo"},
+            },
+        ]))
+        self.client.force_login(self.user)
+        resposta = self.client.get(reverse("planejamento_buscar_local"), {"q": "Porto de Santos"})
+        self.assertEqual(resposta.status_code, 200)
+        dados = resposta.json()
+        self.assertEqual(len(dados["resultados"]), 2)
+        self.assertEqual(dados["resultados"][0]["titulo"], "Porto de Santos")
+        self.assertEqual(dados["resultados"][0]["contexto"], "Santos, São Paulo")
+        requisicao = urlopen.call_args.args[0]
+        self.assertIn("addressdetails=1", requisicao.full_url)
+        self.assertIn("limit=7", requisicao.full_url)
+
     def test_importa_poligono_kml(self):
         conteudo = b'''<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>-51.47,-25.40,0 -51.45,-25.40,0 -51.45,-25.38,0 -51.47,-25.38,0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>'''
         geometria = extrair_poligono_kml(SimpleUploadedFile("area.kml", conteudo))

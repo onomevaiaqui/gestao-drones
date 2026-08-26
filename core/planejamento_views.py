@@ -145,16 +145,41 @@ def planejamento_buscar_local(request):
     termo = request.GET.get("q", "").strip()
     if len(termo) < 3:
         return JsonResponse({"erro":"Informe ao menos três caracteres."}, status=400)
-    chave = "geocode:" + hashlib.sha256(termo.casefold().encode()).hexdigest()
+    chave = "geocode:v2:" + hashlib.sha256(termo.casefold().encode()).hexdigest()
     dados = cache.get(chave)
     if dados is None:
-        params = urlencode({"q":termo, "format":"jsonv2", "limit":1, "countrycodes":"br"})
+        params = urlencode({
+            "q": termo,
+            "format": "jsonv2",
+            "limit": 7,
+            "countrycodes": "br",
+            "addressdetails": 1,
+            "namedetails": 1,
+            "dedupe": 1,
+            "accept-language": "pt-BR",
+        })
         req = Request("https://nominatim.openstreetmap.org/search?" + params,
                       headers={"User-Agent":"GestaoDrones/1.0 (planejamento de voo)"})
         try:
             with urlopen(req, timeout=12) as resposta: resultado = json.loads(resposta.read().decode())
-            dados = {"latitude":float(resultado[0]["lat"]), "longitude":float(resultado[0]["lon"]),
-                     "nome":resultado[0]["display_name"]} if resultado else {}
+            encontrados = []
+            for item in resultado:
+                endereco = item.get("address") or {}
+                nomes = item.get("namedetails") or {}
+                titulo = nomes.get("name") or item.get("name") or item.get("display_name", "").split(",")[0]
+                contexto = ", ".join(filter(None, [
+                    endereco.get("city") or endereco.get("town") or endereco.get("municipality") or endereco.get("village"),
+                    endereco.get("state"),
+                ]))
+                encontrados.append({
+                    "latitude": float(item["lat"]),
+                    "longitude": float(item["lon"]),
+                    "nome": item["display_name"],
+                    "titulo": titulo,
+                    "contexto": contexto,
+                    "tipo": item.get("type") or item.get("category") or "local",
+                })
+            dados = ({**encontrados[0], "resultados": encontrados} if encontrados else {})
             cache.set(chave, dados, 86400)
         except Exception:
             return JsonResponse({"erro":"Serviço de localização temporariamente indisponível."}, status=503)
