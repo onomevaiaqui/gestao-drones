@@ -807,3 +807,35 @@ class PerfilUsuarioTests(TestCase):
         documento = Documento.objects.get(piloto=self.piloto)
         self.assertEqual(documento.titulo, "Certificado geral")
         self.assertEqual(documento.criado_por, self.usuario)
+
+
+class DocumentoDroneCadastroTests(TestCase):
+    def setUp(self):
+        self.media_dir = tempfile.TemporaryDirectory()
+        self.configuracao_media = override_settings(MEDIA_ROOT=self.media_dir.name)
+        self.configuracao_media.enable()
+        self.admin = User.objects.create_superuser(username="admin_doc_drone", password="teste123")
+        self.drone = Drone.objects.create(nome="Drone Documentado", modelo="Modelo X")
+
+    def tearDown(self):
+        self.configuracao_media.disable()
+        self.media_dir.cleanup()
+
+    def test_administrador_anexa_e_remove_documento_da_aeronave(self):
+        self.client.force_login(self.admin)
+        arquivo = SimpleUploadedFile("cadastro.pdf", b"documento da aeronave", content_type="application/pdf")
+        resposta = self.client.post(reverse("drone_editar", args=[self.drone.pk]), {
+            "acao": "adicionar_documento", "titulo": "Cadastro ANAC", "tipo": "registro_drone",
+            "numero": "PP-TESTE", "data_emissao": "2026-08-01", "data_validade": "",
+            "observacoes": "Documento operacional", "arquivo": arquivo,
+        })
+        self.assertRedirects(resposta, reverse("drone_editar", args=[self.drone.pk]))
+        documento = Documento.objects.get(drone=self.drone)
+        self.assertEqual(documento.criado_por, self.admin)
+        self.assertTrue(documento.ativo)
+        self.assertTrue(documento.arquivo.name.endswith("cadastro.pdf"))
+
+        resposta = self.client.post(reverse("drone_documento_excluir", args=[self.drone.pk, documento.pk]))
+        self.assertRedirects(resposta, reverse("drone_editar", args=[self.drone.pk]))
+        documento.refresh_from_db()
+        self.assertFalse(documento.ativo)

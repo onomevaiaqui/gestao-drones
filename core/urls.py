@@ -49,6 +49,7 @@ urlpatterns = [
     path("drones/", views.drones, name="drones"),
     path("drones/novo/", views.drone_novo, name="drone_novo"),
     path("drones/<int:pk>/editar/", views.drone_editar, name="drone_editar"),
+    path("drones/<int:pk>/documentos/<int:documento_id>/excluir/", views.drone_documento_excluir, name="drone_documento_excluir"),
     path("drones/<int:pk>/status/", views.drone_status_atualizar, name="drone_status_atualizar"),
     path("drones/<int:pk>/historico/", views.drone_historico, name="drone_historico"),
     path("drones/<int:pk>/excluir/", views.drone_excluir, name="drone_excluir"),

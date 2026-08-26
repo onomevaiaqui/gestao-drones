@@ -29,7 +29,9 @@ from .models import (
     Voo,
     Alocacao,
     Manutencao,
+    Documento,
 )
+from .drone_documento_forms import DocumentoDroneForm
 
 from .forms import (
     PilotoForm,
@@ -1246,11 +1248,7 @@ def drone_novo(request):
         _base_context(request)
     )
 
-    return render(
-        request,
-        "form.html",
-        ctx
-    )
+    return render(request, "drones/form.html", ctx)
 
 
 @admin_required
@@ -1267,10 +1265,23 @@ def drone_editar(request, pk):
         ""
     )
 
+    adicionando_documento = request.method == "POST" and request.POST.get("acao") == "adicionar_documento"
     form = DroneForm(
-        request.POST or None,
+        None if adicionando_documento else (request.POST or None),
         instance=drone
     )
+    documento_form = DocumentoDroneForm(request.POST if adicionando_documento else None, request.FILES if adicionando_documento else None)
+    documento_form.instance.drone = drone
+    documento_form.instance.criado_por = request.user
+
+    if adicionando_documento and documento_form.is_valid():
+        documento = documento_form.save(commit=False)
+        documento.drone = drone
+        documento.criado_por = request.user
+        documento.ativo = True
+        documento.save()
+        messages.success(request, "Documento da aeronave adicionado com sucesso.")
+        return redirect("drone_editar", pk=drone.pk)
 
     if form.is_valid():
         drone = form.save()
@@ -1300,9 +1311,7 @@ def drone_editar(request, pk):
             "Drone atualizado com sucesso."
         )
 
-        return redirect(
-            "drones"
-        )
+        return redirect("drone_editar", pk=drone.pk)
 
     ctx = {
         "form": form,
@@ -1310,6 +1319,9 @@ def drone_editar(request, pk):
             f"Editar drone - "
             f"{drone.nome}"
         ),
+        "drone": drone,
+        "documento_form": documento_form,
+        "documentos": drone.documentos.filter(ativo=True),
     }
 
     ctx.update(
@@ -1318,9 +1330,20 @@ def drone_editar(request, pk):
 
     return render(
         request,
-        "form.html",
+        "drones/form.html",
         ctx
     )
+
+
+@admin_required
+@require_POST
+def drone_documento_excluir(request, pk, documento_id):
+    drone = get_object_or_404(Drone, pk=pk)
+    documento = get_object_or_404(Documento, pk=documento_id, drone=drone)
+    documento.ativo = False
+    documento.save(update_fields=["ativo", "atualizado_em"])
+    messages.success(request, "Documento removido do cadastro da aeronave.")
+    return redirect("drone_editar", pk=drone.pk)
 
 
 @admin_required
