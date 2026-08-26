@@ -166,8 +166,10 @@ Modelos DJI previstos na identificação incluem Matrice 4T/4E, Matrice 300 RTK,
 
 - filtros por período, piloto e aeronave;
 - totais baseados em telemetria;
+- duração padronizada em horas e minutos;
 - PDF visualizável e baixável;
-- papel timbrado salvo até substituição manual.
+- papel timbrado salvo até substituição manual;
+- página e tabela adaptadas à orientação/proporção do modelo PDF, sem deformar a arte original.
 
 ## 6. Fonte oficial dos indicadores
 

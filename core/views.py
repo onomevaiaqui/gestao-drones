@@ -35,7 +35,7 @@ from .models import (
     SolicitacaoVoo,
 )
 from .drone_documento_forms import DocumentoDroneForm
-from .papel_timbrado import PapelTimbradoRelatorioForm, aplicar_papel_timbrado
+from .papel_timbrado import PapelTimbradoRelatorioForm, aplicar_papel_timbrado, tamanho_pagina_do_modelo
 
 from .forms import (
     PilotoForm,
@@ -2425,18 +2425,26 @@ def relatorios_exportar_pdf(request):
 
     total_voos = voos_qs.count()
     total_segundos = sum(voo.duracao_segundos_operacionais for voo in voos_qs)
-    total_horas = round(total_segundos / 3600, 2)
+    def duracao_legivel(segundos):
+        horas, restante = divmod(int(segundos or 0), 3600)
+        minutos = restante // 60
+        return f"{horas:02d}h {minutos:02d}min"
+
+    total_horas = duracao_legivel(total_segundos)
     distancia_total_m = sum(float(voo.distancia_m or 0) for voo in voos_qs)
     distancia_total_km = round(distancia_total_m / 1000, 2)
 
     buffer = BytesIO()
+    configuracao = ConfiguracaoPapelTimbrado.atual()
+    tamanho_pagina = tamanho_pagina_do_modelo(configuracao.modelo_relatorios, landscape(A4))
+    retrato = tamanho_pagina[1] >= tamanho_pagina[0]
 
     doc = SimpleDocTemplate(
         buffer,
-        pagesize=landscape(A4),
-        rightMargin=12 * mm,
-        leftMargin=12 * mm,
-        topMargin=30 * mm,
+        pagesize=tamanho_pagina,
+        rightMargin=(17 if retrato else 14) * mm,
+        leftMargin=(20 if retrato else 14) * mm,
+        topMargin=32 * mm,
         bottomMargin=25 * mm,
     )
 
@@ -2446,8 +2454,8 @@ def relatorios_exportar_pdf(request):
         "TituloRelatorio",
         parent=styles["Title"],
         fontName="Helvetica-Bold",
-        fontSize=18,
-        leading=22,
+        fontSize=16,
+        leading=19,
         spaceAfter=10,
     )
 
@@ -2457,6 +2465,7 @@ def relatorios_exportar_pdf(request):
         fontName="Helvetica",
         fontSize=9,
         leading=12,
+        alignment=1,
         textColor=colors.HexColor("#536273"),
         spaceAfter=8,
     )
@@ -2473,8 +2482,8 @@ def relatorios_exportar_pdf(request):
         Paragraph("Relatório de Operações com Drones", titulo_style)
     ]
 
-    inicio = request.GET.get("inicio") or "-"
-    fim = request.GET.get("fim") or "-"
+    inicio = request.GET.get("inicio")
+    fim = request.GET.get("fim")
     piloto_id = request.GET.get("piloto")
     drone_id = request.GET.get("drone")
 
@@ -2491,9 +2500,16 @@ def relatorios_exportar_pdf(request):
         if drone_obj:
             drone_nome = drone_obj.nome
 
+    if inicio or fim:
+        inicio_texto = datetime.strptime(inicio, "%Y-%m-%d").strftime("%d/%m/%Y") if inicio else "início"
+        fim_texto = datetime.strptime(fim, "%Y-%m-%d").strftime("%d/%m/%Y") if fim else "hoje"
+        periodo_texto = f"{inicio_texto} até {fim_texto}"
+    else:
+        periodo_texto = "Todos os períodos"
+
     elementos.append(
         Paragraph(
-            f"Período: {inicio} até {fim} | Piloto: {piloto_nome} | Drone: {drone_nome}",
+            f"Período: {periodo_texto} | Piloto: {piloto_nome} | Drone: {drone_nome}",
             subtitulo_style,
         )
     )
@@ -2501,9 +2517,9 @@ def relatorios_exportar_pdf(request):
     resumo = Table(
         [
             ["Total de Voos", "Horas Totais", "Distância Total"],
-            [str(total_voos), f"{total_horas} h", f"{distancia_total_km} km"],
+            [str(total_voos), total_horas, f"{distancia_total_km} km"],
         ],
-        colWidths=[55 * mm, 55 * mm, 55 * mm],
+        colWidths=([52 * mm, 52 * mm, 52 * mm] if retrato else [55 * mm, 55 * mm, 55 * mm]),
     )
 
     resumo.setStyle(TableStyle([
@@ -2519,21 +2535,16 @@ def relatorios_exportar_pdf(request):
 
     elementos.extend([resumo, Spacer(1, 8 * mm)])
 
-    dados = [[
-        "Data", "Piloto", "Drone", "Finalidade", "Local",
-        "Início", "Fim", "Duração", "Distância"
-    ]]
+    dados = [["Data", "Piloto", "Aeronave", "Operação / local", "Horário", "Duração", "Distância"]]
 
     for voo in voos_qs:
         dados.append([
             Paragraph(voo.data.strftime("%d/%m/%Y"), normal_small),
             Paragraph(voo.piloto.nome, normal_small),
             Paragraph(voo.drone.nome, normal_small),
-            Paragraph(voo.get_finalidade_display(), normal_small),
-            Paragraph(voo.local or "-", normal_small),
-            Paragraph(voo.hora_inicio.strftime("%H:%M"), normal_small),
-            Paragraph(voo.hora_fim.strftime("%H:%M"), normal_small),
-            Paragraph(f"{voo.duracao_minutos} min", normal_small),
+            Paragraph(f"<b>{voo.get_finalidade_display()}</b><br/>{voo.local or '-'}", normal_small),
+            Paragraph(f"{voo.hora_inicio.strftime('%H:%M')}-{voo.hora_fim.strftime('%H:%M')}", normal_small),
+            Paragraph(duracao_legivel(voo.duracao_segundos_operacionais), normal_small),
             Paragraph(
                 f"{voo.distancia_m} m" if voo.distancia_m is not None else "-",
                 normal_small
@@ -2541,15 +2552,13 @@ def relatorios_exportar_pdf(request):
         ])
 
     if len(dados) == 1:
-        dados.append(["", "", "", "", "Nenhum voo encontrado.", "", "", "", ""])
+        dados.append(["", "", "", "Nenhum voo encontrado.", "", "", ""])
 
     tabela = Table(
         dados,
         repeatRows=1,
-        colWidths=[
-            20 * mm, 34 * mm, 29 * mm, 30 * mm, 50 * mm,
-            16 * mm, 16 * mm, 19 * mm, 23 * mm
-        ],
+        colWidths=([17*mm, 29*mm, 25*mm, 44*mm, 22*mm, 18*mm, 21*mm] if retrato else
+                   [22*mm, 42*mm, 35*mm, 75*mm, 30*mm, 27*mm, 32*mm]),
     )
 
     tabela.setStyle(TableStyle([
@@ -2582,7 +2591,6 @@ def relatorios_exportar_pdf(request):
     )
 
     doc.build(elementos)
-    configuracao = ConfiguracaoPapelTimbrado.atual()
     conteudo = aplicar_papel_timbrado(buffer.getvalue(), configuracao.modelo_relatorios)
     response = HttpResponse(conteudo, content_type="application/pdf")
     disposicao = "inline" if request.GET.get("modo") in {"visualizar", "imprimir"} else "attachment"

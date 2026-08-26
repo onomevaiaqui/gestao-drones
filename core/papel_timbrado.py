@@ -55,13 +55,28 @@ def aplicar_papel_timbrado(conteudo_pdf, arquivo_modelo):
             for pagina_conteudo in conteudo.pages:
                 largura = float(pagina_conteudo.mediabox.width)
                 altura = float(pagina_conteudo.mediabox.height)
-                escala_x = largura / float(base_original.mediabox.width)
-                escala_y = altura / float(base_original.mediabox.height)
+                largura_base = float(base_original.mediabox.width)
+                altura_base = float(base_original.mediabox.height)
+                escala = min(largura / largura_base, altura / altura_base)
+                deslocamento_x = (largura - largura_base * escala) / 2
+                deslocamento_y = (altura - altura_base * escala) / 2
                 pagina = PageObject.create_blank_page(width=largura, height=altura)
-                pagina.merge_transformed_page(base_original, Transformation().scale(escala_x, escala_y))
+                transformacao = Transformation().scale(escala, escala).translate(deslocamento_x, deslocamento_y)
+                pagina.merge_transformed_page(base_original, transformacao)
                 pagina.merge_page(pagina_conteudo)
                 escritor.add_page(pagina)
             saida = BytesIO(); escritor.write(saida)
             return saida.getvalue()
     except Exception:
         return conteudo_pdf
+
+
+def tamanho_pagina_do_modelo(arquivo_modelo, padrao):
+    if not arquivo_modelo:
+        return padrao
+    try:
+        with arquivo_modelo.open("rb") as modelo_arquivo:
+            pagina = PdfReader(modelo_arquivo).pages[0]
+            return float(pagina.mediabox.width), float(pagina.mediabox.height)
+    except Exception:
+        return padrao

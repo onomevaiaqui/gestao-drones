@@ -18,7 +18,7 @@ from .models import (
     MovimentacaoComponente, PlanejamentoVoo, QualificacaoPiloto, RegistroPosVoo, SolicitacaoVoo, Voo,
 )
 from .telemetria_service import processar_importacao
-from .papel_timbrado import aplicar_papel_timbrado
+from .papel_timbrado import aplicar_papel_timbrado, tamanho_pagina_do_modelo
 
 
 class SelecaoPerfilAcessoTests(TestCase):
@@ -999,4 +999,34 @@ class PapelTimbradoTests(TestCase):
             configuracao = ConfiguracaoPapelTimbrado.atual()
             self.assertTrue(configuracao.modelo_relatorios.name.endswith("timbre.pdf"))
             self.assertEqual(configuracao.atualizado_por, admin)
+        media_dir.cleanup()
+
+    def test_relatorio_respeita_pagina_do_timbre_e_formata_periodo(self):
+        class ArquivoMemoria(BytesIO):
+            def open(self, _modo):
+                self.seek(0)
+                return self
+            def __enter__(self): return self
+            def __exit__(self, *_args): return False
+
+        modelo = ArquivoMemoria(self._pdf("PAPEL TIMBRADO"))
+        largura, altura = tamanho_pagina_do_modelo(modelo, (1, 1))
+        self.assertGreater(altura, largura)
+
+        media_dir = tempfile.TemporaryDirectory()
+        with override_settings(MEDIA_ROOT=media_dir.name):
+            admin = User.objects.create_superuser(username="admin_relatorio_pdf", password="teste123")
+            ConfiguracaoPapelTimbrado.objects.create(
+                pk=1,
+                modelo_relatorios=SimpleUploadedFile("timbre.pdf", self._pdf("PAPEL TIMBRADO"), content_type="application/pdf"),
+                atualizado_por=admin,
+            )
+            self.client.force_login(admin)
+            resposta = self.client.get(reverse("relatorios_exportar_pdf"), {"modo": "visualizar"})
+            self.assertEqual(resposta.status_code, 200)
+            leitor = PdfReader(BytesIO(resposta.content))
+            self.assertGreater(float(leitor.pages[0].mediabox.height), float(leitor.pages[0].mediabox.width))
+            texto = "".join(pagina.extract_text() or "" for pagina in leitor.pages)
+            self.assertIn("Todos os períodos", texto)
+            self.assertIn("00h 00min", texto)
         media_dir.cleanup()
