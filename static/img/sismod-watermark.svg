@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 900" fill="none">
+  <g stroke="white" stroke-width="2">
+    <circle cx="450" cy="440" r="255" opacity=".08"/>
+    <circle cx="450" cy="440" r="185" opacity=".1"/>
+    <circle cx="450" cy="440" r="115" opacity=".12"/>
+    <path d="M450 145v590M155 440h590" opacity=".07" stroke-dasharray="9 14"/>
+    <path d="M229 237c75 48 137 54 221 15 92-43 169-29 234 29M207 603c89-44 169-39 249 14 70 46 138 43 218-1" opacity=".08"/>
+  </g>
+  <g transform="translate(450 440)" fill="white" opacity=".12">
+    <rect x="-67" y="-24" width="134" height="48" rx="18"/>
+    <rect x="-19" y="19" width="38" height="42" rx="10"/>
+    <circle cx="0" cy="65" r="14"/>
+    <path d="M-58-13-178-91l-16 23 112 89 24-34ZM58-13 178-91l16 23L82 21 58-13ZM-58 13-178 91l-16-23 112-89 24 34ZM58 13 178 91l16-23L82-21 58 13Z"/>
+    <circle cx="-196" cy="-82" r="48" fill="none" stroke="white" stroke-width="13"/>
+    <circle cx="196" cy="-82" r="48" fill="none" stroke="white" stroke-width="13"/>
+    <circle cx="-196" cy="82" r="48" fill="none" stroke="white" stroke-width="13"/>
+    <circle cx="196" cy="82" r="48" fill="none" stroke="white" stroke-width="13"/>
+  </g>
+  <path d="M450 505c-38 0-69 31-69 69 0 55 69 132 69 132s69-77 69-132c0-38-31-69-69-69Zm0 94a27 27 0 1 1 0-54 27 27 0 0 1 0 54Z" fill="white" opacity=".09"/>
+</svg>
