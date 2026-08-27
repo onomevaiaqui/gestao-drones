@@ -48,7 +48,7 @@ def solicitacao_voo_nova(request):
     initial = {}
     if planejamento_inicial:
         initial = {"planejamento": planejamento_inicial, "data": planejamento_inicial.data,
-                   "data_fim": planejamento_inicial.data,
+                   "data_fim": planejamento_inicial.data_final,
                    "hora_inicio": planejamento_inicial.hora_inicio, "hora_fim": planejamento_inicial.hora_fim,
                    "piloto": planejamento_inicial.piloto, "local": planejamento_inicial.local,
                    "finalidade": planejamento_inicial.finalidade}

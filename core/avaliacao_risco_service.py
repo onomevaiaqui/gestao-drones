@@ -99,9 +99,13 @@ def dados_automaticos_avaliacao(solicitacao):
     hoje = date.today()
     piloto = getattr(getattr(solicitacao, "piloto", None), "nome", "Piloto a confirmar")
     data_operacao = getattr(solicitacao, "data", hoje)
+    data_fim_operacao = getattr(solicitacao, "data_final", data_operacao)
     hora_inicio = getattr(solicitacao, "hora_inicio", None)
     hora_fim = getattr(solicitacao, "hora_fim", None)
-    periodo = f", das {hora_inicio:%H:%M} às {hora_fim:%H:%M}" if hora_inicio and hora_fim else ""
+    periodo = (
+        f", de {data_operacao:%d/%m/%Y} {hora_inicio:%H:%M} até {data_fim_operacao:%d/%m/%Y} {hora_fim:%H:%M}"
+        if hora_inicio and hora_fim else f", de {data_operacao:%d/%m/%Y} até {data_fim_operacao:%d/%m/%Y}"
+    )
     finalidade = solicitacao.get_finalidade_display().lower() if hasattr(solicitacao, "get_finalidade_display") else "operação planejada"
     return {
         "perigos_identificados":"\n".join(f"• {p}" for p in dict.fromkeys(perigos)) or "• Nenhum perigo adicional identificado automaticamente. Confirmar condições locais.",
@@ -114,7 +118,7 @@ def dados_automaticos_avaliacao(solicitacao):
         "operador_documento": getattr(getattr(solicitacao, "piloto", None), "cpf", ""),
         "codigo_sarpas": getattr(getattr(solicitacao, "piloto", None), "codigo_sarpas", ""),
         "aeronave_identificacao": aeronave,
-        "cenario_operacional": f"Operação de {finalidade} em {getattr(solicitacao, 'local', '') or getattr(planejamento, 'local', '') or 'local a confirmar'}, em {data_operacao:%d/%m/%Y}{periodo}{altura}.",
+        "cenario_operacional": f"Operação de {finalidade} em {getattr(solicitacao, 'local', '') or getattr(planejamento, 'local', '') or 'local a confirmar'}{periodo}{altura}.",
         "aspectos_gerais": "\n".join(filter(None, [f"Área planejada: {planejamento.area_hectares} ha." if planejamento and planejamento.area_hectares else "", *condicoes])) or "Confirmar características da área, obstáculos, terceiros, iluminação e condições locais.",
         "legislacao_aplicavel": LEGISLACAO_PADRAO,
         "procedimento_acidente": "Interromper a operação e prestar socorro sem criar novos riscos. Acionar SAMU (192), Bombeiros (193) ou emergência local; preservar registros e comunicar os órgãos competentes conforme a ocorrência.",

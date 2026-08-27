@@ -198,6 +198,9 @@ class AlocacaoForm(forms.ModelForm):
 
         self.fields["piloto"].queryset = Piloto.objects.filter(ativo=True)
         self.fields["drone"].queryset = Drone.objects.filter(status="ativo")
+        self.fields["data"].label = "Data inicial"
+        self.fields["data_fim"].label = "Data final"
+        self.fields["data_fim"].required = True
 
         if self.instance and self.instance.pk:
             self.fields["piloto"].queryset = Piloto.objects.filter(

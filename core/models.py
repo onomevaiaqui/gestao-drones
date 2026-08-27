@@ -493,6 +493,7 @@ class PlanejamentoVoo(models.Model):
     titulo = models.CharField(max_length=150)
     piloto = models.ForeignKey(Piloto, on_delete=models.PROTECT, related_name="planejamentos_voo")
     data = models.DateField()
+    data_fim = models.DateField(null=True, blank=True, verbose_name="Data final")
     hora_inicio = models.TimeField()
     hora_fim = models.TimeField()
     altura_maxima_m = models.PositiveIntegerField(default=120)
@@ -529,6 +530,10 @@ class PlanejamentoVoo(models.Model):
 
     def __str__(self):
         return f"{self.titulo} - {self.piloto}"
+
+    @property
+    def data_final(self):
+        return self.data_fim or self.data
 
 class SolicitacaoVoo(models.Model):
     STATUS_CHOICES = [

@@ -41,6 +41,7 @@ class PlanejamentoVooTests(TestCase):
         calculada = calcular_geometria(AREA)
         self.obj = PlanejamentoVoo.objects.create(
             titulo="Inspeção", piloto=self.piloto, data=timezone.localdate() + timedelta(days=1),
+            data_fim=timezone.localdate() + timedelta(days=1),
             hora_inicio=time(9), hora_fim=time(10), local="Parque Ambiental, Guarapuava/PR",
             area_geojson=calculada["geojson"],
             centro_latitude=calculada["centro_latitude"], centro_longitude=calculada["centro_longitude"],
@@ -105,13 +106,14 @@ class PlanejamentoVooTests(TestCase):
         self.assertEqual(resultado["neblina_area_max_percentual"], 100)
         self.assertGreater(resultado["raio_neblina_estimado_km"], 0)
         self.assertTrue(resultado["pontos_neblina"])
+        self.assertIn(f"end_date={self.obj.data_fim.isoformat()}", urlopen.call_args.args[0].full_url)
 
     def test_reserva_iniciada_pelo_planejamento_vem_pre_preenchida(self):
         self.client.force_login(self.user)
         resposta = self.client.get(reverse("solicitacao_voo_nova"), {"planejamento": self.obj.pk})
         form = resposta.context["form"]
         self.assertEqual(form.initial["data"], self.obj.data)
-        self.assertEqual(form.initial["data_fim"], self.obj.data)
+        self.assertEqual(form.initial["data_fim"], self.obj.data_fim)
         self.assertEqual(form.initial["hora_inicio"], self.obj.hora_inicio)
         self.assertEqual(form.initial["hora_fim"], self.obj.hora_fim)
         self.assertEqual(form.initial["local"], "Parque Ambiental, Guarapuava/PR")
@@ -120,6 +122,12 @@ class PlanejamentoVooTests(TestCase):
         self.assertNotContains(resposta, f"{self.obj.data.isoformat()} - Inspeção")
         self.assertContains(resposta, f'value="{self.obj.data.isoformat()}"')
         self.assertContains(resposta, "Fotografia")
+
+    def test_camadas_aeronauticas_nao_bloqueiam_desenho_no_mapa(self):
+        self.client.force_login(self.user)
+        resposta = self.client.get(reverse("planejamento_editar", args=[self.obj.pk]))
+        self.assertContains(resposta, "interactive:false")
+        self.assertContains(resposta, "bringToBack")
 
     @patch("core.planejamento_views.urlopen")
     def test_busca_local_retorna_pontos_de_interesse_e_cidades(self, urlopen):

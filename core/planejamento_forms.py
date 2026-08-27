@@ -16,7 +16,7 @@ class PlanejamentoVooForm(forms.ModelForm):
     class Meta:
         model = PlanejamentoVoo
         fields = [
-            "titulo", "piloto", "local", "data", "hora_inicio", "hora_fim", "finalidade",
+            "titulo", "piloto", "local", "data", "data_fim", "hora_inicio", "hora_fim", "finalidade",
             "altura_maxima_m", "gera_dados_aerolevantamento", "tipo_aerolevantamento",
             "atividade_agroflorestal", "exclusivo_proprietario_rural", "dentro_condicionantes_ica",
             "interseca_area_sensivel_defesa", "projeto_contiguo_12_meses", "observacoes",
@@ -26,6 +26,7 @@ class PlanejamentoVooForm(forms.ModelForm):
             "piloto": forms.Select(attrs={"class": "form-select"}),
             "local": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex.: Parque Ambiental, Guarapuava/PR"}),
             "data": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "data_fim": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "hora_inicio": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
             "hora_fim": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
             "finalidade": forms.Select(attrs={"class": "form-select"}),
@@ -43,12 +44,15 @@ class PlanejamentoVooForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.order_fields([
-            "titulo", "piloto", "local", "data", "hora_inicio", "hora_fim", "finalidade",
+            "titulo", "piloto", "local", "data", "data_fim", "hora_inicio", "hora_fim", "finalidade",
             "altura_maxima_m", "arquivo_area", "gera_dados_aerolevantamento", "tipo_aerolevantamento",
             "atividade_agroflorestal", "exclusivo_proprietario_rural", "dentro_condicionantes_ica",
             "interseca_area_sensivel_defesa", "projeto_contiguo_12_meses", "observacoes", "area_geojson_texto",
         ])
         self.fields["piloto"].queryset = Piloto.objects.filter(ativo=True)
+        self.fields["data"].label = "Data inicial"
+        self.fields["data_fim"].label = "Data final"
+        self.fields["data_fim"].required = True
         if self.instance and self.instance.pk:
             self.fields["area_geojson_texto"].initial = json.dumps(self.instance.area_geojson)
         self.fields["tipo_aerolevantamento"].required = False
@@ -57,8 +61,11 @@ class PlanejamentoVooForm(forms.ModelForm):
 
     def clean(self):
         dados = super().clean()
+        data, data_fim = dados.get("data"), dados.get("data_fim")
         inicio, fim = dados.get("hora_inicio"), dados.get("hora_fim")
-        if inicio and fim and fim <= inicio:
+        if data and data_fim and data_fim < data:
+            self.add_error("data_fim", "A data final não pode ser anterior à data inicial.")
+        if data and data_fim == data and inicio and fim and fim <= inicio:
             self.add_error("hora_fim", "O horário final deve ser posterior ao inicial.")
         if dados.get("gera_dados_aerolevantamento") and not dados.get("tipo_aerolevantamento"):
             self.add_error("tipo_aerolevantamento", "Informe o tipo de aerolevantamento.")

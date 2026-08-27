@@ -1,7 +1,7 @@
 # Documentação técnica do SISMOD
 
-Versão documental: 1.1
-Última revisão: 26/08/2026
+Versão documental: 1.2
+Última revisão: 27/08/2026
 
 ## 1. Finalidade
 
@@ -114,9 +114,11 @@ gestao_drones/
 ### Planejamento de voo
 
 - desenho de área fechada e cálculo aproximado;
+- período completo com data/hora inicial e data/hora final;
 - busca de cidades, endereços e pontos de interesse públicos (portos, igrejas, parques e outros locais do OpenStreetMap), além de importação/exportação KML/KMZ;
 - meteorologia, estimativa de neblina e camadas aeronáuticas;
 - raios de atenção e triagem SISCLATEN;
+- camadas aeronáuticas são informativas durante o desenho e não bloqueiam o polígono; as interseções são avaliadas após salvar;
 - data, horário, região e finalidade reaproveitados na reserva.
 
 ### Reservas, calendário e checklist

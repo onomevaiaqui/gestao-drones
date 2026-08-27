@@ -37,6 +37,8 @@ class SolicitacaoVooForm(forms.ModelForm):
         self.fields["planejamento"].queryset = PlanejamentoVoo.objects.all()
         self.fields["piloto"].queryset = Piloto.objects.filter(ativo=True)
         self.fields["drones"].queryset = Drone.objects.filter(status="ativo")
+        self.fields["data"].label = "Data inicial"
+        self.fields["data_fim"].label = "Data final"
         self.fields["data_fim"].required = True
         if self.instance and self.instance.pk:
             self.fields["piloto"].queryset = Piloto.objects.filter(Q(ativo=True) | Q(pk=self.instance.piloto_id)).distinct()

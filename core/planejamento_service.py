@@ -75,7 +75,7 @@ def _minimo(valores):
 
 def consultar_previsao(planejamento):
     hoje = timezone.localdate()
-    if planejamento.data < hoje or (planejamento.data - hoje).days > 15:
+    if planejamento.data < hoje or planejamento.data_final < planejamento.data or (planejamento.data_final - hoje).days > 15:
         raise ValueError("A previsão está disponível entre hoje e os próximos 15 dias.")
     pontos = _pontos_amostragem(planejamento)
     parametros = {
@@ -84,7 +84,7 @@ def consultar_previsao(planejamento):
         "hourly": ",".join(VARIAVEIS),
         "timezone": "America/Sao_Paulo",
         "start_date": planejamento.data.isoformat(),
-        "end_date": planejamento.data.isoformat(),
+        "end_date": planejamento.data_final.isoformat(),
         "wind_speed_unit": "kmh",
     }
     requisicao = Request(
@@ -98,7 +98,7 @@ def consultar_previsao(planejamento):
         raise ValueError("A previsão meteorológica não retornou dados para a área.")
 
     inicio = datetime.combine(planejamento.data, planejamento.hora_inicio)
-    fim = datetime.combine(planejamento.data, planejamento.hora_fim)
+    fim = datetime.combine(planejamento.data_final, planejamento.hora_fim)
     horas = []
     niveis_neblina_globais = [0] * len(pontos)
     for indice, texto in enumerate(locais[0]["hourly"]["time"]):
@@ -151,7 +151,7 @@ def consultar_previsao(planejamento):
             elif chuva is not None and chuva >= 1:
                 nivel = max(nivel, 1); motivos.append(f"Previsão de chuva: {round(chuva, 1)} mm/h.")
             horas.append({
-                "hora": instante.strftime("%H:%M"), "nivel": nivel,
+                "hora": instante.strftime("%d/%m %H:%M") if planejamento.data_final != planejamento.data else instante.strftime("%H:%M"), "nivel": nivel,
                 "status": ["favoravel", "atencao", "desfavoravel"][nivel],
                 "motivos": motivos or ["Condições previstas dentro dos limites de referência."],
                 "visibilidade_m": visibilidade, "umidade": umidade, "amplitude_orvalho": amplitude,
