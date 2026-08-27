@@ -3,6 +3,7 @@
 {% block content %}
 <div class="page-header"><div><h1>Telemetria</h1><p>Importações e resumos dos registros de voo</p></div>{% if not eh_coordenador %}<a class="btn btn-primary" href="{% url 'telemetria_importar' %}">+ Importar log</a>{% endif %}</div>
 {% if eh_coordenador %}<div class="alert alert-info">Visão global da telemetria. No perfil de coordenador, as importações são somente para consulta.</div>{% endif %}
+{% for item in baterias_novas %}<div class="alert alert-warning"><strong>Nova bateria identificada:</strong> {{ item.serial }} · {{ item.drone.nome }}. {% if eh_admin %}<a class="btn btn-sm btn-primary ms-2" href="{% url 'bateria_nova' %}?numero_serie={{ item.serial|urlencode }}&drone={{ item.drone.pk }}&importacao={{ item.importacao.pk }}">Cadastrar bateria</a>{% else %}O cadastro deve ser concluído por um administrador.{% endif %}</div>{% endfor %}
 <div class="kpi-grid">
   <div class="kpi-card"><div><span>Importações</span><strong>{{ resumo.total }}</strong></div><div class="kpi-icon">⌁</div></div>
   <div class="kpi-card"><div><span>Concluídas</span><strong>{{ resumo.concluidas }}</strong></div><div class="kpi-icon green">✓</div></div>

@@ -222,6 +222,8 @@ def _concluir_importacao(importacao, pontos, atualizar_voo):
         voo.bateria_inicial = com_bateria[0].bateria_inicial if com_bateria else None
         voo.bateria_final = com_bateria[-1].bateria_final if com_bateria else None
         voo.save(update_fields=list(dict.fromkeys(campos)))
+        from .telemetria_bateria_service import sincronizar_registro_pos_voo
+        sincronizar_registro_pos_voo(voo)
     return importacao
 
 

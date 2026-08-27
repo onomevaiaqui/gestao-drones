@@ -25,12 +25,13 @@
                 <div class="mb-3"><label class="form-label">Hora real de início</label>{{ form.hora_inicio_real }}{{ form.hora_inicio_real.errors }}</div>
                 <div class="mb-3"><label class="form-label">Hora real de término</label>{{ form.hora_fim_real }}{{ form.hora_fim_real.errors }}</div>
                 <div class="mb-3"><label class="form-label">Resultado da operação</label>{{ form.resultado }}{{ form.resultado.errors }}</div>
-                <div class="mb-3"><label class="form-label">Baterias utilizadas</label>{{ form.baterias_utilizadas }}{{ form.baterias_utilizadas.errors }}</div>
-                <div class="mb-3 battery-choice"><label class="form-label">Identificação das baterias</label>{{ form.baterias }}{{ form.baterias.errors }}<small class="text-muted">Selecione as unidades cadastradas usadas neste voo.</small></div>
+                <div class="mb-3"><label class="form-label">Baterias identificadas nos logs</label>{{ form.baterias_utilizadas }}{{ form.baterias_utilizadas.errors }}<small class="text-muted">Quantidade de números de série distintos reconhecidos na telemetria.</small></div>
+                <div class="mb-3 battery-choice"><label class="form-label">Baterias cadastradas reconhecidas</label>{{ form.baterias }}{{ form.baterias.errors }}<small class="text-muted">Preenchimento automático pelos números de série presentes nos logs.</small></div>
+                {% for serial in telemetria_pos_voo.seriais_novos %}<div class="alert alert-warning"><strong>Nova bateria identificada:</strong> {{ serial }}. {% if eh_admin %}<a href="{% url 'bateria_nova' %}?numero_serie={{ serial|urlencode }}&drone={{ alocacao.drone_id }}" class="btn btn-sm btn-primary ms-2">Cadastrar</a>{% else %}Solicite o cadastro ao administrador.{% endif %}</div>{% endfor %}
             </div>
             <div class="panel">
                 <h3>Dados complementares</h3>
-                <div class="mb-3"><label class="form-label">Distância percorrida (m)</label>{{ form.distancia_m }}{{ form.distancia_m.errors }}</div>
+                <div class="mb-3"><label class="form-label">Distância percorrida pela telemetria (m)</label>{{ form.distancia_m }}{{ form.distancia_m.errors }}<small class="text-muted">Soma das distâncias dos logs concluídos vinculados ao voo.</small></div>
                 <div class="info-box">Os percentuais de bateria são obtidos automaticamente pela importação da telemetria.</div>
             </div>
             <div class="panel">

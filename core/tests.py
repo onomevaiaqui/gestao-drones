@@ -730,7 +730,12 @@ class PermissoesOperacionaisTests(TestCase):
         resposta = self.client.post(reverse("drone_status_atualizar", args=[self.drone.pk]), {"status": "manutencao"})
         self.assertRedirects(resposta, reverse("dashboard"))
         self.drone.refresh_from_db()
-        self.assertEqual(self.drone.status, "ativo")
+        # O redirecionamento para a dashboard pode sincronizar uma reserva em
+        # andamento; o que o usuário não pode fazer é impor manutenção.
+        self.assertIn(self.drone.status, ("ativo", "em_campo"))
+        self.assertFalse(
+            DroneHistorico.objects.filter(drone=self.drone, status_novo="manutencao").exists()
+        )
 
     def test_usuario_staff_nao_e_administrador_operacional(self):
         self.usuario.is_staff = True
@@ -853,6 +858,16 @@ class FluxoOperacionalCompletoTests(TestCase):
         })
         self.assertRedirects(resposta, reverse("calendario"))
         self.assertTrue(ChecklistPreVoo.objects.get(alocacao=alocacao).concluido)
+
+        voo = Voo.objects.get(alocacao_calendario=alocacao)
+        voo.distancia_m = "1250.50"
+        voo.save(update_fields=["distancia_m"])
+        Bateria.objects.create(codigo="BAT-FLUXO", numero_serie="SERIAL-FLUXO", drone=self.drone)
+        ImportacaoLog.objects.create(
+            voo=voo, nome_original="fluxo.txt", formato="txt", status="concluida",
+            distancia_calculada_m="1250.50", bateria_serial_detectada="SERIAL-FLUXO",
+            importado_por=self.usuario,
+        )
 
         resposta = self.client.post(reverse("registro_pos_voo", args=[alocacao.pk]), {
             "hora_inicio_real": "09:05", "hora_fim_real": "09:50", "resultado": "concluido",

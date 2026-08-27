@@ -211,6 +211,8 @@ class AlocacaoForm(forms.ModelForm):
             ).distinct()
 
     def clean(self):
+        from .operacao_service import erro_intervalo, existe_conflito_alocacao
+
         cleaned = super().clean()
         data = cleaned.get("data")
         data_fim = cleaned.get("data_fim") or data
@@ -218,29 +220,16 @@ class AlocacaoForm(forms.ModelForm):
         fim = cleaned.get("hora_fim")
         drone = cleaned.get("drone")
 
-        if data and data_fim and data_fim < data:
-            self.add_error("data_fim", "A data final não pode ser anterior à data inicial.")
-
-        if data and data_fim == data and inicio and fim and fim <= inicio:
-            self.add_error("hora_fim", "A hora final deve ser posterior à hora inicial.")
+        erro = erro_intervalo(data, inicio, data_fim, fim)
+        if erro:
+            campo = "data_fim" if data and data_fim and data_fim < data else "hora_fim"
+            self.add_error(campo, erro)
 
         if data and data_fim and inicio and fim and drone:
-            qs = Alocacao.objects.filter(
-                drone=drone,
-                status="reservado",
-                data__lte=data_fim,
-            ).filter(Q(data_fim__gte=data) | Q(data_fim__isnull=True, data__gte=data))
-            if self.instance and self.instance.pk:
-                qs = qs.exclude(pk=self.instance.pk)
-
-            novo_inicio = datetime.combine(data, inicio)
-            novo_fim = datetime.combine(data_fim, fim)
-            existe_conflito = any(
-                datetime.combine(item.data, item.hora_inicio) < novo_fim
-                and datetime.combine(item.data_final, item.hora_fim) > novo_inicio
-                for item in qs
-            )
-            if existe_conflito:
+            if existe_conflito_alocacao(
+                drone, data, inicio, data_fim, fim,
+                excluir_pk=self.instance.pk if self.instance and self.instance.pk else None,
+            ):
                 self.add_error(
                     "drone",
                     "Este drone já possui uma reserva nesse intervalo de horário."
@@ -256,11 +245,9 @@ class ManutencaoForm(forms.ModelForm):
             "drone": forms.Select(attrs={"class": "form-select"}),
             "concluida": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
-# PATCH REGISTRO POS-VOO: FORMULARIO
-from django import forms as pos_voo_forms
 from .models import Bateria, RegistroPosVoo
 
-class RegistroPosVooForm(pos_voo_forms.ModelForm):
+class RegistroPosVooForm(forms.ModelForm):
     class Meta:
         model = RegistroPosVoo
         fields = [
@@ -271,30 +258,39 @@ class RegistroPosVooForm(pos_voo_forms.ModelForm):
             "observacoes", "concluido",
         ]
         widgets = {
-            "hora_inicio_real": pos_voo_forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
-            "hora_fim_real": pos_voo_forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
-            "resultado": pos_voo_forms.Select(attrs={"class": "form-select"}),
-            "baterias_utilizadas": pos_voo_forms.NumberInput(attrs={"class": "form-control", "min": 1}),
-            "baterias": pos_voo_forms.CheckboxSelectMultiple(),
-            "distancia_m": pos_voo_forms.NumberInput(attrs={"class": "form-control", "min": 0, "step": "0.01"}),
-            "ocorrencias": pos_voo_forms.Textarea(attrs={"rows": 4, "class": "form-control"}),
-            "danos": pos_voo_forms.Textarea(attrs={"rows": 4, "class": "form-control"}),
-            "observacoes": pos_voo_forms.Textarea(attrs={"rows": 4, "class": "form-control"}),
-            "necessita_manutencao": pos_voo_forms.CheckboxInput(attrs={"class": "form-check-input"}),
-            "concluido": pos_voo_forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "hora_inicio_real": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
+            "hora_fim_real": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
+            "resultado": forms.Select(attrs={"class": "form-select"}),
+            "baterias_utilizadas": forms.NumberInput(attrs={"class": "form-control", "min": 1}),
+            "baterias": forms.CheckboxSelectMultiple(),
+            "distancia_m": forms.NumberInput(attrs={"class": "form-control", "min": 0, "step": "0.01"}),
+            "ocorrencias": forms.Textarea(attrs={"rows": 4, "class": "form-control"}),
+            "danos": forms.Textarea(attrs={"rows": 4, "class": "form-control"}),
+            "observacoes": forms.Textarea(attrs={"rows": 4, "class": "form-control"}),
+            "necessita_manutencao": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "concluido": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
 
     def __init__(self, *args, **kwargs):
+        self.resumo_telemetria = kwargs.pop("resumo_telemetria", None)
         super().__init__(*args, **kwargs)
         selecionadas = self.instance.baterias.all() if self.instance and self.instance.pk else Bateria.objects.none()
+        reconhecidas = (
+            Bateria.objects.filter(pk__in=[item.pk for item in self.resumo_telemetria["baterias"]])
+            if self.resumo_telemetria else Bateria.objects.none()
+        )
         self.fields["baterias"].queryset = (
-            Bateria.objects.filter(status="disponivel") | selecionadas
+            Bateria.objects.filter(status="disponivel") | selecionadas | reconhecidas
         ).distinct().order_by("codigo")
         self.fields["baterias"].required = False
         self.fields["baterias"].label = "Baterias utilizadas"
+        for nome in ("baterias_utilizadas", "baterias", "distancia_m"):
+            self.fields[nome].disabled = True
+        if self.resumo_telemetria:
+            self.fields["baterias_utilizadas"].initial = self.resumo_telemetria["quantidade_baterias"]
+            self.fields["distancia_m"].initial = self.resumo_telemetria["distancia_m"]
+            self.fields["baterias"].initial = self.resumo_telemetria["baterias"]
 
     def clean(self):
         dados = super().clean()
-        if dados.get("baterias_utilizadas") == 0:
-            self.add_error("baterias_utilizadas", "Informe ao menos uma bateria.")
         return dados

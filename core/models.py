@@ -392,24 +392,15 @@ class Alocacao(models.Model):
         return self.data_fim or self.data
 
     def conflita(self):
-        inicio = datetime.combine(self.data, self.hora_inicio)
-        fim = datetime.combine(self.data_final, self.hora_fim)
-        candidatas = (
-            Alocacao.objects
-            .filter(
-                data__lte=self.data_final,
-                drone=self.drone,
-                status="reservado",
-            )
-            .filter(models.Q(data_fim__gte=self.data) | models.Q(data_fim__isnull=True, data__gte=self.data))
-            .exclude(
-                pk=self.pk
-            )
-        )
-        return any(
-            datetime.combine(item.data, item.hora_inicio) < fim
-            and datetime.combine(item.data_final, item.hora_fim) > inicio
-            for item in candidatas
+        from .operacao_service import existe_conflito_alocacao
+
+        return existe_conflito_alocacao(
+            self.drone,
+            self.data,
+            self.hora_inicio,
+            self.data_final,
+            self.hora_fim,
+            excluir_pk=self.pk,
         )
 
 
@@ -625,7 +616,6 @@ class ChecklistPreVoo(models.Model):
 
     def __str__(self):
         return f"Checklist - {self.alocacao}"
-# PATCH REGISTRO POS-VOO: MODELO
 class RegistroPosVoo(models.Model):
     RESULTADO_CHOICES = [
         ("concluido", "Concluído"),

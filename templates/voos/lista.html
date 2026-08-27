@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-header">
     <div><h1>Voos realizados</h1><p>Histórico das operações concluídas. Operações futuras são registradas em Reservas de drones.</p></div>
-    {% if eh_admin %}<a href="{% url 'voo_novo' %}" class="btn btn-primary">+ Registrar voo realizado</a>{% elif not eh_coordenador %}<a href="{% url 'solicitacao_voo_nova' %}" class="btn btn-primary">+ Reservar Drone</a>{% endif %}
+    {% if not eh_coordenador %}<div class="header-actions"><a href="{% url 'telemetria_importar' %}" class="btn btn-primary">+ Importar log</a><a href="{% url 'solicitacao_voo_nova' %}" class="btn btn-light">Reservar Drone</a></div>{% endif %}
 </div>
 
 <div class="panel">

@@ -1,8 +1,7 @@
-from datetime import datetime
-
 from django import forms
 from django.db.models import Q
 from .models import Piloto, Drone, Alocacao, SolicitacaoVoo, PlanejamentoVoo
+from .operacao_service import erro_intervalo, existe_conflito_alocacao
 
 class SolicitacaoVooForm(forms.ModelForm):
     drones = forms.ModelMultipleChoiceField(
@@ -55,25 +54,16 @@ class SolicitacaoVooForm(forms.ModelForm):
         fim = cleaned.get("hora_fim")
         drones = cleaned.get("drones")
         planejamento = cleaned.get("planejamento")
-        if data and data_fim and data_fim < data:
-            self.add_error("data_fim", "A data final não pode ser anterior à data inicial.")
-        if data and data_fim and data == data_fim and inicio and fim and fim <= inicio:
-            self.add_error("hora_fim", "A hora final deve ser posterior à hora inicial.")
+        erro = erro_intervalo(data, inicio, data_fim, fim)
+        if erro:
+            campo = "data_fim" if data and data_fim and data_fim < data else "hora_fim"
+            self.add_error(campo, erro)
         if data and data_fim and inicio and fim and drones:
             for drone in drones:
-                conflitos = Alocacao.objects.filter(
-                    drone=drone, status="reservado", data__lte=data_fim,
-                ).filter(Q(data_fim__gte=data) | Q(data_fim__isnull=True, data__gte=data))
-                if self.instance and self.instance.alocacao_id:
-                    conflitos = conflitos.exclude(pk=self.instance.alocacao_id)
-                novo_inicio = datetime.combine(data, inicio)
-                novo_fim = datetime.combine(data_fim, fim)
-                conflito = any(
-                    datetime.combine(item.data, item.hora_inicio) < novo_fim
-                    and datetime.combine(item.data_final, item.hora_fim) > novo_inicio
-                    for item in conflitos
-                )
-                if conflito:
+                if existe_conflito_alocacao(
+                    drone, data, inicio, data_fim, fim,
+                    excluir_pk=self.instance.alocacao_id if self.instance else None,
+                ):
                     self.add_error("drones", f"{drone.nome} já possui uma reserva que coincide com esse período.")
         if planejamento:
             if data and data != planejamento.data:

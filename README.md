@@ -31,6 +31,7 @@ python manage.py test core
 
 - [Documentação técnica completa](docs/DOCUMENTACAO_TECNICA.md)
 - [Política obrigatória de atualização](docs/MANUTENCAO_DOCUMENTACAO.md)
+- [Inventário de arquivos legados](docs/ARQUIVOS_LEGADOS.md)
 
 ## Situação atual
 

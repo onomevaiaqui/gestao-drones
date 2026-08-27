@@ -1,4 +1,3 @@
-from functools import wraps
 from collections import defaultdict
 from datetime import date, timedelta, datetime
 import calendar as pycalendar
@@ -36,6 +35,24 @@ from .models import (
 )
 from .drone_documento_forms import DocumentoDroneForm
 from .papel_timbrado import PapelTimbradoRelatorioForm, aplicar_papel_timbrado, tamanho_pagina_do_modelo
+from .permissoes import (
+    admin_required,
+    usuario_e_admin,
+    usuario_e_coordenador,
+    usuario_tem_perfil_admin,
+    usuario_tem_visao_global,
+    visao_global_required,
+)
+from .reserva_service import (
+    atualizar_reservas_vencidas as _atualizar_reservas_vencidas,
+    atualizar_status_drones_por_reserva as _atualizar_status_drones_por_reserva,
+    drone_tem_reserva_em_andamento as _drone_tem_reserva_em_andamento,
+)
+from .operacao_service import (
+    concluir_registro_pos_voo,
+    sincronizar_calendario_do_voo as _sincronizar_voo_com_calendario,
+)
+from .telemetria_bateria_service import resumo_pos_voo_telemetria
 
 from .forms import (
     PilotoForm,
@@ -51,71 +68,6 @@ from .forms import (
 # =========================================================
 # PERMISSÕES E CONTEXTO
 # =========================================================
-
-def usuario_tem_perfil_admin(user):
-    if not user.is_authenticated:
-        return False
-
-    if user.is_superuser:
-        return True
-
-    try:
-        return (
-            user.piloto.perfil == "administrador"
-            and user.piloto.ativo
-        )
-    except Piloto.DoesNotExist:
-        return False
-
-
-def usuario_e_admin(user):
-    if not usuario_tem_perfil_admin(user):
-        return False
-    return getattr(user, "_modo_acesso", None) not in ("usuario", "coordenador", "pendente")
-
-
-def usuario_e_coordenador(user):
-    if not user.is_authenticated:
-        return False
-    modo = getattr(user, "_modo_acesso", None)
-    if usuario_tem_perfil_admin(user):
-        return modo == "coordenador"
-    try:
-        return user.piloto.perfil == "coordenador" and user.piloto.ativo
-    except Piloto.DoesNotExist:
-        return False
-
-
-def usuario_tem_visao_global(user):
-    return usuario_e_admin(user) or usuario_e_coordenador(user)
-
-
-def admin_required(view_func):
-    @wraps(view_func)
-    @login_required
-    def wrapper(request, *args, **kwargs):
-        if not usuario_e_admin(request.user):
-            messages.error(
-                request,
-                "Você não tem permissão para acessar esta área."
-            )
-            return redirect("dashboard")
-
-        return view_func(request, *args, **kwargs)
-
-    return wrapper
-
-
-def visao_global_required(view_func):
-    @wraps(view_func)
-    @login_required
-    def wrapper(request, *args, **kwargs):
-        if not usuario_tem_visao_global(request.user):
-            messages.error(request, "Você não tem permissão para acessar esta área.")
-            return redirect("dashboard")
-        return view_func(request, *args, **kwargs)
-    return wrapper
-
 
 def _base_context(request):
     eh_admin = usuario_e_admin(request.user)
@@ -309,107 +261,6 @@ def _reserva_pertence_ao_usuario(request, alocacao):
         )
     except Piloto.DoesNotExist:
         return False
-
-
-def _atualizar_reservas_vencidas():
-    agora = timezone.localtime()
-
-    abertas = Alocacao.objects.filter(
-        status="reservado",
-        data__lte=agora.date(),
-    )
-
-    ids_concluir = []
-
-    for reserva in abertas:
-        fim = timezone.make_aware(
-            datetime.combine(
-                reserva.data_final,
-                reserva.hora_fim
-            ),
-            timezone.get_current_timezone(),
-        )
-
-        if fim <= agora:
-            ids_concluir.append(
-                reserva.pk
-            )
-
-    if ids_concluir:
-        Alocacao.objects.filter(
-            pk__in=ids_concluir
-        ).update(
-            status="concluido"
-        )
-
-
-
-def _atualizar_status_drones_por_reserva():
-    agora = timezone.localtime()
-    candidatas = (
-        Alocacao.objects
-        .filter(
-            status="reservado",
-            data__lte=agora.date(),
-        )
-        .filter(Q(data_fim__gte=agora.date()) | Q(data_fim__isnull=True, data=agora.date()))
-        .select_related("drone")
-    )
-    reservas_ativas = [
-        reserva for reserva in candidatas
-        if timezone.make_aware(datetime.combine(reserva.data, reserva.hora_inicio)) <= agora
-        < timezone.make_aware(datetime.combine(reserva.data_final, reserva.hora_fim))
-    ]
-
-    drones_em_reserva = set()
-
-    for reserva in reservas_ativas:
-        drone = reserva.drone
-        drones_em_reserva.add(drone.pk)
-
-        if drone.status in ("manutencao", "indisponivel"):
-            continue
-
-        if drone.status != "em_campo":
-            anterior = drone.status
-            drone.status = "em_campo"
-            drone.save(update_fields=["status"])
-
-            DroneHistorico.objects.create(
-                drone=drone,
-                status_anterior=anterior,
-                status_novo="em_campo",
-                localizacao_anterior=getattr(drone, "localizacao", ""),
-                localizacao_nova=getattr(drone, "localizacao", ""),
-                alterado_por=None,
-                observacao="Status alterado automaticamente por reserva em andamento",
-            )
-
-    for drone in Drone.objects.filter(status="em_campo").exclude(pk__in=drones_em_reserva):
-        drone.status = "ativo"
-        drone.save(update_fields=["status"])
-
-        DroneHistorico.objects.create(
-            drone=drone,
-            status_anterior="em_campo",
-            status_novo="ativo",
-            localizacao_anterior=getattr(drone, "localizacao", ""),
-            localizacao_nova=getattr(drone, "localizacao", ""),
-            alterado_por=None,
-            observacao="Reserva finalizada. Status retornado automaticamente para Ativo",
-        )
-
-
-def _drone_tem_reserva_em_andamento(drone, agora=None):
-    agora = agora or timezone.localtime()
-    candidatas = Alocacao.objects.filter(
-        drone=drone, status="reservado", data__lte=agora.date(),
-    ).filter(Q(data_fim__gte=agora.date()) | Q(data_fim__isnull=True, data=agora.date()))
-    return any(
-        timezone.make_aware(datetime.combine(item.data, item.hora_inicio)) <= agora
-        < timezone.make_aware(datetime.combine(item.data_final, item.hora_fim))
-        for item in candidatas
-    )
 
 
 # =========================================================
@@ -802,88 +653,6 @@ def minha_agenda(request):
     }
     ctx.update(_base_context(request))
     return render(request, "agenda/minha_agenda.html", ctx)
-
-
-def _sincronizar_voo_com_calendario(voo, usuario):
-    if not voo.data or not voo.hora_inicio or not voo.hora_fim:
-        return None
-    agora = timezone.localtime()
-
-    inicio_voo = timezone.make_aware(
-        datetime.combine(voo.data, voo.hora_inicio),
-        timezone.get_current_timezone(),
-    )
-
-    fim_voo = timezone.make_aware(
-        datetime.combine(voo.data, voo.hora_fim),
-        timezone.get_current_timezone(),
-    )
-
-    if fim_voo <= inicio_voo:
-        fim_voo += timedelta(days=1)
-
-    status_calendario = "concluido" if fim_voo <= agora else "reservado"
-
-    finalidade_texto = (
-        voo.get_finalidade_display()
-        if hasattr(voo, "get_finalidade_display")
-        else str(voo.finalidade)
-    )
-
-    alocacao = voo.alocacao_calendario
-    if alocacao is None:
-        alocacao = Alocacao.objects.filter(
-            piloto=voo.piloto,
-            drone=voo.drone,
-            data=voo.data,
-            hora_inicio=voo.hora_inicio,
-            hora_fim=voo.hora_fim,
-        ).first()
-
-    if alocacao:
-        alocacao.data = voo.data
-        alocacao.data_fim = fim_voo.date()
-        alocacao.hora_inicio = voo.hora_inicio
-        alocacao.hora_fim = voo.hora_fim
-        alocacao.piloto = voo.piloto
-        alocacao.drone = voo.drone
-        alocacao.finalidade = finalidade_texto
-        alocacao.local = voo.local or ""
-        alocacao.observacoes = voo.observacoes or ""
-
-        if alocacao.status != "cancelado":
-            alocacao.status = status_calendario
-
-        alocacao.save(
-            update_fields=[
-                "data", "data_fim", "hora_inicio", "hora_fim", "piloto", "drone",
-                "finalidade",
-                "local",
-                "observacoes",
-                "status",
-            ]
-        )
-        if voo.alocacao_calendario_id != alocacao.pk:
-            voo.alocacao_calendario = alocacao
-            voo.save(update_fields=["alocacao_calendario"])
-        return alocacao
-
-    alocacao = Alocacao.objects.create(
-        data=voo.data,
-        data_fim=fim_voo.date(),
-        hora_inicio=voo.hora_inicio,
-        hora_fim=voo.hora_fim,
-        piloto=voo.piloto,
-        drone=voo.drone,
-        finalidade=finalidade_texto,
-        local=voo.local or "",
-        observacoes=voo.observacoes or "",
-        status=status_calendario,
-        criado_por=usuario,
-    )
-    voo.alocacao_calendario = alocacao
-    voo.save(update_fields=["alocacao_calendario"])
-    return alocacao
 
 
 # =========================================================
@@ -2853,16 +2622,10 @@ def manutencao_nova(request):
         "form.html",
         ctx
     )
-# PATCH REGISTRO POS-VOO: VIEWS
-from django.contrib import messages as pos_voo_messages
-from django.contrib.auth.decorators import login_required as pos_voo_login_required
-from django.core.exceptions import PermissionDenied as PosVooPermissionDenied
-from django.db import transaction as pos_voo_transaction
-from django.shortcuts import get_object_or_404 as pos_voo_get_object_or_404
-from django.shortcuts import redirect as pos_voo_redirect
-from django.shortcuts import render as pos_voo_render
+from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from .forms import RegistroPosVooForm
-from .models import Alocacao, DroneHistorico, Manutencao, RegistroPosVoo, Voo
+from .models import RegistroPosVoo
 
 def _pos_voo_admin(user):
     return usuario_e_admin(user)
@@ -2870,129 +2633,52 @@ def _pos_voo_admin(user):
 def _pos_voo_pode_acessar(user, alocacao):
     return _pos_voo_admin(user) or alocacao.piloto.user_id == user.id
 
-def _pos_voo_finalidade(valor):
-    validas = {codigo for codigo, _ in Voo.FINALIDADE_CHOICES}
-    return valor if valor in validas else "outro"
-
-@pos_voo_login_required
-@pos_voo_transaction.atomic
+@login_required
+@transaction.atomic
 def registro_pos_voo(request, alocacao_id):
-    alocacao = pos_voo_get_object_or_404(
+    alocacao = get_object_or_404(
         Alocacao.objects.select_related("piloto__user", "drone"), pk=alocacao_id
     )
     if not _pos_voo_pode_acessar(request.user, alocacao):
-        raise PosVooPermissionDenied
+        raise PermissionDenied
 
     registro = RegistroPosVoo.objects.filter(alocacao=alocacao).first()
+    resumo_telemetria = resumo_pos_voo_telemetria(alocacao)
     if registro and registro.concluido and not _pos_voo_admin(request.user):
         contexto = {
-            "form": RegistroPosVooForm(instance=registro), "alocacao": alocacao,
+            "form": RegistroPosVooForm(instance=registro, resumo_telemetria=resumo_telemetria), "alocacao": alocacao,
             "registro": registro, "somente_leitura": True,
+            "telemetria_pos_voo": resumo_telemetria,
         }
         contexto.update(_base_context(request))
-        return pos_voo_render(request, "core/registro_pos_voo.html", contexto)
+        return render(request, "core/registro_pos_voo.html", contexto)
 
     if request.method == "POST":
-        form = RegistroPosVooForm(request.POST, instance=registro)
+        form = RegistroPosVooForm(request.POST, instance=registro, resumo_telemetria=resumo_telemetria)
         if form.is_valid():
             registro = form.save(commit=False)
             registro.alocacao = alocacao
+            registro.distancia_m = resumo_telemetria["distancia_m"]
+            registro.baterias_utilizadas = resumo_telemetria["quantidade_baterias"]
             if not registro.pk:
                 registro.preenchido_por = request.user
             registro.save()
             form.save_m2m()
-            total_baterias = registro.baterias.count()
-            if total_baterias and registro.baterias_utilizadas != total_baterias:
-                registro.baterias_utilizadas = total_baterias
-                registro.save(update_fields=["baterias_utilizadas", "atualizado_em"])
+            registro.baterias.set(resumo_telemetria["baterias"])
 
             if registro.concluido:
-                voo_defaults = {
-                    "data": alocacao.data, "piloto": alocacao.piloto,
-                    "drone": alocacao.drone,
-                    "finalidade": _pos_voo_finalidade(alocacao.finalidade),
-                    "local": alocacao.local or "Não informado",
-                    "hora_inicio": registro.hora_inicio_real,
-                    "hora_fim": registro.hora_fim_real,
-                    "bateria_inicial": registro.bateria_inicial,
-                    "bateria_final": registro.bateria_final,
-                    "distancia_m": registro.distancia_m,
-                    "observacoes": "\n\n".join(filter(None, [
-                        registro.observacoes,
-                        "Ocorrências: " + registro.ocorrencias if registro.ocorrencias else "",
-                        "Danos: " + registro.danos if registro.danos else "",
-                    ])),
-                    "criado_por": registro.preenchido_por,
-                }
-                if registro.voo_id:
-                    for campo, valor in voo_defaults.items():
-                        setattr(registro.voo, campo, valor)
-                    registro.voo.save()
-                    voo = registro.voo
-                else:
-                    voo = Voo.objects.filter(alocacao_calendario=alocacao).first()
-                    if voo is None:
-                        voo = Voo.objects.filter(
-                            data=alocacao.data,
-                            piloto=alocacao.piloto,
-                            drone=alocacao.drone,
-                        ).first()
-                    if voo is None:
-                        voo = Voo.objects.create(alocacao_calendario=alocacao, **voo_defaults)
-                    else:
-                        for campo, valor in voo_defaults.items():
-                            setattr(voo, campo, valor)
-                        voo.alocacao_calendario = alocacao
-                        voo.save()
-                    registro.voo = voo
-                    registro.save(update_fields=["voo", "atualizado_em"])
-
-                if voo.alocacao_calendario_id != alocacao.pk:
-                    voo.alocacao_calendario = alocacao
-                    voo.save(update_fields=["alocacao_calendario"])
-
-                if alocacao.status != "concluido":
-                    alocacao.status = "concluido"
-                    alocacao.save(update_fields=["status"])
-                try:
-                    solicitacao = alocacao.solicitacao_voo
-                except Exception:
-                    solicitacao = None
-                if solicitacao and solicitacao.status != "concluido":
-                    solicitacao.status = "concluido"
-                    solicitacao.save(update_fields=["status", "atualizado_em"])
-
-                if registro.necessita_manutencao:
-                    drone = alocacao.drone
-                    status_anterior = drone.status
-                    drone.status = "manutencao"
-                    drone.save(update_fields=["status"])
-                    DroneHistorico.objects.create(
-                        drone=drone, status_anterior=status_anterior,
-                        status_novo="manutencao",
-                        localizacao_anterior=drone.localizacao,
-                        localizacao_nova=drone.localizacao,
-                        alterado_por=request.user,
-                        observacao=f"Manutenção solicitada no pós-voo da alocação #{alocacao.pk}.",
-                    )
-                    if not Manutencao.objects.filter(drone=drone, concluida=False).exists():
-                        Manutencao.objects.create(
-                            drone=drone, concluida=False,
-                            tipo="inspecao", data_inicio=alocacao.data,
-                            descricao="Inspeção gerada automaticamente pelo registro pós-voo."
-                            + (f" Danos: {registro.danos}" if registro.danos else ""),
-                            criado_por=request.user,
-                        )
-            pos_voo_messages.success(request, "Registro pós-voo salvo com sucesso.")
-            return pos_voo_redirect("registro_pos_voo", alocacao_id=alocacao.pk)
+                concluir_registro_pos_voo(registro, request.user)
+            messages.success(request, "Registro pós-voo salvo com sucesso.")
+            return redirect("registro_pos_voo", alocacao_id=alocacao.pk)
     else:
-        form = RegistroPosVooForm(instance=registro, initial={
+        form = RegistroPosVooForm(instance=registro, resumo_telemetria=resumo_telemetria, initial={
             "hora_inicio_real": alocacao.hora_inicio,
             "hora_fim_real": alocacao.hora_fim,
         })
     contexto = {
         "form": form, "alocacao": alocacao, "registro": registro,
         "somente_leitura": False,
+        "telemetria_pos_voo": resumo_telemetria,
     }
     contexto.update(_base_context(request))
-    return pos_voo_render(request, "core/registro_pos_voo.html", contexto)
+    return render(request, "core/registro_pos_voo.html", contexto)

@@ -35,12 +35,29 @@ def baterias(request):
 
 @admin_required
 def bateria_nova(request):
-    form = BateriaForm(request.POST or None)
+    serial = request.GET.get("numero_serie", "").strip()[:100]
+    drone_id = request.GET.get("drone", "").strip()
+    importacao_id = request.GET.get("importacao", "").strip()
+    initial = {}
+    if serial:
+        initial.update({
+            "numero_serie": serial,
+            "codigo": f"BAT-{serial[-8:]}",
+            "fabricante": "DJI",
+        })
+    if drone_id.isdigit():
+        initial["drone"] = drone_id
+    form = BateriaForm(request.POST or None, initial=initial)
     if form.is_valid():
-        form.save()
+        bateria = form.save()
         messages.success(request, "Bateria cadastrada com sucesso.")
+        if importacao_id.isdigit():
+            return redirect("telemetria_detalhe", pk=importacao_id)
         return redirect("baterias")
-    ctx = {"form": form, "titulo": "Nova bateria"}
+    ctx = {
+        "form": form,
+        "titulo": "Cadastrar bateria identificada no log" if serial else "Nova bateria",
+    }
     ctx.update(_base_context(request))
     return render(request, "baterias/form.html", ctx)
 

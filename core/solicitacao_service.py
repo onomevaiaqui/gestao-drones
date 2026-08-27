@@ -1,22 +1,11 @@
-import unicodedata
-from datetime import datetime
+from django.db import transaction
 
-from django.db import models, transaction
-
-from .models import Alocacao, Voo
+from .models import Alocacao
+from .operacao_service import existe_conflito_alocacao, sincronizar_voo_da_alocacao
 
 
 class LiberacaoVooErro(ValueError):
     pass
-
-
-def _finalidade_voo(texto):
-    normalizado = unicodedata.normalize("NFKD", texto or "")
-    normalizado = "".join(c for c in normalizado if not unicodedata.combining(c)).lower()
-    for valor, nome in Voo.FINALIDADE_CHOICES:
-        if valor in normalizado or unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode().lower() in normalizado:
-            return valor
-    return "outro"
 
 
 @transaction.atomic
@@ -33,21 +22,13 @@ def liberar_solicitacao(solicitacao, usuario):
     if solicitacao.drone.status != "ativo":
         raise LiberacaoVooErro("O drone selecionado não está disponível.")
 
-    conflitos = Alocacao.objects.filter(
-        data__lte=solicitacao.data_final,
-        drone=solicitacao.drone,
-        status="reservado",
-    ).filter(
-        models.Q(data_fim__gte=solicitacao.data) | models.Q(data_fim__isnull=True, data__gte=solicitacao.data)
-    )
-    if solicitacao.alocacao_id:
-        conflitos = conflitos.exclude(pk=solicitacao.alocacao_id)
-    inicio_novo = datetime.combine(solicitacao.data, solicitacao.hora_inicio)
-    fim_novo = datetime.combine(solicitacao.data_final, solicitacao.hora_fim)
-    if any(
-        datetime.combine(item.data, item.hora_inicio) < fim_novo
-        and datetime.combine(item.data_final, item.hora_fim) > inicio_novo
-        for item in conflitos
+    if existe_conflito_alocacao(
+        solicitacao.drone,
+        solicitacao.data,
+        solicitacao.hora_inicio,
+        solicitacao.data_final,
+        solicitacao.hora_fim,
+        excluir_pk=solicitacao.alocacao_id,
     ):
         raise LiberacaoVooErro("Existe outra reserva para este drone no horário.")
 
@@ -72,27 +53,7 @@ def liberar_solicitacao(solicitacao, usuario):
     else:
         alocacao = Alocacao.objects.create(**dados_alocacao)
 
-    voo, _ = Voo.objects.get_or_create(
-        data=solicitacao.data,
-        piloto=solicitacao.piloto,
-        drone=solicitacao.drone,
-        defaults={
-            "hora_inicio": solicitacao.hora_inicio,
-            "hora_fim": solicitacao.hora_fim,
-            "finalidade": _finalidade_voo(solicitacao.finalidade),
-            "local": solicitacao.local,
-            "observacoes": solicitacao.observacoes,
-            "criado_por": solicitacao.criado_por,
-            "alocacao_calendario": alocacao,
-        },
-    )
-    voo.hora_inicio = solicitacao.hora_inicio
-    voo.hora_fim = solicitacao.hora_fim
-    voo.finalidade = _finalidade_voo(solicitacao.finalidade)
-    voo.local = solicitacao.local
-    voo.observacoes = solicitacao.observacoes
-    voo.alocacao_calendario = alocacao
-    voo.save()
+    voo = sincronizar_voo_da_alocacao(alocacao, solicitacao.criado_por)
 
     solicitacao.status = "aprovado"
     solicitacao.analisado_por = usuario

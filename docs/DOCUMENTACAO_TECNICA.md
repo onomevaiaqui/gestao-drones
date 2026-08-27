@@ -79,7 +79,11 @@ gestao_drones/
 │   ├── models.py           estrutura persistida e propriedades
 │   ├── *_forms.py          formulários e validação
 │   ├── *_views.py          telas e permissões HTTP
-│   ├── *_service.py        regras reutilizáveis e integrações
+│   ├── operacao_service.py períodos, conflitos e normalização operacional
+│   ├── reserva_service.py  estado temporal de reservas e disponibilidade da frota
+│   ├── permissoes.py       políticas de administrador, coordenador e usuário
+│   ├── geo_utils.py        cálculos geográficos compartilhados
+│   ├── *_service.py        demais regras reutilizáveis e integrações
 │   ├── migrations/         evolução versionada do banco
 │   ├── management/         comandos administrativos
 │   └── tests.py            testes automatizados
@@ -130,6 +134,45 @@ gestao_drones/
 - quando exigida, a avaliação de risco é preenchida e aceita pelo piloto;
 - calendário impede sobreposição de períodos da mesma aeronave e exibe reservas em todos os dias abrangidos;
 - checklist concluído só pode ser alterado pelo administrador.
+
+As validações de período e conflito são únicas para formulário de reserva, calendário e liberação. A situação temporal da reserva também é a única fonte para atualizar automaticamente a disponibilidade do drone. Isso evita que telas diferentes interpretem a mesma operação de maneiras distintas.
+
+### Organização da navegação operacional
+
+O menu segue o ciclo de trabalho, sem criar registros paralelos:
+
+1. **Visão geral:** dashboard e agenda;
+2. **Preparação:** planejamentos, reservas e calendário;
+3. **Operações realizadas:** voos comprovados e logs/telemetria.
+
+O registro manual de voo permanece disponível internamente por compatibilidade administrativa, mas não é apresentado como ação principal. A ação normal para comprovar um voo é importar a telemetria vinculada à reserva.
+
+### Transição e sincronização operacional
+
+As transições que envolvem `SolicitacaoVoo`, `Alocacao`, `Voo`, `RegistroPosVoo`, `DroneHistorico` e `Manutencao` são executadas pelos serviços operacionais em transações de banco. A conclusão do pós-voo:
+
+- reutiliza o voo já relacionado à reserva;
+- conclui reserva e solicitação;
+- atualiza a aeronave para manutenção quando indicado;
+- registra a mudança de status apenas quando ela realmente ocorre;
+- cria uma inspeção somente quando não existe outra manutenção aberta.
+
+Repetir a gravação administrativa de um pós-voo não deve gerar outro voo, outro histórico idêntico ou outra manutenção aberta.
+
+### Documentos
+
+Documentos gerais, de pilotos e de aeronaves utilizam o mesmo modelo e a mesma validação de arquivo. Os formulários contextuais continuam distintos para ocultar campos que o usuário não precisa preencher, mas compartilham widgets, limite de 10 MB e mensagens de validação.
+
+### Baterias reconhecidas pela telemetria
+
+- a distância do pós-voo é preenchida pela soma dos logs concluídos vinculados ao voo;
+- a quantidade de baterias corresponde aos números de série distintos encontrados nesses logs;
+- baterias já cadastradas são vinculadas automaticamente ao registro pós-voo pelo número de série;
+- um serial desconhecido gera aviso na telemetria e no pós-voo;
+- o administrador pode abrir o cadastro com serial, fabricante, aeronave e sugestão de código já preenchidos;
+- importar novos logs depois do pós-voo atualiza distância, quantidade e vínculos automaticamente.
+
+O sistema não presume baterias que não estejam identificadas pelo arquivo. Alguns equipamentos podem usar conjuntos com várias unidades físicas, mas expor somente um serial no Flight Record; nesses casos, o indicador representa apenas os seriais efetivamente fornecidos pelo log.
 
 ### Avaliação de risco
 

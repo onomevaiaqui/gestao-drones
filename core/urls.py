@@ -65,6 +65,7 @@ urlpatterns = [
     path("calendario/<int:pk>/editar/", views.alocacao_editar, name="alocacao_editar"),
     path("calendario/<int:pk>/excluir/", views.alocacao_excluir, name="alocacao_excluir"),
     path("calendario/<int:pk>/concluir/", views.alocacao_concluir, name="alocacao_concluir"),
+    path("alocacoes/<int:alocacao_id>/pos-voo/", views.registro_pos_voo, name="registro_pos_voo"),
 
     path("relatorios/", views.relatorios, name="relatorios"),
     path("relatorios/exportar-pdf/", views.relatorios_exportar_pdf, name="relatorios_exportar_pdf"),
@@ -108,9 +109,4 @@ urlpatterns = [
     path("meu-perfil/", perfil_views.perfil_usuario, name="meu_perfil"),
     path("usuarios/<int:pk>/perfil/", perfil_views.perfil_usuario, name="perfil_usuario"),
     path("usuarios/<int:pk>/documentos/novo/", perfil_views.documento_perfil_novo, name="documento_perfil_novo"),
-]
-# PATCH REGISTRO POS-VOO: ROTA
-from . import views as pos_voo_views
-urlpatterns += [
-    path("alocacoes/<int:alocacao_id>/pos-voo/", pos_voo_views.registro_pos_voo, name="registro_pos_voo"),
 ]

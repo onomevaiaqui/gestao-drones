@@ -1,5 +1,6 @@
 from django import forms
 
+from .documento_forms import DOCUMENTO_WIDGETS, DocumentoArquivoMixin
 from .models import Documento, Piloto
 
 
@@ -31,22 +32,10 @@ class PerfilUsuarioForm(forms.ModelForm):
         return piloto
 
 
-class DocumentoPerfilForm(forms.ModelForm):
+class DocumentoPerfilForm(DocumentoArquivoMixin, forms.ModelForm):
     class Meta:
         model = Documento
         fields = ["titulo", "tipo", "numero", "data_emissao", "data_validade", "arquivo", "observacoes"]
-        widgets = {
-            "titulo": forms.TextInput(attrs={"class": "form-control"}),
-            "tipo": forms.Select(attrs={"class": "form-select"}),
-            "numero": forms.TextInput(attrs={"class": "form-control"}),
-            "data_emissao": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
-            "data_validade": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
-            "arquivo": forms.ClearableFileInput(attrs={"class": "form-control"}),
-            "observacoes": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
-        }
-
-    def clean_arquivo(self):
-        arquivo = self.cleaned_data.get("arquivo")
-        if arquivo and arquivo.size > 10 * 1024 * 1024:
-            raise forms.ValidationError("O arquivo não pode exceder 10 MB.")
-        return arquivo
+        widgets = {campo: DOCUMENTO_WIDGETS[campo] for campo in (
+            "titulo", "tipo", "numero", "data_emissao", "data_validade", "arquivo", "observacoes"
+        )}

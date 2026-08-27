@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .models import ImportacaoLog, Voo
+from .models import Bateria, ImportacaoLog, Voo
 from .telemetria_forms import ImportacaoLogForm
 from .telemetria_service import processar_importacao
 from .views import _base_context, _sincronizar_voo_com_calendario, usuario_e_admin, usuario_e_coordenador, usuario_tem_visao_global
@@ -100,12 +100,25 @@ def _resumir_pontos_por_minuto(pontos):
 @login_required
 def telemetria_lista(request):
     qs = _importacoes_permitidas(request.user)
+    seriais_detectados = set(
+        qs.filter(status="concluida").exclude(bateria_serial_detectada="")
+        .values_list("bateria_serial_detectada", flat=True)
+    )
+    seriais_cadastrados = set(
+        Bateria.objects.filter(numero_serie__in=seriais_detectados)
+        .values_list("numero_serie", flat=True)
+    )
+    baterias_novas = []
+    for serial in sorted(seriais_detectados - seriais_cadastrados):
+        origem = qs.filter(bateria_serial_detectada=serial).select_related("voo__drone").first()
+        if origem:
+            baterias_novas.append({"serial": serial, "importacao": origem, "drone": origem.voo.drone})
     resumo = {
         "total": qs.count(), "concluidas": qs.filter(status="concluida").count(),
         "erros": qs.filter(status="erro").count(),
         "pontos": sum(qs.values_list("total_pontos", flat=True)),
     }
-    ctx = {"importacoes": qs, "resumo": resumo}
+    ctx = {"importacoes": qs, "resumo": resumo, "baterias_novas": baterias_novas}
     ctx.update(_base_context(request))
     return render(request, "telemetria/lista.html", ctx)
 
@@ -178,10 +191,17 @@ def telemetria_detalhe(request, pk):
         minutos, segundos = divmod(restante, 60)
         duracao = f"{horas:02d}h {minutos:02d}min {segundos:02d}s"
     data_voo = timezone.localtime(importacao.inicio_registro).date() if importacao.inicio_registro else importacao.voo.data
+    bateria_detectada = None
+    if importacao.bateria_serial_detectada:
+        bateria_detectada = Bateria.objects.filter(
+            numero_serie=importacao.bateria_serial_detectada
+        ).first()
     ctx = {
         "importacao": importacao, "amostra_minutos": _resumir_pontos_por_minuto(pontos), "rota": rota,
         "alertas_mapa": alertas_mapa, "duracao_formatada": duracao,
         "data_voo": data_voo,
+        "bateria_detectada": bateria_detectada,
+        "bateria_serial_nova": bool(importacao.bateria_serial_detectada and not bateria_detectada),
     }
     ctx.update(_base_context(request))
     return render(request, "telemetria/detalhe.html", ctx)

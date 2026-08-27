@@ -7,6 +7,8 @@ from urllib.request import Request, urlopen
 
 from django.utils import timezone
 
+from .geo_utils import distancia_m
+
 
 VARIAVEIS = [
     "temperature_2m", "relative_humidity_2m", "dew_point_2m",
@@ -15,14 +17,6 @@ VARIAVEIS = [
     "wind_speed_120m", "wind_direction_10m", "wind_gusts_10m", "cape",
     "boundary_layer_height",
 ]
-
-
-def _distancia_m(lat1, lon1, lat2, lon2):
-    raio = 6371000
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dp, dl = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
-    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * raio * math.asin(math.sqrt(a))
 
 
 def calcular_geometria(geojson):
@@ -168,7 +162,7 @@ def consultar_previsao(planejamento):
     nivel_geral = max(item["nivel"] for item in horas)
     pontos_neblina = [p for p, nivel in zip(pontos, niveis_neblina_globais) if nivel > 0]
     centro = pontos[0]
-    raio_neblina = max((_distancia_m(*centro, *p) for p in pontos_neblina), default=0) / 1000
+    raio_neblina = max((distancia_m(*centro, *p) for p in pontos_neblina), default=0) / 1000
     percentual_afetado = _maximo([item["neblina_area_percentual"] for item in horas]) or 0
     raio_equivalente = math.sqrt(
         float(planejamento.area_hectares or 0) * 10000 * percentual_afetado / 100 / math.pi

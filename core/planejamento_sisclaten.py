@@ -1,12 +1,4 @@
-import math
-
-
-def _distancia_km(lat1, lon1, lat2, lon2):
-    raio = 6371.0
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dp, dl = math.radians(lat2-lat1), math.radians(lon2-lon1)
-    a = math.sin(dp/2)**2 + math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
-    return 2 * raio * math.asin(math.sqrt(a))
+from .geo_utils import distancia_km
 
 
 def classificar_sisclaten(planejamento):
@@ -16,7 +8,7 @@ def classificar_sisclaten(planejamento):
                 "raio_maximo_km":None, "aviso":"Se a missão gerar ortomosaico, mapa, modelo, nuvem de pontos, dado espectral, LiDAR ou geofísico, edite o planejamento e refaça a análise."}
     coords = (planejamento.area_geojson or {}).get("coordinates", [[]])[0]
     lat0, lon0 = float(planejamento.centro_latitude), float(planejamento.centro_longitude)
-    raio_max = max((_distancia_km(lat0, lon0, float(lat), float(lon)) for lon, lat in coords), default=0)
+    raio_max = max((distancia_km(lat0, lon0, float(lat), float(lon)) for lon, lat in coords), default=0)
     area_ha = float(planejamento.area_hectares or 0)
     motivos, pendencias, impeditivos = [], [], []
     if area_ha > 1500 or raio_max > 2.2:

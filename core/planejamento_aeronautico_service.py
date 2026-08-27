@@ -18,14 +18,6 @@ def _pontos_area(planejamento):
     return [(float(lat), float(lon)) for lon, lat in planejamento.area_geojson["coordinates"][0]]
 
 
-def _distancia_m(lat1, lon1, lat2, lon2):
-    raio = 6371000
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dp, dl = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
-    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * raio * math.asin(math.sqrt(a))
-
-
 def _distancia_area(lat, lon, pontos):
     centro_lat = sum(p[0] for p in pontos) / len(pontos)
     sx = 111320 * math.cos(math.radians(centro_lat)); sy = 110540

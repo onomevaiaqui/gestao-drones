@@ -21,35 +21,38 @@
         </div>
 
         <nav class="sidebar-nav">
-            <span class="nav-section">Operação</span>
+            <span class="nav-section">Visão geral</span>
             <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">⌂ <span>Dashboard</span></a>
-            <a href="{% url 'voos' %}" class="{% if request.resolver_match.url_name == 'voos' or request.resolver_match.url_name == 'voo_novo' %}active{% endif %}">✈ <span>Voos</span></a>
-            <a href="{% url 'calendario' %}" class="{% if 'calendario' in request.resolver_match.url_name or 'alocacao' in request.resolver_match.url_name %}active{% endif %}">▣ <span>Calendário</span></a>
-            <a href="{% url 'planejamentos' %}" class="{% if 'planejamento' in request.resolver_match.url_name %}active{% endif %}">⌖ <span>Planejamento de Voo</span></a>
             <a href="{% url 'minha_agenda' %}" class="{% if request.resolver_match.url_name == 'minha_agenda' %}active{% endif %}">◷ <span>{% if eh_coordenador %}Agenda operacional{% else %}Minha agenda{% endif %}</span></a>
+
+            <span class="nav-section">Preparação da operação</span>
+            <a href="{% url 'planejamentos' %}" class="{% if 'planejamento' in request.resolver_match.url_name %}active{% endif %}">⌖ <span>Planejamentos</span></a>
             <a href="{% url 'solicitacoes_voo' %}" class="{% if 'solicitacao' in request.resolver_match.url_name %}active{% endif %}">✎ <span>Reservas de drones</span></a>
-            {% if user.piloto %}<a href="{% url 'meu_perfil_operacional' %}" class="{% if 'perfil_operacional' in request.resolver_match.url_name %}active{% endif %}">♙ <span>Meu perfil operacional</span></a>{% endif %}
+            <a href="{% url 'calendario' %}" class="{% if 'calendario' in request.resolver_match.url_name or 'alocacao' in request.resolver_match.url_name %}active{% endif %}">▣ <span>Calendário</span></a>
+
+            <span class="nav-section">Operações realizadas</span>
+            <a href="{% url 'voos' %}" class="{% if request.resolver_match.url_name == 'voos' or request.resolver_match.url_name == 'voo_novo' %}active{% endif %}">✈ <span>Voos realizados</span></a>
+            <a href="{% url 'telemetria_lista' %}" class="{% if 'telemetria' in request.resolver_match.url_name %}active{% endif %}">⌁ <span>Logs e telemetria</span></a>
+            {% if user.piloto %}<a href="{% url 'meu_perfil_operacional' %}" class="{% if 'perfil_operacional' in request.resolver_match.url_name %}active{% endif %}">♙ <span>Experiência operacional</span></a>{% endif %}
             {% if visao_global %}<a href="{% url 'equipe_operacional' %}" class="{% if request.resolver_match.url_name == 'equipe_operacional' %}active{% endif %}">♟ <span>Equipe operacional</span></a>{% endif %}
 
             <span class="nav-section">Frota</span>
             <a href="{% url 'drones' %}" class="{% if 'drone' in request.resolver_match.url_name %}active{% endif %}">⌘ <span>Drones</span></a>
             <a href="{% url 'componentes' %}" class="{% if 'componente' in request.resolver_match.url_name %}active{% endif %}">⚙ <span>Equipamentos</span></a>
             <a href="{% url 'baterias' %}" class="{% if 'bateria' in request.resolver_match.url_name %}active{% endif %}">▰ <span>Baterias</span></a>
-            <a href="{% url 'telemetria_lista' %}" class="{% if 'telemetria' in request.resolver_match.url_name %}active{% endif %}">⌁ <span>Telemetria</span></a>
 
             <span class="nav-section">Segurança e conformidade</span>
             <a href="{% url 'incidentes' %}" class="{% if 'incidente' in request.resolver_match.url_name %}active{% endif %}">⚠ <span>Incidentes</span></a>
             {% if eh_admin %}
-            <a href="{% url 'manutencoes' %}" class="{% if 'manutencao' in request.resolver_match.url_name %}active{% endif %}">⚒ <span>Manutenções</span></a>
+            <a href="{% url 'manutencoes' %}" class="{% if 'manutencao' in request.resolver_match.url_name %}active{% endif %}">⚒ <span>Ordens de manutenção</span></a>
             <a href="{% url 'planos_inspecao' %}" class="{% if 'inspecao' in request.resolver_match.url_name %}active{% endif %}">◷ <span>Planos de inspeção</span></a>
             <a href="{% url 'documentos' %}" class="{% if 'documento' in request.resolver_match.url_name %}active{% endif %}">▤ <span>Documentos</span></a>
 
             <span class="nav-section">Administração</span>
             <a href="{% url 'pilotos' %}" class="{% if 'piloto' in request.resolver_match.url_name %}active{% endif %}">♙ <span>Pilotos / Usuários</span></a>
             <a href="{% url 'relatorios' %}" class="{% if request.resolver_match.url_name == 'relatorios' %}active{% endif %}">▤ <span>Relatórios</span></a>
-            <a href="{% url 'alertas' %}" class="{% if request.resolver_match.url_name == 'alertas' %}active{% endif %}">⚠ <span>Alertas{% if alertas_resumo_global.total %}<b class="nav-count">{{ alertas_resumo_global.total }}</b>{% endif %}</span></a>
             {% endif %}
-            {% if eh_coordenador %}<a href="{% url 'alertas' %}" class="{% if request.resolver_match.url_name == 'alertas' %}active{% endif %}">⚠ <span>Alertas{% if alertas_resumo_global.total %}<b class="nav-count">{{ alertas_resumo_global.total }}</b>{% endif %}</span></a>{% endif %}
+            {% if visao_global %}<a href="{% url 'alertas' %}" class="{% if request.resolver_match.url_name == 'alertas' %}active{% endif %}">⚠ <span>Alertas{% if alertas_resumo_global.total %}<b class="nav-count">{{ alertas_resumo_global.total }}</b>{% endif %}</span></a>{% endif %}
         </nav>
 
         <div class="sidebar-footer">
@@ -57,7 +60,7 @@
                 <div class="avatar">{% if user.piloto.foto %}<img src="{{ user.piloto.foto.url }}" alt="Foto de {{ user.username }}">{% else %}{{ user.username|first|upper }}{% endif %}</div>
                 <div>
                     <strong>{{ user.username }}</strong>
-                    <span>{% if eh_admin %}Administrador{% elif eh_coordenador %}Coordenador{% else %}Usuário{% endif %} · Editar perfil</span>
+                    <span>{% if eh_admin %}Administrador{% elif eh_coordenador %}Coordenador{% else %}Usuário{% endif %} · Meus dados</span>
                 </div>
             </a>
 
