@@ -20,6 +20,8 @@ Acesse `http://127.0.0.1:8000/`.
 
 Para ler logs binários DJI, preencha `DJI_FLIGHT_RECORD_APP_KEY` no arquivo `.env`. Nunca envie esse arquivo ao GitHub.
 
+A conexão DJI Open Platforms é configurada por variáveis `DJI_CLOUD_*` descritas no `.env.example`. Ela permanece bloqueada por padrão com `DJI_CLOUD_ENABLED=false`, sem afetar a importação manual de logs. Depois de publicar o SISMOD em HTTPS e concluir a infraestrutura, o administrador poderá ativá-la pela variável de ambiente. As credenciais reais permanecem apenas no `.env` ou no gerenciador de segredos do servidor.
+
 ## Validação
 
 ```powershell

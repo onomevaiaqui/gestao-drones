@@ -10,7 +10,33 @@
     </div>
 </div>
 
-<div class="panel letterhead-panel"><div><h3>Papel timbrado dos relatórios</h3><p class="text-muted small">O modelo PDF fica salvo e será aplicado a todas as páginas até ser substituído.</p>{% if configuracao_timbre.modelo_relatorios %}<span class="badge-soft green">Modelo ativo: {{ configuracao_timbre.modelo_relatorios.name }}</span>{% else %}<span class="badge-soft orange">Nenhum modelo configurado</span>{% endif %}</div><form method="post" enctype="multipart/form-data">{% csrf_token %}{{ timbre_form.modelo_relatorios }}{{ timbre_form.modelo_relatorios.errors }}<button class="btn btn-primary" type="submit">Salvar modelo</button></form></div>
+<div class="panel letterhead-panel">
+    <div class="letterhead-summary">
+        <h3>Papel timbrado dos relatórios</h3>
+        <p class="text-muted small">O modelo PDF fica salvo e será aplicado a todas as páginas até ser substituído.</p>
+        {% if configuracao_timbre.modelo_relatorios %}
+        <span class="badge-soft green">Modelo ativo</span>
+        <a class="letterhead-current-file" href="{{ configuracao_timbre.modelo_relatorios.url }}" target="_blank" rel="noopener">Visualizar PDF atual</a>
+        {% else %}
+        <span class="badge-soft orange">Nenhum modelo configurado</span>
+        {% endif %}
+    </div>
+    <form method="post" enctype="multipart/form-data" class="letterhead-form">
+        {% csrf_token %}
+        <div class="letterhead-file-field">
+            <label for="id_modelo_relatorios">Selecionar novo modelo PDF</label>
+            <input class="form-control" type="file" name="modelo_relatorios" id="id_modelo_relatorios" accept="application/pdf,.pdf">
+            {{ timbre_form.modelo_relatorios.errors }}
+        </div>
+        {% if configuracao_timbre.modelo_relatorios %}
+        <label class="letterhead-clear-option" for="modelo_relatorios-clear">
+            <input type="checkbox" name="modelo_relatorios-clear" id="modelo_relatorios-clear">
+            Remover o modelo atual
+        </label>
+        {% endif %}
+        <button class="btn btn-primary" type="submit">Salvar modelo</button>
+    </form>
+</div>
 
 <div class="panel">
     <form method="get" class="filter-grid">

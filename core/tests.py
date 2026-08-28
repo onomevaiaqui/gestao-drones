@@ -11,7 +11,7 @@ from django.utils import timezone
 from pypdf import PdfReader
 from reportlab.pdfgen import canvas
 
-from .alerta_service import gerar_alertas, resumo_alertas
+from .alerta_service import gerar_alertas, gerar_regularizacoes, resumo_alertas
 from .models import (
     Alocacao, AvaliacaoRisco, Bateria, ChecklistPreVoo, Componente, ConfiguracaoPapelTimbrado, Documento, Drone, ExecucaoInspecao,
     DroneHistorico, ImportacaoLog, Incidente, Manutencao, Piloto, PlanoInspecao, PontoTelemetria,
@@ -322,6 +322,29 @@ class CentralAlertasTests(TestCase):
         self.assertContains(resposta, "Documento vencido")
         self.assertContains(resposta, "BAT-ALERTA")
 
+    def test_bateria_detectada_permanece_em_alertas_ate_ser_cadastrada(self):
+        piloto = Piloto.objects.create(nome="Piloto bateria")
+        voo = Voo.objects.create(
+            data=timezone.localdate(), piloto=piloto, drone=self.drone,
+            finalidade="inspecao", local="Área", criado_por=self.admin,
+        )
+        ImportacaoLog.objects.create(
+            voo=voo, nome_original="bateria.txt", formato="txt", status="concluida",
+            bateria_serial_detectada="NOVA-SERIAL-123", importado_por=self.admin,
+        )
+        self.assertTrue(any(
+            alerta["chave"] == "bateria-nova-NOVA-SERIAL-123"
+            for alerta in gerar_alertas()
+        ))
+        Bateria.objects.create(
+            codigo="BAT-NOVA", numero_serie="NOVA-SERIAL-123",
+            drone=self.drone, criado_em=timezone.now(),
+        )
+        self.assertFalse(any(
+            alerta["chave"] == "bateria-nova-NOVA-SERIAL-123"
+            for alerta in gerar_alertas()
+        ))
+
 
 class SegurancaOperacionalTests(TestCase):
     def setUp(self):
@@ -631,6 +654,44 @@ class TelemetriaTests(TestCase):
         self.assertEqual(self.voo.bateria_final, 90)
         self.assertGreater(self.voo.distancia_m, 0)
 
+    def test_logs_de_datas_diferentes_criam_operacoes_oficiais_separadas(self):
+        def arquivo(nome, data_log):
+            conteudo = (
+                "timestamp,seconds,latitude,longitude,altitude,battery\n"
+                f"{data_log}T13:00:00-03:00,0,-25.3000,-51.2700,10,95\n"
+                f"{data_log}T13:00:10-03:00,10,-25.3001,-51.2701,20,90\n"
+            ).encode()
+            return SimpleUploadedFile(nome, conteudo, content_type="text/csv")
+
+        self.client.force_login(self.usuario)
+        resposta = self.client.post(reverse("telemetria_importar"), {
+            "voo": self.voo.pk,
+            "modo": "pasta",
+            "pasta": [
+                arquivo("dia-1.csv", "2026-08-24"),
+                arquivo("dia-2.csv", "2026-08-25"),
+            ],
+        })
+        self.assertRedirects(resposta, reverse("telemetria_lista"))
+        voos = Voo.objects.filter(piloto=self.piloto, drone=self.drone).order_by("data")
+        self.assertEqual(list(voos.values_list("data", flat=True)), [date(2026, 8, 24), date(2026, 8, 25)])
+        self.assertTrue(all(voo.importacoes_log.count() == 1 for voo in voos))
+        self.assertTrue(all(voo.alocacao_calendario_id for voo in voos))
+
+    def test_log_sem_planejamento_gera_alerta_de_regularizacao(self):
+        self.client.force_login(self.usuario)
+        importacao = processar_importacao(self._importacao(), atualizar_voo=True)
+        from .operacao_service import sincronizar_calendario_do_voo
+        sincronizar_calendario_do_voo(importacao.voo, self.usuario)
+        pendencias = gerar_regularizacoes(self.piloto)
+        self.assertEqual(len(pendencias), 1)
+        self.assertIn("planejamento, checklist e registro pós-voo", pendencias[0]["descricao"])
+        resposta = self.client.get(reverse("calendario"), {
+            "ano": importacao.voo.data.year, "mes": importacao.voo.data.month,
+        })
+        self.assertContains(resposta, "event-regularizacao-pendente")
+        self.assertContains(resposta, "Regularizar operação")
+
     def test_seletor_exibe_voos_com_e_sem_telemetria_com_identificacao_clara(self):
         from .telemetria_forms import ImportacaoLogForm
         from .telemetria_views import _voos_permitidos
@@ -920,6 +981,35 @@ class SincronizacaoCalendarioTests(TestCase):
             list(VooForm().fields),
             ["piloto", "drone", "finalidade", "local", "observacoes"],
         )
+
+    def test_concluir_reserva_usa_fluxo_de_registro_pos_voo(self):
+        alocacao = Alocacao.objects.create(
+            data=timezone.localdate(), hora_inicio=time(8), hora_fim=time(9),
+            piloto=self.piloto, drone=self.drone, finalidade="Mapeamento",
+            local="Área", status="reservado", criado_por=self.admin,
+        )
+        self.client.force_login(self.admin)
+        resposta = self.client.get(reverse("alocacao_concluir", args=[alocacao.pk]))
+        self.assertRedirects(
+            resposta,
+            reverse("registro_pos_voo", kwargs={"alocacao_id": alocacao.pk}),
+        )
+
+    def test_calendario_exibe_etapa_e_um_unico_fluxo_pos_voo(self):
+        data_reserva = timezone.localdate() + timedelta(days=2)
+        alocacao = Alocacao.objects.create(
+            data=data_reserva, hora_inicio=time(8), hora_fim=time(9),
+            piloto=self.piloto, drone=self.drone, finalidade="Mapeamento",
+            local="Área", status="reservado", criado_por=self.admin,
+        )
+        self.client.force_login(self.admin)
+        resposta = self.client.get(reverse("calendario"), {
+            "ano": data_reserva.year, "mes": data_reserva.month,
+        })
+        self.assertContains(resposta, "event-reserva")
+        self.assertContains(resposta, "Etapa: <strong>Somente reserva</strong>", html=True)
+        self.assertContains(resposta, "Registro pós-voo")
+        self.assertNotContains(resposta, "Registrar Voo")
 
     def test_piloto_solicita_em_vez_de_registrar_voo_direto(self):
         self.client.force_login(self.usuario)

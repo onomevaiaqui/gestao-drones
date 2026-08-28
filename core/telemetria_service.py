@@ -147,6 +147,71 @@ def _processar_dji(importacao, bruto):
     return pontos
 
 
+def _destinar_importacao_ao_voo_da_data(importacao):
+    """Separa operações de datas distintas sem dividir os trechos do mesmo dia."""
+    voo_origem = importacao.voo
+    if not importacao.inicio_registro:
+        return voo_origem
+    data_importada = timezone.localtime(importacao.inicio_registro).date()
+    voo_destino = type(voo_origem).objects.filter(
+        data=data_importada,
+        piloto_id=voo_origem.piloto_id,
+        drone_id=voo_origem.drone_id,
+    ).order_by("pk").first()
+    if voo_destino is None:
+        possui_outros_logs = voo_origem.importacoes_log.filter(
+            status="concluida"
+        ).exclude(pk=importacao.pk).exists()
+        pode_reutilizar = (
+            not possui_outros_logs
+            and voo_origem.alocacao_calendario_id is None
+        )
+        if pode_reutilizar:
+            voo_destino = voo_origem
+        else:
+            voo_destino = type(voo_origem).objects.create(
+                data=data_importada,
+                piloto=voo_origem.piloto,
+                drone=voo_origem.drone,
+                finalidade=voo_origem.finalidade,
+                local=voo_origem.local,
+                observacoes=voo_origem.observacoes,
+                criado_por=voo_origem.criado_por or importacao.importado_por,
+            )
+    if importacao.voo_id != voo_destino.pk:
+        importacao.voo = voo_destino
+        importacao.save(update_fields=["voo"])
+    if voo_origem.pk != voo_destino.pk and not voo_origem.importacoes_log.exists():
+        if not hasattr(voo_origem, "registro_pos_voo"):
+            alocacao = voo_origem.alocacao_calendario
+            voo_origem.delete()
+            if alocacao and not hasattr(alocacao, "solicitacao_voo") and not hasattr(alocacao, "registro_pos_voo"):
+                alocacao.delete()
+    return voo_destino
+
+
+def _recalcular_voo_pelos_logs(voo):
+    importacoes = list(
+        voo.importacoes_log.filter(status="concluida").order_by("inicio_registro", "criado_em")
+    )
+    campos = ["distancia_m", "bateria_inicial", "bateria_final"]
+    com_horario = [item for item in importacoes if item.inicio_registro and item.fim_registro]
+    if com_horario:
+        inicio_local = timezone.localtime(min(item.inicio_registro for item in com_horario))
+        fim_local = timezone.localtime(max(item.fim_registro for item in com_horario))
+        voo.data = inicio_local.date()
+        voo.hora_inicio = inicio_local.time().replace(tzinfo=None)
+        voo.hora_fim = fim_local.time().replace(tzinfo=None)
+        campos.extend(["data", "hora_inicio", "hora_fim"])
+    distancias = [item.distancia_calculada_m for item in importacoes if item.distancia_calculada_m is not None]
+    voo.distancia_m = sum(distancias, Decimal("0")) if distancias else None
+    com_bateria = [item for item in importacoes if item.bateria_inicial is not None or item.bateria_final is not None]
+    voo.bateria_inicial = com_bateria[0].bateria_inicial if com_bateria else None
+    voo.bateria_final = com_bateria[-1].bateria_final if com_bateria else None
+    voo.save(update_fields=list(dict.fromkeys(campos)))
+    return voo
+
+
 def _concluir_importacao(importacao, pontos, atualizar_voo):
     PontoTelemetria.objects.bulk_create(pontos, batch_size=2000)
     coordenadas = [(p.latitude, p.longitude) for p in pontos if p.latitude is not None and p.longitude is not None]
@@ -187,41 +252,8 @@ def _concluir_importacao(importacao, pontos, atualizar_voo):
     importacao.mensagem_erro = ""
     importacao.save()
     if atualizar_voo:
-        voo = importacao.voo
-        inicio_importado = importacao.inicio_registro
-        if inicio_importado:
-            data_importada = timezone.localtime(inicio_importado).date()
-            voo_existente = type(voo).objects.filter(
-                data=data_importada, piloto_id=voo.piloto_id, drone_id=voo.drone_id,
-            ).exclude(pk=voo.pk).order_by("pk").first()
-            if voo_existente:
-                voo_original = voo
-                voo_original.importacoes_log.update(voo=voo_existente)
-                importacao.voo = voo_existente
-                voo = voo_existente
-                if not hasattr(voo_original, "registro_pos_voo"):
-                    alocacao = voo_original.alocacao_calendario
-                    voo_original.delete()
-                    if alocacao and not hasattr(alocacao, "solicitacao_voo") and not hasattr(alocacao, "registro_pos_voo"):
-                        alocacao.delete()
-        importacoes = list(
-            voo.importacoes_log.filter(status="concluida").order_by("inicio_registro", "criado_em")
-        )
-        campos = ["distancia_m", "bateria_inicial", "bateria_final"]
-        com_horario = [item for item in importacoes if item.inicio_registro and item.fim_registro]
-        if com_horario:
-            inicio_local = timezone.localtime(min(item.inicio_registro for item in com_horario))
-            fim_local = timezone.localtime(max(item.fim_registro for item in com_horario))
-            voo.data = inicio_local.date()
-            voo.hora_inicio = inicio_local.time().replace(tzinfo=None)
-            voo.hora_fim = fim_local.time().replace(tzinfo=None)
-            campos.extend(["data", "hora_inicio", "hora_fim"])
-        distancias = [item.distancia_calculada_m for item in importacoes if item.distancia_calculada_m is not None]
-        voo.distancia_m = sum(distancias, Decimal("0")) if distancias else None
-        com_bateria = [item for item in importacoes if item.bateria_inicial is not None or item.bateria_final is not None]
-        voo.bateria_inicial = com_bateria[0].bateria_inicial if com_bateria else None
-        voo.bateria_final = com_bateria[-1].bateria_final if com_bateria else None
-        voo.save(update_fields=list(dict.fromkeys(campos)))
+        voo = _destinar_importacao_ao_voo_da_data(importacao)
+        _recalcular_voo_pelos_logs(voo)
         from .telemetria_bateria_service import sincronizar_registro_pos_voo
         sincronizar_registro_pos_voo(voo)
     return importacao

@@ -13,7 +13,8 @@ import hashlib
 from django.utils.text import slugify
 from xml.sax.saxutils import escape
 
-from .models import PlanejamentoVoo, Piloto
+from .models import Alocacao, PlanejamentoVoo, Piloto, SolicitacaoVoo
+from .operacao_service import normalizar_finalidade
 from .planejamento_forms import PlanejamentoVooForm
 from .planejamento_service import consultar_previsao
 from .planejamento_aeronautico_service import consultar_condicionantes_aeronauticas, camadas_aeronauticas_bbox
@@ -77,7 +78,26 @@ def _form_planejamento(request, obj=None):
         if obj and obj.piloto_id != piloto.pk:
             messages.error(request, "Você só pode alterar seus próprios planejamentos.")
             return redirect("planejamentos")
-    form = PlanejamentoVooForm(request.POST or None, request.FILES or None, instance=obj)
+    regularizar = None
+    regularizar_id = request.GET.get("regularizar")
+    if regularizar_id and not obj:
+        regularizar = Alocacao.objects.select_related("piloto", "drone").filter(pk=regularizar_id).first()
+        if regularizar and not eh_admin and regularizar.piloto_id != getattr(piloto, "pk", None):
+            messages.error(request, "Você só pode regularizar suas próprias operações.")
+            return redirect("calendario")
+    initial = None
+    if regularizar:
+        initial = {
+            "titulo": f"Regularização - {regularizar.drone.nome} - {regularizar.data:%d/%m/%Y}",
+            "piloto": regularizar.piloto, "local": regularizar.local,
+            "data": regularizar.data, "data_fim": regularizar.data_final,
+            "hora_inicio": regularizar.hora_inicio, "hora_fim": regularizar.hora_fim,
+            "finalidade": normalizar_finalidade(regularizar.finalidade),
+            "observacoes": regularizar.observacoes,
+        }
+    form = PlanejamentoVooForm(
+        request.POST or None, request.FILES or None, instance=obj, initial=initial
+    )
     if piloto:
         form.fields["piloto"].queryset = Piloto.objects.filter(pk=piloto.pk)
         form.fields["piloto"].initial = piloto
@@ -90,6 +110,21 @@ def _form_planejamento(request, obj=None):
             planejamento.criado_por = request.user
         planejamento.save()
         sucesso, erro = _atualizar_previsao(planejamento)
+        if regularizar:
+            SolicitacaoVoo.objects.update_or_create(
+                alocacao=regularizar,
+                defaults={
+                    "planejamento": planejamento, "data": regularizar.data,
+                    "data_fim": regularizar.data_final,
+                    "hora_inicio": regularizar.hora_inicio, "hora_fim": regularizar.hora_fim,
+                    "piloto": regularizar.piloto, "drone": regularizar.drone,
+                    "finalidade": normalizar_finalidade(regularizar.finalidade),
+                    "local": regularizar.local, "observacoes": regularizar.observacoes,
+                    "status": "concluido", "criado_por": request.user,
+                },
+            )
+            messages.success(request, "Planejamento vinculado. Complete agora o checklist da operação.")
+            return redirect("checklist_pre_voo", pk=regularizar.pk)
         if sucesso:
             messages.success(request, "Planejamento salvo e previsão meteorológica atualizada.")
         else:
@@ -99,6 +134,7 @@ def _form_planejamento(request, obj=None):
         "form": form,
         "titulo": "Editar planejamento" if obj else "Novo planejamento de voo",
         "geometria_inicial": obj.area_geojson if obj else None,
+        "regularizar": regularizar,
     }
     ctx.update(_base_context(request))
     return render(request, "planejamentos/form.html", ctx)

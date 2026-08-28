@@ -9,10 +9,11 @@ from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.core.mail import EmailMultiAlternatives
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -31,6 +32,7 @@ from .models import (
     Manutencao,
     Documento,
     ConfiguracaoPapelTimbrado,
+    ImportacaoLog,
     SolicitacaoVoo,
 )
 from .drone_documento_forms import DocumentoDroneForm
@@ -82,6 +84,10 @@ def _base_context(request):
     if eh_admin or eh_coordenador:
         from .alerta_service import resumo_alertas
         contexto["alertas_resumo_global"] = resumo_alertas()
+    elif request.user.is_authenticated:
+        from .alerta_service import gerar_regularizacoes
+        piloto = getattr(request.user, "piloto", None)
+        contexto["regularizacoes_usuario"] = gerar_regularizacoes(piloto) if piloto else []
     return contexto
 
 
@@ -588,13 +594,87 @@ def dashboard(request):
         "grafico_fim": grafico_fim or "",
     }
 
-    ctx.update(_base_context(request))
+    from .alerta_service import gerar_regularizacoes
+    from .models import AvaliacaoRisco, Bateria, ImportacaoLog, Incidente, PlanoInspecao, QualificacaoPiloto
 
-    return render(
-        request,
-        "dashboard.html",
-        ctx
-    )
+    regularizacoes = gerar_regularizacoes(piloto_sessao) if piloto_sessao else gerar_regularizacoes()
+    ctx["regularizacoes_total"] = len(regularizacoes)
+    ctx["regularizacoes_dashboard"] = regularizacoes[:8]
+
+    if piloto_sessao:
+        pendencias_usuario = list(regularizacoes)
+        reservas_piloto = Alocacao.objects.filter(piloto=piloto_sessao).select_related(
+            "drone", "checklist_pre_voo", "solicitacao_voo__avaliacao_risco"
+        )
+        chaves = {item["chave"] for item in pendencias_usuario}
+        for reserva in reservas_piloto.filter(status="reservado").order_by("data", "hora_inicio"):
+            solicitacao = getattr(reserva, "solicitacao_voo", None)
+            avaliacao = getattr(solicitacao, "avaliacao_risco", None) if solicitacao else None
+            checklist = getattr(reserva, "checklist_pre_voo", None)
+            if solicitacao and solicitacao.requer_avaliacao_risco and (not avaliacao or avaliacao.status != "aprovada"):
+                chave = f"risco-{reserva.pk}"
+                if chave not in chaves:
+                    pendencias_usuario.append({
+                        "chave": chave, "prioridade": "alto", "categoria": "Risco",
+                        "titulo": "Avaliação de risco pendente", "descricao": f"{reserva.drone.nome} · {reserva.data:%d/%m/%Y}",
+                        "url": reverse("avaliacao_risco", args=[solicitacao.pk]),
+                    })
+            elif not checklist or not checklist.concluido:
+                chave = f"checklist-dashboard-{reserva.pk}"
+                if chave not in chaves:
+                    pendencias_usuario.append({
+                        "chave": chave, "prioridade": "medio", "categoria": "Checklist",
+                        "titulo": "Checklist pré-voo pendente", "descricao": f"{reserva.drone.nome} · {reserva.data:%d/%m/%Y}",
+                        "url": reverse("checklist_pre_voo", args=[reserva.pk]),
+                    })
+        qualificacoes_atencao = [
+            item for item in QualificacaoPiloto.objects.filter(piloto=piloto_sessao, ativo=True)
+            if item.situacao in {"vencida", "vencendo"}
+        ]
+        for qualificacao in qualificacoes_atencao:
+            pendencias_usuario.append({
+                "chave": f"qualificacao-dashboard-{qualificacao.pk}",
+                "prioridade": "critico" if qualificacao.situacao == "vencida" else "alto",
+                "categoria": "Qualificação", "titulo": qualificacao.nome,
+                "descricao": "Vencida" if qualificacao.situacao == "vencida" else f"Vence em {qualificacao.dias_para_vencer} dia(s)",
+                "url": reverse("meu_perfil_operacional"),
+            })
+        ctx["pendencias_usuario"] = pendencias_usuario[:10]
+        ctx["pendencias_usuario_total"] = len(pendencias_usuario)
+        ctx["proxima_operacao"] = proximas_reservas[0] if proximas_reservas else None
+        ctx["voos_mes"] = voos_qs.filter(data__year=agora_dashboard.year, data__month=agora_dashboard.month).count()
+    else:
+        seriais_detectados = set(
+            ImportacaoLog.objects.filter(status="concluida").exclude(bateria_serial_detectada="")
+            .values_list("bateria_serial_detectada", flat=True)
+        )
+        seriais_cadastrados = set(Bateria.objects.filter(numero_serie__in=seriais_detectados).values_list("numero_serie", flat=True))
+        ctx["integridade"] = {
+            "regularizacoes": len(regularizacoes),
+            "sem_log": concluidas_sem_log_qs.distinct().count(),
+            "pos_voo_pendente": Alocacao.objects.filter(status="concluido").exclude(registro_pos_voo__concluido=True).count(),
+            "importacoes_erro": ImportacaoLog.objects.filter(status="erro").count(),
+            "baterias_desconhecidas": len(seriais_detectados - seriais_cadastrados),
+        }
+        ctx["frota_resumo"] = {
+            "total": Drone.objects.count(), "ativos": status_drones["ativos"],
+            "campo": status_drones["em_campo"], "manutencao": status_drones["manutencao"],
+            "indisponiveis": status_drones["indisponiveis"],
+        }
+        ctx["manutencoes_abertas"] = Manutencao.objects.filter(concluida=False).select_related("drone").order_by("data_inicio")[:6]
+        ctx["incidentes_recentes"] = Incidente.objects.exclude(status="encerrado").select_related("alocacao__drone", "alocacao__piloto")[:6]
+        if usuario_e_admin(request.user):
+            from .dji_cloud_service import diagnostico_open_platforms
+            ctx["diagnostico_dji"] = diagnostico_open_platforms()
+
+    ctx.update(_base_context(request))
+    if usuario_e_admin(request.user):
+        template_dashboard = "dashboards/administrador.html"
+    elif usuario_e_coordenador(request.user):
+        template_dashboard = "dashboards/coordenador.html"
+    else:
+        template_dashboard = "dashboards/usuario.html"
+    return render(request, template_dashboard, ctx)
 
 
 @login_required
@@ -1514,7 +1594,18 @@ def calendario(request):
 
     alocacoes = (
         Alocacao.objects
-        .select_related("piloto", "drone")
+        .select_related(
+            "piloto", "drone", "checklist_pre_voo",
+            "registro_pos_voo", "voo_sincronizado", "solicitacao_voo__planejamento",
+        )
+        .annotate(
+            tem_telemetria=Exists(
+                ImportacaoLog.objects.filter(
+                    voo__alocacao_calendario_id=OuterRef("pk"),
+                    status="concluida",
+                )
+            )
+        )
         .filter(data__lte=fim_periodo)
         .filter(Q(data_fim__gte=inicio_periodo) | Q(data_fim__isnull=True, data__gte=inicio_periodo))
         .order_by(
@@ -1533,6 +1624,31 @@ def calendario(request):
     por_dia = defaultdict(list)
 
     for reserva in alocacoes:
+        checklist = getattr(reserva, "checklist_pre_voo", None)
+        pos_voo = getattr(reserva, "registro_pos_voo", None)
+        solicitacao = getattr(reserva, "solicitacao_voo", None)
+        planejamento = solicitacao.planejamento if solicitacao else None
+        if reserva.status == "cancelado":
+            etapa, label = "cancelada", "Cancelada"
+        elif pos_voo and pos_voo.concluido:
+            etapa, label = "concluida", "Operação concluída"
+        elif reserva.tem_telemetria and not planejamento:
+            etapa, label = "regularizacao-pendente", "Regularização pendente"
+        elif reserva.tem_telemetria:
+            etapa, label = "posvoo-pendente", "Registro pós-voo pendente"
+        elif reserva.status == "concluido":
+            etapa, label = "telemetria-pendente", "Telemetria pendente"
+        elif checklist and checklist.concluido:
+            etapa, label = "pronta", "Pronta para operação"
+        elif checklist:
+            etapa, label = "checklist-pendente", "Checklist pendente"
+        else:
+            etapa, label = "reserva", "Somente reserva"
+        reserva.etapa_calendario = etapa
+        reserva.etapa_calendario_label = label
+        reserva.checklist_concluido = bool(checklist and checklist.concluido)
+        reserva.regularizacao_pendente = etapa == "regularizacao-pendente"
+
         dia_reserva = max(reserva.data, inicio_periodo)
         ultimo_dia = min(reserva.data_final, fim_periodo)
         while dia_reserva <= ultimo_dia:
@@ -1567,24 +1683,8 @@ def calendario(request):
         proximo = date(ano, mes + 1, 1)
 
     lista_alocacoes = (
-        Alocacao.objects
-        .select_related("piloto", "drone")
-        .filter(
-            data__gte=inicio_periodo,
-            data__lte=fim_periodo,
-        )
-        .order_by(
-            "data",
-            "hora_inicio",
-            "hora_fim",
-            "id",
-        )
+        [reserva for reserva in alocacoes if inicio_periodo <= reserva.data <= fim_periodo]
     )
-    if not usuario_tem_visao_global(request.user):
-        try:
-            lista_alocacoes = lista_alocacoes.filter(piloto=request.user.piloto)
-        except Piloto.DoesNotExist:
-            lista_alocacoes = lista_alocacoes.none()
 
     ctx = {
         "semanas": semanas,
@@ -1912,179 +2012,14 @@ def alocacao_excluir(request, pk):
 @admin_required
 def alocacao_concluir(request, pk):
     _atualizar_reservas_vencidas()
-
     alocacao = get_object_or_404(
         Alocacao,
         pk=pk
     )
-
-    if request.method == "POST":
-        form = VooForm(
-            request.POST
-        )
-
-        form.fields[
-            "drone"
-        ].queryset = (
-            Drone.objects.filter(
-                Q(status="ativo")
-                | Q(
-                    pk=alocacao.drone_id
-                )
-            ).distinct()
-        )
-
-        form.fields[
-            "piloto"
-        ].queryset = (
-            Piloto.objects.filter(
-                Q(ativo=True)
-                | Q(
-                    pk=alocacao.piloto_id
-                )
-            ).distinct()
-        )
-
-        if form.is_valid():
-            voo = form.save(
-                commit=False
-            )
-
-            voo.criado_por = (
-                request.user
-            )
-
-            voo.save()
-
-            alocacao.status = (
-                "concluido"
-            )
-
-            alocacao.save(
-                update_fields=["status"]
-            )
-
-            messages.success(
-                request,
-                (
-                    "Voo registrado e "
-                    "reserva concluída "
-                    "com sucesso."
-                )
-            )
-
-            return redirect(
-                "voos"
-            )
-
-    else:
-        dados_iniciais = {
-            "data": alocacao.data,
-            "piloto": (
-                alocacao.piloto
-            ),
-            "drone": alocacao.drone,
-            "local": alocacao.local,
-            "hora_inicio": (
-                alocacao.hora_inicio
-            ),
-            "hora_fim": (
-                alocacao.hora_fim
-            ),
-            "observacoes": (
-                alocacao.observacoes
-            ),
-        }
-
-        finalidade_map = {
-            "levantamento": (
-                "levantamento"
-            ),
-            "monitoramento": (
-                "monitoramento"
-            ),
-            "inspeção": (
-                "inspecao"
-            ),
-            "inspecao": (
-                "inspecao"
-            ),
-            "mapeamento": (
-                "mapeamento"
-            ),
-            "treinamento": (
-                "treinamento"
-            ),
-        }
-
-        finalidade_texto = (
-            alocacao.finalidade
-            or ""
-        ).strip().lower()
-
-        dados_iniciais[
-            "finalidade"
-        ] = finalidade_map.get(
-            finalidade_texto,
-            "outro"
-        )
-
-        form = VooForm(
-            initial=dados_iniciais
-        )
-
-        form.fields[
-            "drone"
-        ].queryset = (
-            Drone.objects.filter(
-                Q(status="ativo")
-                | Q(
-                    pk=alocacao.drone_id
-                )
-            ).distinct()
-        )
-
-        form.fields[
-            "piloto"
-        ].queryset = (
-            Piloto.objects.filter(
-                Q(ativo=True)
-                | Q(
-                    pk=alocacao.piloto_id
-                )
-            ).distinct()
-        )
-
-        form.fields[
-            "drone"
-        ].initial = (
-            alocacao.drone
-        )
-
-        form.fields[
-            "piloto"
-        ].initial = (
-            alocacao.piloto
-        )
-
-    ctx = {
-        "form": form,
-        "titulo": (
-            "Concluir reserva "
-            "e registrar voo"
-        ),
-        "alocacao": alocacao,
-    }
-
-    ctx.update(
-        _base_context(request)
-    )
-
-    return render(
-        request,
-        "calendario/concluir.html",
-        ctx
-    )
+    # A conclusão operacional é centralizada no Registro Pós-Voo. Data,
+    # horários, distância e baterias são sincronizados a partir da telemetria,
+    # evitando entrada manual e a criação duplicada de Voo.
+    return redirect("registro_pos_voo", alocacao_id=alocacao.pk)
 
 
 # =========================================================

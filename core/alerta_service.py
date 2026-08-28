@@ -1,12 +1,51 @@
 from datetime import timedelta
+from urllib.parse import urlencode
 
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Alocacao, AvaliacaoRisco, Bateria, Documento, Drone, Incidente, Manutencao, PlanoInspecao, QualificacaoPiloto
+from .models import Alocacao, AvaliacaoRisco, Bateria, Documento, Drone, ImportacaoLog, Incidente, Manutencao, PlanoInspecao, QualificacaoPiloto
 
 
 ORDEM_PRIORIDADE = {"critico": 0, "alto": 1, "medio": 2, "baixo": 3}
+
+
+def gerar_regularizacoes(piloto=None):
+    operacoes = (
+        Alocacao.objects.filter(voo_sincronizado__importacoes_log__status="concluida")
+        .select_related(
+            "piloto", "drone", "solicitacao_voo__planejamento",
+            "checklist_pre_voo", "registro_pos_voo",
+        )
+        .distinct()
+    )
+    if piloto is not None:
+        operacoes = operacoes.filter(piloto=piloto)
+    pendencias = []
+    for operacao in operacoes:
+        solicitacao = getattr(operacao, "solicitacao_voo", None)
+        planejamento = solicitacao.planejamento if solicitacao else None
+        checklist = getattr(operacao, "checklist_pre_voo", None)
+        pos_voo = getattr(operacao, "registro_pos_voo", None)
+        if not planejamento:
+            faltantes = "planejamento, checklist e registro pós-voo"
+            url = f"{reverse('planejamento_novo')}?{urlencode({'regularizar': operacao.pk})}"
+        elif not checklist or not checklist.concluido:
+            faltantes = "checklist e registro pós-voo"
+            url = reverse("checklist_pre_voo", args=[operacao.pk])
+        elif not pos_voo or not pos_voo.concluido:
+            faltantes = "registro pós-voo"
+            url = reverse("registro_pos_voo", kwargs={"alocacao_id": operacao.pk})
+        else:
+            continue
+        pendencias.append({
+            "categoria": "Regularização", "prioridade": "alto",
+            "titulo": f"Regularizar operação de {operacao.data.strftime('%d/%m/%Y')}",
+            "descricao": f"{operacao.drone.nome} · pendente: {faltantes}.",
+            "url": url, "chave": f"regularizacao-{operacao.pk}",
+            "data": operacao.data, "alocacao": operacao,
+        })
+    return pendencias
 
 
 def gerar_alertas():
@@ -18,6 +57,8 @@ def gerar_alertas():
             "categoria": categoria, "prioridade": prioridade, "titulo": titulo,
             "descricao": descricao, "url": url, "chave": chave, "data": data,
         })
+
+    alertas.extend(gerar_regularizacoes())
 
     for documento in Documento.objects.select_related("piloto", "drone", "bateria"):
         if documento.situacao == "vencido":
@@ -37,6 +78,33 @@ def gerar_alertas():
             adicionar("Baterias", prioridade, f"Saúde baixa: {bateria.codigo}", f"Saúde estimada em {bateria.saude_percentual}%", reverse("bateria_detalhe", args=[bateria.pk]), f"bateria-saude-{bateria.pk}")
         if bateria.status == "manutencao":
             adicionar("Baterias", "alto", f"Bateria em manutenção: {bateria.codigo}", str(bateria.drone or "Sem drone vinculado"), reverse("bateria_detalhe", args=[bateria.pk]), f"bateria-status-{bateria.pk}")
+
+    seriais_cadastrados = set(
+        Bateria.objects.exclude(numero_serie="").values_list("numero_serie", flat=True)
+    )
+    importacoes_com_bateria = (
+        ImportacaoLog.objects.filter(status="concluida")
+        .exclude(bateria_serial_detectada="")
+        .select_related("voo__drone")
+        .order_by("bateria_serial_detectada", "criado_em")
+    )
+    seriais_alertados = set()
+    for importacao in importacoes_com_bateria:
+        serial = importacao.bateria_serial_detectada.strip()
+        if not serial or serial in seriais_cadastrados or serial in seriais_alertados:
+            continue
+        seriais_alertados.add(serial)
+        parametros = urlencode({
+            "numero_serie": serial,
+            "drone": importacao.voo.drone_id,
+            "importacao": importacao.pk,
+        })
+        adicionar(
+            "Baterias", "alto", f"Nova bateria identificada: {serial}",
+            f"Detectada na telemetria do {importacao.voo.drone.nome}; cadastro pendente.",
+            f"{reverse('bateria_nova')}?{parametros}", f"bateria-nova-{serial}",
+            importacao.voo.data,
+        )
 
     for drone in Drone.objects.exclude(status__in=["ativo", "em_campo"]):
         prioridade = "critico" if drone.status == "indisponivel" else "alto"

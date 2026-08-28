@@ -1,0 +1,36 @@
+{% load static %}
+<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SISMOD · DJI Pilot 2</title><link rel="stylesheet" href="{% static 'css/sistema.css' %}?v=31"></head>
+<body class="dji-pilot-page"><main class="dji-pilot-card"><strong class="dji-pilot-brand">SISMOD</strong><h1>DJI Open Platforms</h1><p id="pilot-message">Pronto para verificar o controle e a aeronave.</p>
+{% if diagnostico.pronto %}<button id="connect-button" class="btn btn-primary" type="button">Conectar ao SISMOD</button>{% else %}<div class="alert alert-warning">O administrador ainda precisa concluir a configuração da integração.</div>{% endif %}
+<div id="pilot-result" class="dji-pilot-result" hidden></div></main>
+{{ cloud|json_script:"dji-cloud-config" }}
+<script>
+const config = JSON.parse(document.getElementById("dji-cloud-config").textContent);
+const message = document.getElementById("pilot-message");
+const result = document.getElementById("pilot-result");
+function bridgeResult(value) { try { return JSON.parse(value); } catch (_) { return {code:-1,message:String(value || "Resposta inválida")}; } }
+function csrfToken() { const match = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/); return match ? decodeURIComponent(match[1]) : ""; }
+window.sismodMqttCallback = function(value) { message.textContent = "Estado MQTT: " + value; };
+async function identifyDevice() {
+  const aircraft = bridgeResult(window.djiBridge.platformGetAircraftSN());
+  const controller = bridgeResult(window.djiBridge.platformGetRemoteControllerSN());
+  const response = await fetch("{% url 'dji_pilot_identificar' %}", {method:"POST", headers:{"Content-Type":"application/json","X-CSRFToken":csrfToken()}, body:JSON.stringify({aeronave_sn:aircraft.data || "", controle_sn:controller.data || ""})});
+  return response.json();
+}
+async function connectPilot() {
+  if (!window.djiBridge) { message.textContent = "Abra esta página dentro do DJI Pilot 2 para realizar a conexão."; return; }
+  const verified = bridgeResult(window.djiBridge.platformVerifyLicense(config.app_id, config.app_key, config.license));
+  if (verified.code !== 0) { message.textContent = "Licença recusada: " + verified.message; return; }
+  window.djiBridge.platformSetWorkspaceId(config.workspace_id);
+  window.djiBridge.platformSetInformation(config.platform_name, config.workspace_name, config.workspace_description);
+  const api = bridgeResult(window.djiBridge.platformLoadComponent("api", JSON.stringify({host:config.api_host,token:config.token})));
+  if (api.code !== 0) { message.textContent = "Falha ao carregar API: " + api.message; return; }
+  const thing = bridgeResult(window.djiBridge.platformLoadComponent("thing", JSON.stringify({host:config.mqtt_host,connectCallback:"sismodMqttCallback",username:config.mqtt_username,password:config.mqtt_password})));
+  if (thing.code !== 0) { message.textContent = "Falha ao carregar MQTT: " + thing.message; return; }
+  const device = await identifyDevice();
+  result.hidden = false;
+  result.textContent = device.drone_encontrado ? `Conectado: ${device.drone} · ${device.piloto}` : `Aeronave ${device.aeronave_sn} não encontrada no cadastro do SISMOD.`;
+  message.textContent = device.drone_encontrado ? "Conexão preparada com sucesso." : "Conexão preparada, mas o serial precisa ser cadastrado no drone.";
+}
+const button = document.getElementById("connect-button"); if (button) button.addEventListener("click", connectPilot);
+</script></body></html>

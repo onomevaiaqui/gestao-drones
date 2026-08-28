@@ -13,6 +13,17 @@
 
 <div class="panel calendar-panel">
 
+    <div class="calendar-stage-legend" aria-label="Legenda das etapas operacionais">
+        <span class="stage-reserva">Somente reserva</span>
+        <span class="stage-checklist-pendente">Checklist pendente</span>
+        <span class="stage-pronta">Pronta para operação</span>
+        <span class="stage-telemetria-pendente">Telemetria pendente</span>
+        <span class="stage-posvoo-pendente">Pós-voo pendente</span>
+        <span class="stage-regularizacao-pendente">Regularização pendente</span>
+        <span class="stage-concluida">Concluída</span>
+        <span class="stage-cancelada">Cancelada</span>
+    </div>
+
     <div class="calendar-toolbar">
         <a
             href="?ano={{ anterior.year }}&mes={{ anterior.month }}"
@@ -58,16 +69,7 @@
                 {% for a in dia.alocacoes|slice:":3" %}
                 <button
                     type="button"
-                    class="
-                        calendar-compact-event
-                        {% if a.status == 'concluido' %}
-                            event-done
-                        {% elif a.status == 'cancelado' %}
-                            event-cancelled
-                        {% else %}
-                            event-reserved
-                        {% endif %}
-                    "
+                    class="calendar-compact-event event-{{ a.etapa_calendario }}"
                     onclick="abrirDiaModal('dia-{{ dia.data|date:"Ymd" }}')"
                 >
                     <span class="event-time">
@@ -140,16 +142,7 @@
                 <div class="calendar-day-modal-body">
 
                     {% for a in dia.alocacoes %}
-                    <div class="
-                        calendar-day-item
-                        {% if a.status == 'concluido' %}
-                            event-done
-                        {% elif a.status == 'cancelado' %}
-                            event-cancelled
-                        {% else %}
-                            event-reserved
-                        {% endif %}
-                    ">
+                    <div class="calendar-day-item event-{{ a.etapa_calendario }}">
 
                         <div class="calendar-day-item-main">
                             <div class="calendar-day-item-time">
@@ -179,15 +172,16 @@
                             {% endif %}
 
                             <span>
-                                Status: {{ a.get_status_display }}
+                                Etapa: <strong>{{ a.etapa_calendario_label }}</strong>
                             </span>
                         </div>
 
                         <div class="calendar-day-item-actions">
 {% if not eh_coordenador %}
 {% if eh_admin or a.piloto.user_id == user.id %}
-<a href="{% url 'checklist_pre_voo' a.pk %}" class="icon-btn">Checklist</a>
-<a href="{% url 'registro_pos_voo' alocacao_id=a.pk %}" class="icon-btn">Pós-voo</a>
+<a href="{% url 'checklist_pre_voo' a.pk %}" class="icon-btn">{% if a.checklist_concluido %}Ver checklist{% else %}Fazer checklist{% endif %}</a>
+<a href="{% url 'registro_pos_voo' alocacao_id=a.pk %}" class="icon-btn">Registro pós-voo</a>
+{% if a.regularizacao_pendente %}<a href="{% url 'planejamento_novo' %}?regularizar={{ a.pk }}" class="icon-btn warning">Regularizar operação</a>{% endif %}
 {% endif %}
 
 
@@ -198,17 +192,6 @@
                                     class="icon-btn"
                                 >
                                     Editar
-                                </a>
-
-                                <a
-                                    href="{% url 'alocacao_concluir' a.pk %}"
-                                    class="icon-btn"
-                                >
-                                    {% if a.status == "concluido" %}
-                                        Registrar Voo
-                                    {% else %}
-                                        Concluir
-                                    {% endif %}
                                 </a>
 
                                 <form
@@ -301,7 +284,7 @@
                 <td>{{ a.piloto.nome }}</td>
                 <td>{{ a.drone.nome }}</td>
                 <td>{{ a.finalidade }}</td>
-                <td>{{ a.get_status_display }}</td>
+                <td><span class="calendar-stage-badge stage-{{ a.etapa_calendario }}">{{ a.etapa_calendario_label }}</span></td>
             </tr>
             {% empty %}
             <tr>

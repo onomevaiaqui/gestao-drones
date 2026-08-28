@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% load static %}
 {% block title %}{{ titulo }}{% endblock %}
 {% block content %}
+{% if regularizar %}<div class="alert alert-warning"><strong>Regularização de operação com telemetria.</strong> Os dados do voo foram preenchidos automaticamente. Desenhe a área realmente sobrevoada e confirme o planejamento para continuar com checklist e registro pós-voo.</div>{% endif %}
 <div class="page-header"><div><h1>{{ titulo }}</h1><p>Informe o período e desenhe uma única área fechada no mapa.</p></div></div>
 <form method="post" enctype="multipart/form-data" id="planning-form">{% csrf_token %}
 <div class="planning-form-grid">

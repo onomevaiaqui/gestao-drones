@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Minha dashboard{% endblock %}
+{% block content %}
+<div class="page-header dashboard-profile-header"><div><span class="dashboard-eyebrow">Painel do piloto</span><h1>Olá, {{ user.piloto.nome|default:user.username }}</h1><p>Próximas operações, pendências e experiência comprovada por telemetria.</p></div><div class="header-actions"><a class="btn btn-light" href="{% url 'minha_agenda' %}">Minha agenda</a><a class="btn btn-primary" href="{% url 'planejamento_novo' %}">Novo planejamento</a></div></div>
+
+<div class="dashboard-primary-grid">
+  <section class="panel next-operation-card">
+    <div class="panel-title-row"><div><span class="dashboard-eyebrow">Próxima operação</span><h3>{% if proxima_operacao %}{{ proxima_operacao.drone.nome }}{% else %}Agenda livre{% endif %}</h3></div>{% if proxima_operacao %}<a href="{% url 'calendario' %}?ano={{ proxima_operacao.data.year }}&mes={{ proxima_operacao.data.month }}">Abrir calendário →</a>{% endif %}</div>
+    {% if proxima_operacao %}<div class="next-operation-details"><div><span>Data</span><strong>{{ proxima_operacao.data|date:"d/m/Y" }}</strong></div><div><span>Horário</span><strong>{{ proxima_operacao.hora_inicio|time:"H:i" }}–{{ proxima_operacao.hora_fim|time:"H:i" }}</strong></div><div><span>Local</span><strong>{{ proxima_operacao.local|default:"Não informado" }}</strong></div><div><span>Finalidade</span><strong>{{ proxima_operacao.finalidade }}</strong></div></div>{% else %}<div class="empty-state compact"><p>Nenhuma reserva futura. Planeje uma operação ou reserve um drone.</p></div>{% endif %}
+  </section>
+  <section class="panel user-pending-panel"><div class="panel-title-row"><div><span class="dashboard-eyebrow">Ação necessária</span><h3>Minhas pendências</h3></div><strong class="dashboard-count">{{ pendencias_usuario_total }}</strong></div><div class="dashboard-task-list">{% for item in pendencias_usuario %}<a href="{{ item.url }}" class="dashboard-task priority-{{ item.prioridade }}"><span class="task-symbol">{% if item.prioridade == 'critico' %}!{% else %}•{% endif %}</span><div><small>{{ item.categoria }}</small><strong>{{ item.titulo }}</strong><span>{{ item.descricao }}</span></div><b>→</b></a>{% empty %}<div class="empty-state compact"><strong>Tudo em dia</strong><p>Nenhuma etapa operacional pendente.</p></div>{% endfor %}</div></section>
+</div>
+
+<div class="coordinator-kpi-grid">
+  <div class="kpi-card"><div><span>Horas confirmadas</span><strong>{{ total_horas }}</strong><small>Somente logs processados</small></div><div class="kpi-icon green">◷</div></div>
+  <div class="kpi-card"><div><span>Voos no mês</span><strong>{{ voos_mes }}</strong><small>Operações com telemetria</small></div><div class="kpi-icon">✈</div></div>
+  <div class="kpi-card"><div><span>Distância total</span><strong>{{ distancia_total }} km</strong><small>Calculada pelos trajetos</small></div><div class="kpi-icon purple">⌖</div></div>
+  <div class="kpi-card"><div><span>Regularizações</span><strong>{{ regularizacoes_total }}</strong><small>Operações a completar</small></div><div class="kpi-icon orange">!</div></div>
+</div>
+
+<div class="panel quick-actions-panel"><div class="panel-title-row"><h3>Ações rápidas</h3></div><div class="quick-action-grid"><a href="{% url 'planejamento_novo' %}"><b>⌖</b><span>Novo planejamento</span></a><a href="{% url 'solicitacao_voo_nova' %}"><b>▣</b><span>Reservar drone</span></a><a href="{% url 'telemetria_importar' %}"><b>⌁</b><span>Importar logs</span></a><a href="{% url 'meu_perfil_operacional' %}"><b>♙</b><span>Minha experiência</span></a></div></div>
+
+<div class="chart-grid main"><div class="panel"><div class="panel-title-row"><div><h3>Horas de voo ao longo do tempo</h3><p>Dados confirmados pela telemetria.</p></div></div><canvas id="chartTempo"></canvas></div><div class="panel"><h3>Aeronaves utilizadas</h3><canvas id="chartDrones"></canvas></div></div>
+<div class="panel"><div class="panel-title-row"><h3>Últimos voos confirmados</h3><a href="{% url 'voos' %}">Ver histórico →</a></div><div class="table-responsive"><table class="modern-table"><thead><tr><th>Data</th><th>Drone</th><th>Finalidade</th><th>Duração</th><th>Distância</th></tr></thead><tbody>{% for voo in ultimos_voos %}<tr><td>{{ voo.data|date:"d/m/Y" }}</td><td><strong>{{ voo.drone.nome }}</strong></td><td>{{ voo.get_finalidade_display }}</td><td>{{ voo.duracao_minutos }} min</td><td>{{ voo.distancia_m|default:0 }} m</td></tr>{% empty %}<tr><td colspan="5">Nenhum voo confirmado.</td></tr>{% endfor %}</tbody></table></div></div>
+{{ drones_data|json_script:"dashboard-drones" }}{{ tempo_data|json_script:"dashboard-tempo" }}
+{% endblock %}
+{% block scripts %}<script>const d=JSON.parse(document.getElementById('dashboard-drones').textContent),t=JSON.parse(document.getElementById('dashboard-tempo').textContent);new Chart(document.getElementById('chartDrones'),{type:'doughnut',data:{labels:d.map(x=>x.nome),datasets:[{data:d.map(x=>x.horas),backgroundColor:['#1769e0','#21a179','#7a55d9','#f59e0b','#e05260']}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}});new Chart(document.getElementById('chartTempo'),{type:'line',data:{labels:t.map(x=>x.data),datasets:[{label:'Horas',data:t.map(x=>x.horas),borderColor:'#1769e0',backgroundColor:'rgba(23,105,224,.12)',fill:true,tension:.3}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true}}}});</script>{% endblock %}

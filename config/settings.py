@@ -8,7 +8,14 @@ load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = "dev-only-change-this-key"
 DEBUG = True
-ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+ALLOWED_HOSTS = [
+    item.strip() for item in os.getenv("SISMOD_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+    if item.strip()
+]
+CSRF_TRUSTED_ORIGINS = [
+    item.strip() for item in os.getenv("SISMOD_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if item.strip()
+]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -77,3 +84,19 @@ LOGOUT_REDIRECT_URL = "login"
 
 # Credenciais externas são carregadas apenas do ambiente e nunca do Git.
 DJI_FLIGHT_RECORD_APP_KEY = os.getenv("DJI_FLIGHT_RECORD_APP_KEY", "").strip()
+
+# DJI Open Platforms / Cloud API. Os valores sensíveis existem apenas no .env.
+DJI_CLOUD_ENABLED = os.getenv("DJI_CLOUD_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+DJI_CLOUD_APP_ID = os.getenv("DJI_CLOUD_APP_ID", "").strip()
+DJI_CLOUD_APP_KEY = os.getenv("DJI_CLOUD_APP_KEY", "").strip()
+DJI_CLOUD_APP_LICENSE = os.getenv("DJI_CLOUD_APP_LICENSE", "").strip()
+DJI_CLOUD_WORKSPACE_ID = os.getenv("DJI_CLOUD_WORKSPACE_ID", "").strip()
+DJI_CLOUD_PUBLIC_URL = os.getenv("DJI_CLOUD_PUBLIC_URL", "").strip().rstrip("/")
+DJI_CLOUD_API_HOST = os.getenv("DJI_CLOUD_API_HOST", DJI_CLOUD_PUBLIC_URL).strip().rstrip("/")
+DJI_CLOUD_MQTT_HOST = os.getenv("DJI_CLOUD_MQTT_HOST", "").strip()
+DJI_CLOUD_MQTT_USERNAME_PREFIX = os.getenv("DJI_CLOUD_MQTT_USERNAME_PREFIX", "sismod-pilot").strip()
+DJI_CLOUD_PLATFORM_NAME = os.getenv("DJI_CLOUD_PLATFORM_NAME", "SISMOD").strip()
+DJI_CLOUD_WORKSPACE_NAME = os.getenv("DJI_CLOUD_WORKSPACE_NAME", "Operações SISMOD").strip()
+DJI_CLOUD_WORKSPACE_DESCRIPTION = os.getenv(
+    "DJI_CLOUD_WORKSPACE_DESCRIPTION", "Monitoramento e gestão de operações com drones"
+).strip()

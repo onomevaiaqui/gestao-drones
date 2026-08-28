@@ -12,6 +12,7 @@ from . import telemetria_views
 from . import componente_views
 from . import perfil_views
 from . import planejamento_views
+from . import dji_cloud_views
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
@@ -109,4 +110,9 @@ urlpatterns = [
     path("meu-perfil/", perfil_views.perfil_usuario, name="meu_perfil"),
     path("usuarios/<int:pk>/perfil/", perfil_views.perfil_usuario, name="perfil_usuario"),
     path("usuarios/<int:pk>/documentos/novo/", perfil_views.documento_perfil_novo, name="documento_perfil_novo"),
+    path("integracoes/dji/", dji_cloud_views.dji_cloud_configuracao, name="dji_cloud_configuracao"),
+    path("integracoes/dji/pilot/login/", dji_cloud_views.DJIPilotLoginView.as_view(), name="dji_pilot_login"),
+    path("integracoes/dji/pilot/", dji_cloud_views.dji_pilot_portal, name="dji_pilot_portal"),
+    path("integracoes/dji/pilot/identificar/", dji_cloud_views.dji_pilot_identificar, name="dji_pilot_identificar"),
+    path("integracoes/dji/mqtt/auth/", dji_cloud_views.dji_mqtt_autorizar, name="dji_mqtt_autorizar"),
 ]

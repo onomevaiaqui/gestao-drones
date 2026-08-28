@@ -66,7 +66,8 @@ Esses recursos são carregados por CDN. Sem internet, o servidor local abre, mas
 | GeoAISWeb / DECEA | Aeródromos e áreas aeronáuticas de atenção. | Confirmar no AISWEB/SARPAS. |
 | SARPAS | Link para consulta/autorização. | Token de integração ainda não implementado. |
 | SISCLATEN | Triagem para aerolevantamento/AAFA. | Decisão oficial é do Ministério da Defesa. |
-| DJI Flight Record Parsing | Decodificação mediante chave no ambiente. | Importação manual; automação não implementada. |
+| DJI Flight Record Parsing | Decodificação mediante chave no ambiente. | Interpreta o arquivo; não realiza sincronização da conta. |
+| DJI Open Platforms / Cloud API | Conexão do DJI Pilot 2 diretamente ao SISMOD. | Fundação implementada; broker e ingestão MQTT são a próxima etapa. |
 
 KML/KMZ pode ser importado no planejamento; o maior polígono encontrado é usado. A área desenhada pode ser exportada em KML.
 
@@ -107,13 +108,19 @@ gestao_drones/
 
 ### Dashboard
 
-- métricas somente de voos comprovados por logs;
-- mapa com todas as operações em andamento e futuras; a linha da agenda centraliza a área planejada no mapa;
-- situação de pilotos, qualificações, frota, inspeções e documentos;
-- avaliações de risco e incidentes pendentes;
-- últimos 30 dias comparados aos 30 anteriores;
-- gráficos por piloto, aeronave, finalidade e período;
-- filtro próprio de data para o gráfico de horas de voo ao longo do tempo.
+O conteúdo é separado pelo modo de acesso, mantendo uma única regra de cálculo para horas, distância e voos comprovados:
+
+- **Usuário/piloto:** próxima operação, pendências pessoais priorizadas, horas e distância provenientes da telemetria, situação das próprias qualificações, atalhos operacionais, evolução mensal e histórico recente;
+- **Coordenador:** operações em andamento e futuras, mapa operacional clicável, situação da equipe, utilização das aeronaves, inspeções e documentos que exigem atenção, segurança operacional e indicadores comparativos;
+- **Administrador:** visão executiva global, integridade dos registros, conformidade dos logs, frota e disponibilidade, manutenção, documentos, incidentes e diagnóstico técnico da integração DJI.
+
+Regras comuns:
+
+- métricas de atividade usam somente voos comprovados por logs processados;
+- a linha da agenda do coordenador centraliza a área planejada no mapa;
+- alertas de regularização permanecem visíveis até planejamento, checklist e pós-voo serem concluídos;
+- os filtros de período alteram os gráficos sem alterar a identidade do perfil selecionado;
+- dados de outros pilotos não são enviados à dashboard do modo Usuário.
 
 ### Planejamento de voo
 
@@ -174,6 +181,37 @@ Documentos gerais, de pilotos e de aeronaves utilizam o mesmo modelo e a mesma v
 
 O sistema não presume baterias que não estejam identificadas pelo arquivo. Alguns equipamentos podem usar conjuntos com várias unidades físicas, mas expor somente um serial no Flight Record; nesses casos, o indicador representa apenas os seriais efetivamente fornecidos pelo log.
 
+### DJI Open Platforms
+
+O portal fica em `/integracoes/dji/pilot/login/` e deve ser configurado no DJI Pilot 2 em **Cloud Service → Open Platforms**. A primeira etapa implementada contém:
+
+Por segurança, a integração fica desativada por padrão com `DJI_CLOUD_ENABLED=false`. Nesse estado, o portal operacional e a autenticação MQTT recusam conexões, enquanto a importação manual de logs continua disponível. A variável somente deverá ser alterada para `true` depois da implantação com HTTPS, broker MQTT protegido e banco de dados de produção.
+
+- diagnóstico administrativo em **Integração DJI**;
+- login do piloto dentro do WebView do DJI Pilot 2;
+- verificação de APP ID, APP Key e licença pelo JSBridge;
+- definição do workspace e identificação visual do SISMOD;
+- carregamento preparado dos módulos `api` e `thing`;
+- leitura dos seriais do controle e da aeronave;
+- correspondência da aeronave pelo `Drone.numero_serie`;
+- token assinado e temporário para API e MQTT;
+- endpoint de autenticação HTTP compatível com broker EMQX 5.
+
+O portal somente habilita o botão de conexão quando todas as configurações estão presentes e válidas. O endereço precisa ser público e HTTPS. A integração ainda não recebe tópicos MQTT nem arquivos automaticamente; isso será habilitado depois da instalação e configuração do broker.
+
+Variáveis necessárias:
+
+- `DJI_CLOUD_ENABLED`, chave geral de ativação (`false` por padrão);
+- `DJI_CLOUD_APP_ID`, `DJI_CLOUD_APP_KEY` e `DJI_CLOUD_APP_LICENSE`;
+- `DJI_CLOUD_WORKSPACE_ID`, obrigatoriamente um UUID;
+- `DJI_CLOUD_PUBLIC_URL` e `DJI_CLOUD_API_HOST`, em HTTPS;
+- `DJI_CLOUD_MQTT_HOST`, com protocolo `tcp`, `ssl`, `ws` ou `wss`;
+- `DJI_CLOUD_MQTT_USERNAME_PREFIX`;
+- nomes da plataforma, workspace e descrição;
+- `SISMOD_ALLOWED_HOSTS` e `SISMOD_CSRF_TRUSTED_ORIGINS` para o domínio publicado.
+
+Referências oficiais: [DJI Pilot 2 Access to Cloud](https://developer.dji.com/doc/cloud-api-tutorial/en/feature-set/pilot-feature-set/pilot-access-to-cloud.html) e [DJI JSBridge](https://developer.dji.com/doc/cloud-api-tutorial/en/api-reference/pilot-to-cloud/jsbridge.html).
+
 ### Avaliação de risco
 
 - dados disponíveis são preenchidos pelo planejamento;
@@ -186,6 +224,11 @@ O sistema não presume baterias que não estejam identificadas pelo arquivo. Alg
 ### Voos e telemetria
 
 - um voo aceita vários logs e voos antigos permanecem selecionáveis;
+- logs do mesmo piloto, drone e data são consolidados em uma única operação;
+- logs de datas diferentes criam operações e entradas de calendário separadas;
+- telemetria sem planejamento prévio entra no calendário como **Regularização pendente**;
+- o aviso permanece para piloto, coordenador e administrador até a vinculação do planejamento e a conclusão de checklist e pós-voo;
+- o fluxo de regularização preenche automaticamente piloto, drone, data, horários, finalidade e local, exigindo que o usuário confirme e desenhe a área efetivamente sobrevoada;
 - suporta CSV normalizado e Flight Records DJI processados pelo parser;
 - exibe rota, `hh:mm:ss`, distância, altitude, velocidade, bateria, satélites e alertas;
 - consolida dados por minuto e explica estados normal, atenção e erro;
