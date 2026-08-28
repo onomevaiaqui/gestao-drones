@@ -6,10 +6,18 @@
 <div class="page-header">
     <div>
         <h1>Relatórios</h1>
-        <p>Resumo consolidado das operações</p>
+        <p>Central de relatórios operacionais, pessoais e de segurança</p>
     </div>
 </div>
 
+<div class="report-type-grid">
+    <a class="report-type-card{% if tipo_relatorio == 'operacional' %} active{% endif %}" href="{% url 'relatorios' %}?tipo=operacional"><span>✈</span><div><strong>Relatório operacional</strong><small>Voos, horas, distâncias, pilotos e aeronaves.</small></div></a>
+    {% if piloto_logado %}<a class="report-type-card" href="{% url 'perfil_operacional_pdf' piloto_logado.pk %}?modo=visualizar" target="_blank" rel="noopener"><span>♙</span><div><strong>Perfil operacional</strong><small>Experiência, qualificações e documentos do piloto.</small></div></a>{% endif %}
+    <a class="report-type-card{% if tipo_relatorio == 'incidentes' %} active{% endif %}" href="{% url 'relatorios' %}?tipo=incidentes"><span>⚠</span><div><strong>Relatório de incidentes</strong><small>Ocorrências, gravidade, situação e aeronave envolvida.</small></div></a>
+</div>
+
+{% if tipo_relatorio == "operacional" %}
+{% if eh_admin %}
 <div class="panel letterhead-panel">
     <div class="letterhead-summary">
         <h3>Papel timbrado dos relatórios</h3>
@@ -37,6 +45,7 @@
         <button class="btn btn-primary" type="submit">Salvar modelo</button>
     </form>
 </div>
+{% endif %}
 
 <div class="panel">
     <form method="get" class="filter-grid">
@@ -247,5 +256,11 @@
     </div>
 
 </div>
+
+{% elif tipo_relatorio == "incidentes" %}
+<div class="panel"><div class="panel-title-row"><div><h3>Relatório de incidentes</h3><p>{{ total_incidentes }} ocorrência(s) disponível(is) para consulta.</p></div><div class="actions"><a class="btn btn-light" href="{% url 'relatorios_incidentes_pdf' %}?modo=visualizar" target="_blank" rel="noopener">Visualizar PDF</a><a class="btn btn-primary" href="{% url 'relatorios_incidentes_pdf' %}">Baixar PDF</a>{% if not eh_coordenador %}<a class="btn btn-light" href="{% url 'incidentes' %}">Gerenciar incidentes</a>{% endif %}</div></div><div class="table-responsive"><table class="modern-table"><thead><tr><th>Data</th><th>Tipo</th><th>Gravidade</th><th>Piloto</th><th>Aeronave</th><th>Situação</th><th>Descrição</th></tr></thead><tbody>{% for incidente in incidentes_relatorio %}<tr><td>{{ incidente.data_hora|date:"d/m/Y H:i" }}</td><td>{{ incidente.get_tipo_display }}</td><td><span class="badge-soft {% if incidente.gravidade == 'grave' or incidente.gravidade == 'critico' %}red{% elif incidente.gravidade == 'moderado' %}orange{% else %}green{% endif %}">{{ incidente.get_gravidade_display }}</span></td><td>{{ incidente.alocacao.piloto.nome }}</td><td>{{ incidente.alocacao.drone.nome }}</td><td>{{ incidente.get_status_display }}</td><td>{{ incidente.descricao|truncatechars:100 }}</td></tr>{% empty %}<tr><td colspan="7">Nenhum incidente registrado.</td></tr>{% endfor %}</tbody></table></div></div>
+{% else %}
+<div class="panel"><div class="empty-state"><strong>Escolha um tipo de relatório</strong><p>Use as opções acima para consultar ou gerar o documento necessário.</p></div></div>
+{% endif %}
 
 {% endblock %}

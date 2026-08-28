@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from .models import PlanejamentoVoo, Piloto
+from .models import PlanejamentoVoo, Piloto, TermoCoordenacao
 from .planejamento_service import calcular_geometria, consultar_previsao
 from .planejamento_aeronautico_service import consultar_condicionantes_aeronauticas
 from .planejamento_kml import extrair_poligono_kml
@@ -162,6 +162,22 @@ class PlanejamentoVooTests(TestCase):
         self.assertEqual(geometria["type"], "Polygon")
         self.assertEqual(geometria["coordinates"][0][0], geometria["coordinates"][0][-1])
 
+    def test_previsualiza_kml_no_mapa_antes_de_salvar(self):
+        conteudo = b'''<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>-51.47,-25.40,0 -51.45,-25.40,0 -51.45,-25.38,0 -51.47,-25.38,0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>'''
+        self.client.force_login(self.user)
+        resposta = self.client.post(
+            reverse("planejamento_visualizar_arquivo"),
+            {"arquivo_area": SimpleUploadedFile("area.kml", conteudo)},
+        )
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(resposta.json()["geometria"]["type"], "Polygon")
+
+    def test_formulario_configura_previsualizacao_automatica_do_arquivo(self):
+        self.client.force_login(self.user)
+        resposta = self.client.get(reverse("planejamento_novo"))
+        self.assertContains(resposta, "Carregando área no mapa")
+        self.assertContains(resposta, reverse("planejamento_visualizar_arquivo"))
+
     def test_baixa_kml_do_planejamento(self):
         self.client.force_login(self.user)
         resposta = self.client.get(reverse("planejamento_baixar_kml", args=[self.obj.pk]))
@@ -199,3 +215,35 @@ class PlanejamentoVooTests(TestCase):
         resultado = consultar_condicionantes_aeronauticas(self.obj)
         self.assertEqual(resultado["status"], "desfavoravel")
         self.assertEqual({i["tipo"] for i in resultado["itens"]}, {"aerodromo", "proibida"})
+        aerodromo = next(i for i in resultado["itens"] if i["tipo"] == "aerodromo")
+        self.assertTrue(aerodromo["necessita_termo"])
+        self.assertFalse(next(i for i in resultado["itens"] if i["tipo"] == "proibida")["necessita_termo"])
+
+    @patch("core.planejamento_aeronautico_service.urlopen")
+    def test_ignora_aerodromo_fora_da_zona_que_intersecta_o_planejamento(self, urlopen):
+        import json
+        distante = {"type":"Feature", "geometry":{"type":"Point", "coordinates":[-51.34,-25.39]},
+                    "properties":{"localidade_id":"SBLG", "nome":"Longe"}}
+        urlopen.side_effect = lambda req, timeout=0: _Resposta(json.dumps({"features":[distante] if "airport" in req.full_url else []}))
+        resultado = consultar_condicionantes_aeronauticas(self.obj)
+        self.assertFalse(any(item["id"] == "SBLG" for item in resultado["itens"]))
+
+    def test_abre_termo_para_condicionante_que_exige_coordenacao(self):
+        self.obj.resumo_meteorologico = {"aeronautica": {"itens": [{
+            "tipo": "aerodromo", "id": "SBXX", "nome": "Aeródromo Teste",
+            "necessita_termo": True, "zona": "FRZ", "distancia_km": 1.2,
+        }]}}
+        self.obj.save(update_fields=["resumo_meteorologico"])
+        self.client.force_login(self.user)
+        resposta = self.client.get(
+            reverse("planejamento_termo_coordenacao", args=[self.obj.pk]),
+            {"tipo": "aerodromo", "ref": "SBXX"},
+        )
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "Termo de Coordenação para Operação UAS")
+        termo = TermoCoordenacao.objects.get(planejamento=self.obj, referencia_id="SBXX")
+        self.assertEqual(termo.operador_nome, self.piloto.nome)
+        self.assertIn("120 m AGL", termo.limites_verticais)
+        pdf = self.client.get(reverse("planejamento_termo_coordenacao_pdf", args=[termo.pk]))
+        self.assertEqual(pdf.status_code, 200)
+        self.assertTrue(pdf.content.startswith(b"%PDF"))

@@ -1,10 +1,11 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Q
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .bateria_forms import BateriaForm
-from .models import Bateria
+from .models import Bateria, ImportacaoLog
+from .telemetria_bateria_service import sincronizar_ciclos_bateria
 from .views import _base_context, admin_required
 
 
@@ -12,9 +13,7 @@ from .views import _base_context, admin_required
 def baterias(request):
     busca = request.GET.get("q", "").strip()
     status = request.GET.get("status", "").strip()
-    queryset = Bateria.objects.select_related("drone").annotate(
-        total_voos=Count("registros_pos_voo", filter=Q(registros_pos_voo__concluido=True), distinct=True)
-    )
+    queryset = Bateria.objects.select_related("drone")
     if busca:
         queryset = queryset.filter(
             Q(codigo__icontains=busca) | Q(numero_serie__icontains=busca)
@@ -50,6 +49,10 @@ def bateria_nova(request):
     form = BateriaForm(request.POST or None, initial=initial)
     if form.is_valid():
         bateria = form.save()
+        if importacao_id.isdigit():
+            importacao = ImportacaoLog.objects.filter(pk=importacao_id).first()
+            if importacao:
+                sincronizar_ciclos_bateria(importacao)
         messages.success(request, "Bateria cadastrada com sucesso.")
         if importacao_id.isdigit():
             return redirect("telemetria_detalhe", pk=importacao_id)

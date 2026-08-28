@@ -5,6 +5,11 @@ from .models import Documento
 
 
 class DocumentoDroneForm(DocumentoArquivoMixin, forms.ModelForm):
+    # O formulário é exibido dentro da edição do drone, mas seu preenchimento
+    # é opcional. A validação normal do Django continua sendo aplicada quando
+    # o usuário informa algum dado ou seleciona um arquivo.
+    use_required_attribute = False
+
     class Meta:
         model = Documento
         fields = ["titulo", "tipo", "data_emissao", "data_validade", "arquivo", "observacoes"]

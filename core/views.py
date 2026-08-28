@@ -3,12 +3,14 @@ from datetime import date, timedelta, datetime
 import calendar as pycalendar
 import csv
 from io import BytesIO
+from xml.sax.saxutils import escape
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.core.mail import EmailMultiAlternatives
+from django.db import transaction
 from django.db.models import Exists, OuterRef, Q
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse
@@ -34,6 +36,7 @@ from .models import (
     ConfiguracaoPapelTimbrado,
     ImportacaoLog,
     SolicitacaoVoo,
+    Incidente,
 )
 from .drone_documento_forms import DocumentoDroneForm
 from .papel_timbrado import PapelTimbradoRelatorioForm, aplicar_papel_timbrado, tamanho_pagina_do_modelo
@@ -1343,11 +1346,22 @@ def drone_editar(request, pk):
     )
 
     adicionando_documento = request.method == "POST" and request.POST.get("acao") == "adicionar_documento"
+    salvando_cadastro = request.method == "POST" and request.POST.get("acao") == "salvar_drone"
+    documento_informado = salvando_cadastro and bool(
+        request.FILES.get("arquivo")
+        or request.POST.get("titulo", "").strip()
+        or request.POST.get("data_emissao", "").strip()
+        or request.POST.get("data_validade", "").strip()
+        or request.POST.get("observacoes", "").strip()
+    )
     form = DroneForm(
         None if adicionando_documento else (request.POST or None),
         instance=drone
     )
-    documento_form = DocumentoDroneForm(request.POST if adicionando_documento else None, request.FILES if adicionando_documento else None)
+    documento_form = DocumentoDroneForm(
+        request.POST if adicionando_documento or documento_informado else None,
+        request.FILES if adicionando_documento or documento_informado else None,
+    )
     documento_form.instance.drone = drone
     documento_form.instance.criado_por = request.user
 
@@ -1360,8 +1374,17 @@ def drone_editar(request, pk):
         messages.success(request, "Documento da aeronave adicionado com sucesso.")
         return redirect("drone_editar", pk=drone.pk)
 
-    if form.is_valid():
-        drone = form.save()
+    formulario_drone_valido = form.is_valid()
+    formulario_documento_valido = not documento_informado or documento_form.is_valid()
+    if formulario_drone_valido and formulario_documento_valido:
+        with transaction.atomic():
+            drone = form.save()
+            if documento_informado:
+                documento = documento_form.save(commit=False)
+                documento.drone = drone
+                documento.criado_por = request.user
+                documento.ativo = True
+                documento.save()
 
         localizacao_nova = getattr(
             drone,
@@ -1383,10 +1406,7 @@ def drone_editar(request, pk):
                 observacao="Alteração pelo formulário de edição",
             )
 
-        messages.success(
-            request,
-            "Drone atualizado com sucesso."
-        )
+        messages.success(request, "Drone e documento atualizados com sucesso." if documento_informado else "Drone atualizado com sucesso.")
 
         return redirect("drone_editar", pk=drone.pk)
 
@@ -2050,13 +2070,35 @@ def _filtrar_voos_relatorio(request):
     if drone_id:
         qs = qs.filter(drone_id=drone_id)
 
+    if not usuario_tem_visao_global(request.user):
+        if hasattr(request.user, "piloto"):
+            qs = qs.filter(piloto=request.user.piloto)
+        else:
+            qs = qs.none()
+
     return qs
 
 
-@admin_required
+def _incidentes_relatorio(request):
+    qs = Incidente.objects.select_related("alocacao__piloto", "alocacao__drone")
+    if not usuario_tem_visao_global(request.user):
+        if hasattr(request.user, "piloto"):
+            qs = qs.filter(alocacao__piloto=request.user.piloto)
+        else:
+            qs = qs.none()
+    return qs
+
+
+@login_required
 def relatorios(request):
     configuracao_timbre = ConfiguracaoPapelTimbrado.atual()
-    timbre_form = PapelTimbradoRelatorioForm(request.POST or None, request.FILES or None, instance=configuracao_timbre)
+    timbre_form = PapelTimbradoRelatorioForm(
+        request.POST or None if usuario_e_admin(request.user) else None,
+        request.FILES or None if usuario_e_admin(request.user) else None,
+        instance=configuracao_timbre,
+    )
+    if request.method == "POST" and not usuario_e_admin(request.user):
+        return HttpResponse(status=403)
     if request.method == "POST" and timbre_form.is_valid():
         configuracao = timbre_form.save(commit=False)
         configuracao.atualizado_por = request.user
@@ -2137,6 +2179,8 @@ def relatorios(request):
             ),
         })
 
+    incidentes_qs = _incidentes_relatorio(request)
+    tipo_relatorio = request.GET.get("tipo", "")
     ctx = {
         "total_voos": voos_qs.count(),
         "total_horas": round(
@@ -2149,14 +2193,16 @@ def relatorios(request):
         ),
         "por_piloto": por_piloto,
         "por_drone": por_drone,
-        "pilotos": Piloto.objects.filter(
-            ativo=True
-        ),
+        "pilotos": Piloto.objects.filter(ativo=True) if usuario_tem_visao_global(request.user) else Piloto.objects.filter(user=request.user),
         "drones": Drone.objects.all(),
         "filtros": request.GET,
         "voos_relatorio": voos_qs[:200],
         "timbre_form": timbre_form,
         "configuracao_timbre": configuracao_timbre,
+        "tipo_relatorio": tipo_relatorio,
+        "incidentes_relatorio": incidentes_qs[:200],
+        "total_incidentes": incidentes_qs.count(),
+        "piloto_logado": getattr(request.user, "piloto", None),
     }
 
     ctx.update(
@@ -2170,7 +2216,7 @@ def relatorios(request):
     )
 
 
-@admin_required
+@login_required
 def relatorios_exportar_pdf(request):
     voos_qs = _filtrar_voos_relatorio(request)
 
@@ -2347,6 +2393,38 @@ def relatorios_exportar_pdf(request):
     disposicao = "inline" if request.GET.get("modo") in {"visualizar", "imprimir"} else "attachment"
     response["Content-Disposition"] = f'{disposicao}; filename="relatorio_voos.pdf"'
     return response
+
+
+@login_required
+def relatorios_incidentes_pdf(request):
+    incidentes = list(_incidentes_relatorio(request))
+    configuracao = ConfiguracaoPapelTimbrado.atual()
+    buffer = BytesIO()
+    tamanho_pagina = tamanho_pagina_do_modelo(configuracao.modelo_relatorios, landscape(A4))
+    doc = SimpleDocTemplate(buffer, pagesize=tamanho_pagina, leftMargin=14 * mm, rightMargin=14 * mm, topMargin=32 * mm, bottomMargin=24 * mm)
+    estilos = getSampleStyleSheet()
+    titulo = ParagraphStyle("TituloIncidentes", parent=estilos["Title"], fontSize=16, leading=19, textColor=colors.HexColor("#0C2238"))
+    pequeno = ParagraphStyle("TextoIncidentes", parent=estilos["Normal"], fontSize=7, leading=9)
+    elementos = [Paragraph("Relatório de Incidentes", titulo), Spacer(1, 5 * mm)]
+    dados = [["Data", "Tipo", "Gravidade", "Piloto", "Aeronave", "Situação", "Descrição"]]
+    for incidente in incidentes:
+        dados.append([
+            incidente.data_hora.strftime("%d/%m/%Y %H:%M"), incidente.get_tipo_display(),
+            incidente.get_gravidade_display(), Paragraph(escape(incidente.alocacao.piloto.nome), pequeno),
+            Paragraph(escape(incidente.alocacao.drone.nome), pequeno), incidente.get_status_display(),
+            Paragraph(escape(incidente.descricao), pequeno),
+        ])
+    if len(dados) == 1:
+        dados.append(["—", "—", "—", "—", "—", "—", "Nenhum incidente registrado."])
+    tabela = Table(dados, repeatRows=1, colWidths=[27*mm, 33*mm, 22*mm, 38*mm, 35*mm, 27*mm, 77*mm])
+    tabela.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0C2238")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("GRID", (0, 0), (-1, -1), .35, colors.HexColor("#D8E1EB")), ("FONTSIZE", (0, 0), (-1, -1), 7), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4), ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    elementos.extend([tabela, Spacer(1, 5 * mm), Paragraph(f"Gerado pelo SISMOD em {timezone.localtime().strftime('%d/%m/%Y %H:%M')}.", pequeno)])
+    doc.build(elementos)
+    conteudo = aplicar_papel_timbrado(buffer.getvalue(), configuracao.modelo_relatorios)
+    resposta = HttpResponse(conteudo, content_type="application/pdf")
+    disposicao = "inline" if request.GET.get("modo") == "visualizar" else "attachment"
+    resposta["Content-Disposition"] = f'{disposicao}; filename="relatorio_incidentes.pdf"'
+    return resposta
 
 
 # =========================================================

@@ -15,9 +15,10 @@ from .alerta_service import gerar_alertas, gerar_regularizacoes, resumo_alertas
 from .models import (
     Alocacao, AvaliacaoRisco, Bateria, ChecklistPreVoo, Componente, ConfiguracaoPapelTimbrado, Documento, Drone, ExecucaoInspecao,
     DroneHistorico, ImportacaoLog, Incidente, Manutencao, Piloto, PlanoInspecao, PontoTelemetria,
-    MovimentacaoComponente, PlanejamentoVoo, QualificacaoPiloto, RegistroPosVoo, SolicitacaoVoo, Voo,
+    AlertaResolvido, MovimentacaoComponente, PlanejamentoVoo, QualificacaoPiloto, RegistroPosVoo, SolicitacaoVoo, Voo,
 )
 from .telemetria_service import processar_importacao
+from .telemetria_bateria_service import sincronizar_ciclos_bateria
 from .papel_timbrado import aplicar_papel_timbrado, tamanho_pagina_do_modelo
 
 
@@ -231,6 +232,24 @@ class BateriaTests(TestCase):
         self.assertEqual(resposta.status_code, 200)
         self.assertContains(resposta, "BAT-001")
 
+    def test_log_atualiza_ciclos_reais_e_conta_voo_por_serial(self):
+        piloto = Piloto.objects.create(user=self.user, nome="Piloto bateria", primeiro_acesso=False)
+        voo = Voo.objects.create(
+            data=date(2026, 8, 20), piloto=piloto, drone=self.drone,
+            finalidade="inspecao", local="Área de teste", criado_por=self.user,
+        )
+        importacao = ImportacaoLog.objects.create(
+            voo=voo, arquivo=SimpleUploadedFile("log.txt", b"log"), nome_original="log.txt",
+            status="concluida", bateria_serial_detectada="SERIE-001",
+            bateria_ciclos_detectados=37, importado_por=self.user,
+        )
+        sincronizar_ciclos_bateria(importacao)
+        self.bateria.refresh_from_db()
+        self.assertEqual(self.bateria.ciclos_detectados_log, 37)
+        self.assertEqual(self.bateria.ciclos_totais, 37)
+        self.assertEqual(self.bateria.ciclos_estimados, 13)
+        self.assertEqual(self.bateria.voos_registrados, 1)
+
 
 class PlanoInspecaoTests(TestCase):
     def setUp(self):
@@ -344,6 +363,54 @@ class CentralAlertasTests(TestCase):
             alerta["chave"] == "bateria-nova-NOVA-SERIAL-123"
             for alerta in gerar_alertas()
         ))
+
+    def test_equipamento_detectado_permanece_em_alertas_ate_ser_cadastrado(self):
+        piloto = Piloto.objects.create(nome="Piloto equipamento")
+        voo = Voo.objects.create(
+            data=timezone.localdate(), piloto=piloto, drone=self.drone,
+            finalidade="inspecao", local="Área", criado_por=self.admin,
+        )
+        ImportacaoLog.objects.create(
+            voo=voo, nome_original="payload.txt", formato="txt", status="concluida",
+            componentes_detectados=[{"origem": "Gimbal", "serial": "PAYLOAD-123", "tipo": "gimbal", "nome": "Gimbal DJI detectado"}],
+            importado_por=self.admin,
+        )
+        self.assertTrue(any(a["chave"] == "componente-novo-PAYLOAD-123" for a in gerar_alertas()))
+        Componente.objects.create(
+            codigo="EQP-PAYLOAD", nome="Zenmuse cadastrada", tipo="gimbal",
+            numero_serie="PAYLOAD-123", drone=self.drone, status="instalado", criado_por=self.admin,
+        )
+        self.assertFalse(any(a["chave"] == "componente-novo-PAYLOAD-123" for a in gerar_alertas()))
+
+    def test_camera_integrada_nao_gera_alerta_mas_payload_do_m300_gera(self):
+        piloto = Piloto.objects.create(nome="Piloto compatibilidade")
+        camera = [{"origem": "RightCamera", "serial": "CAM-FIXA", "tipo": "camera", "nome": "Câmera DJI"}]
+        for nome, modelo, deve_alertar in [
+            ("DJI Mavic 3T", "Mavic 3 Thermal", False),
+            ("DJI Mini 3 Pro", "Mini 3 Pro", False),
+            ("DJI Matrice 4T", "Matrice 4T", False),
+            ("DJI Matrice 300 RTK", "Matrice 300 RTK", True),
+        ]:
+            drone = Drone.objects.create(nome=nome, modelo=modelo)
+            voo = Voo.objects.create(
+                data=timezone.localdate(), piloto=piloto, drone=drone,
+                finalidade="inspecao", local="Área", criado_por=self.admin,
+            )
+            ImportacaoLog.objects.create(
+                voo=voo, nome_original=f"{nome}.txt", formato="txt", status="concluida",
+                componentes_detectados=camera, importado_por=self.admin,
+            )
+            existe = any(a["chave"] == "componente-novo-CAM-FIXA" for a in gerar_alertas())
+            self.assertEqual(existe, deve_alertar, nome)
+
+    def test_admin_marca_alerta_como_resolvido_sem_editar_origem(self):
+        self.client.force_login(self.admin)
+        resposta = self.client.post(reverse("alerta_resolver"), {
+            "chave": f"drone-{self.drone.pk}", "titulo": "Drone indisponível",
+        })
+        self.assertRedirects(resposta, reverse("alertas"))
+        self.assertTrue(AlertaResolvido.objects.filter(chave=f"drone-{self.drone.pk}").exists())
+        self.assertFalse(any(a["chave"] == f"drone-{self.drone.pk}" for a in gerar_alertas()))
 
 
 class SegurancaOperacionalTests(TestCase):
@@ -754,6 +821,7 @@ class ComponenteTests(TestCase):
         resposta = self.client.post(reverse("componente_editar", args=[self.item.pk]), {
             "codigo": "CAM-001", "nome": "Câmera RGB", "tipo": "camera",
             "fabricante": "Fabricante", "modelo": "X1", "numero_serie": "SER-1",
+            "localizacao": "Laboratório de Drones",
             "drone": self.drone.pk, "status": "instalado", "data_aquisicao": "",
             "data_instalacao": timezone.localdate().isoformat(), "vida_util_horas": 500,
             "observacoes": "", "motivo_movimentacao": "Instalação para missão",
@@ -763,6 +831,8 @@ class ComponenteTests(TestCase):
         self.assertEqual(movimento.drone_novo, self.drone)
         self.assertEqual(movimento.status_novo, "instalado")
         self.assertEqual(movimento.motivo, "Instalação para missão")
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.localizacao, "Laboratório de Drones")
 
     def test_qr_code_aponta_para_ficha_protegida(self):
         self.client.force_login(self.usuario)
@@ -772,6 +842,51 @@ class ComponenteTests(TestCase):
         self.assertTrue(resposta.content.startswith(b"\x89PNG"))
         ficha = self.client.get(reverse("componente_por_qr", args=[self.item.qr_token]))
         self.assertContains(ficha, "Câmera RGB")
+
+    def test_cadastro_recebe_dados_detectados_no_log(self):
+        self.client.force_login(self.admin)
+        resposta = self.client.get(reverse("componente_novo"), {
+            "numero_serie": "L1-SERIAL", "drone": self.drone.pk, "tipo": "sensor",
+            "nome": "Payload DJI detectado", "importacao": 99,
+        })
+        self.assertContains(resposta, 'value="L1-SERIAL"')
+        self.assertContains(resposta, 'value="Payload DJI detectado"')
+        self.assertContains(resposta, 'value="DJI"')
+
+
+class PlanejamentoOrdenacaoTests(TestCase):
+    def test_listagem_exibe_planejamentos_em_ordem_cronologica(self):
+        usuario = User.objects.create_user(username="piloto_ordem", password="teste123")
+        piloto = Piloto.objects.create(
+            user=usuario, nome="Piloto Ordem", primeiro_acesso=False
+        )
+        area = {
+            "type": "Polygon",
+            "coordinates": [[[-50.1, -25.1], [-50.0, -25.1], [-50.0, -25.0], [-50.1, -25.1]]],
+        }
+        comum = {
+            "piloto": piloto, "finalidade": "outro", "local": "Área",
+            "area_geojson": area, "centro_latitude": "-25.0500000",
+            "centro_longitude": "-50.0500000", "criado_por": usuario,
+        }
+        posterior = PlanejamentoVoo.objects.create(
+            titulo="Planejamento posterior", data=date(2026, 9, 10),
+            hora_inicio=time(9), hora_fim=time(10), **comum,
+        )
+        primeiro = PlanejamentoVoo.objects.create(
+            titulo="Planejamento primeiro", data=date(2026, 9, 2),
+            hora_inicio=time(14), hora_fim=time(15), **comum,
+        )
+        segundo = PlanejamentoVoo.objects.create(
+            titulo="Planejamento segundo", data=date(2026, 9, 2),
+            hora_inicio=time(16), hora_fim=time(17), **comum,
+        )
+        self.client.force_login(usuario)
+        resposta = self.client.get(reverse("planejamentos"))
+        self.assertEqual(
+            list(resposta.context["planejamentos"].values_list("pk", flat=True)),
+            [posterior.pk, segundo.pk, primeiro.pk],
+        )
 
 
 class PermissoesOperacionaisTests(TestCase):
@@ -861,8 +976,10 @@ class PermissoesOperacionaisTests(TestCase):
     def test_menu_oculta_areas_exclusivas_de_administradores(self):
         self.client.force_login(self.usuario)
         resposta = self.client.get(reverse("dashboard"))
-        for nome_rota in ["manutencoes", "planos_inspecao", "documentos", "pilotos", "relatorios", "alertas"]:
+        for nome_rota in ["manutencoes", "planos_inspecao", "documentos", "pilotos", "alertas"]:
             self.assertNotContains(resposta, f'href="{reverse(nome_rota)}"')
+        self.assertContains(resposta, f'href="{reverse("relatorios")}"')
+        self.assertNotContains(resposta, f'href="{reverse("incidentes")}"')
 
     def test_calendario_oculta_acoes_de_reservas_de_outro_piloto(self):
         outro_user = User.objects.create_user(username="outro_calendario", password="teste123")
@@ -1057,10 +1174,84 @@ class PerfilUsuarioTests(TestCase):
             "data_emissao": "", "data_validade": "", "observacoes": "Documento do piloto",
             "arquivo": arquivo,
         })
-        self.assertRedirects(resposta, reverse("perfil_usuario", args=[self.piloto.pk]))
+        self.assertRedirects(resposta, reverse("perfil_operacional", args=[self.piloto.pk]))
         documento = Documento.objects.get(piloto=self.piloto)
         self.assertEqual(documento.titulo, "Certificado geral")
         self.assertEqual(documento.criado_por, self.usuario)
+        perfil_pessoal = self.client.get(reverse("perfil_usuario", args=[self.piloto.pk]))
+        self.assertNotContains(perfil_pessoal, "Documentos do usuário")
+        experiencia = self.client.get(reverse("perfil_operacional", args=[self.piloto.pk]))
+        self.assertContains(experiencia, "Qualificações Operacionais")
+        self.assertContains(experiencia, "Certificado geral")
+
+    def test_documento_operacional_controla_datas_por_checkbox(self):
+        self.client.force_login(self.usuario)
+        resposta = self.client.get(reverse("perfil_operacional", args=[self.piloto.pk]))
+        self.assertContains(resposta, "operational-document-form")
+        self.assertContains(resposta, 'name="possui_data_emissao"')
+        self.assertContains(resposta, 'name="possui_data_validade"')
+        arquivo = SimpleUploadedFile("curso.pdf", b"arquivo de teste", content_type="application/pdf")
+        resposta = self.client.post(reverse("documento_perfil_novo", args=[self.piloto.pk]), {
+            "titulo": "Curso com validade", "tipo": "treinamento", "numero": "CURSO-1",
+            "possui_data_emissao": "on", "data_emissao": "2026-08-01",
+            "possui_data_validade": "on", "data_validade": "2027-08-01",
+            "observacoes": "", "arquivo": arquivo,
+        })
+        self.assertRedirects(resposta, reverse("perfil_operacional", args=[self.piloto.pk]))
+        documento = Documento.objects.get(titulo="Curso com validade")
+        self.assertEqual(documento.data_emissao, date(2026, 8, 1))
+        self.assertEqual(documento.data_validade, date(2027, 8, 1))
+
+    def test_usuario_edita_propria_qualificacao_operacional(self):
+        documento = Documento.objects.create(
+            titulo="Curso inicial", tipo="treinamento", numero="CURSO-10",
+            piloto=self.piloto, criado_por=self.usuario,
+        )
+        self.client.force_login(self.usuario)
+        perfil = self.client.get(reverse("perfil_operacional", args=[self.piloto.pk]))
+        self.assertContains(perfil, reverse("documento_perfil_editar", args=[documento.pk]))
+        resposta = self.client.post(reverse("documento_perfil_editar", args=[documento.pk]), {
+            "titulo": "Curso atualizado", "tipo": "habilitacao", "numero": "CURSO-11",
+            "possui_data_emissao": "on", "data_emissao": "2026-08-10",
+            "possui_data_validade": "on", "data_validade": "2027-08-10",
+            "observacoes": "Atualizado pelo titular",
+        })
+        self.assertRedirects(resposta, reverse("perfil_operacional", args=[self.piloto.pk]))
+        documento.refresh_from_db()
+        self.assertEqual(documento.titulo, "Curso atualizado")
+        self.assertEqual(documento.numero, "CURSO-11")
+        self.assertEqual(documento.data_validade, date(2027, 8, 10))
+
+    def test_usuario_nao_edita_qualificacao_de_outro_piloto(self):
+        outro_usuario = User.objects.create_user(username="outro_perfil", password="teste123")
+        outro_piloto = Piloto.objects.create(user=outro_usuario, nome="Outro Piloto", primeiro_acesso=False)
+        documento = Documento.objects.create(
+            titulo="Documento alheio", tipo="treinamento", piloto=outro_piloto,
+            criado_por=outro_usuario,
+        )
+        self.client.force_login(self.usuario)
+        resposta = self.client.get(reverse("documento_perfil_editar", args=[documento.pk]))
+        self.assertRedirects(resposta, reverse("dashboard"))
+
+    def test_usuario_gera_relatorio_do_proprio_perfil(self):
+        self.client.force_login(self.usuario)
+        resposta = self.client.get(reverse("perfil_operacional_pdf", args=[self.piloto.pk]))
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(resposta["Content-Type"], "application/pdf")
+        self.assertTrue(resposta.content.startswith(b"%PDF"))
+        self.assertIn("attachment", resposta["Content-Disposition"])
+
+    def test_central_de_relatorios_exibe_tipos_para_usuario(self):
+        self.client.force_login(self.usuario)
+        resposta = self.client.get(reverse("relatorios"))
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "Relatório operacional")
+        self.assertContains(resposta, "Perfil operacional")
+        self.assertContains(resposta, "Relatório de incidentes")
+        incidentes = self.client.get(reverse("relatorios_incidentes_pdf"))
+        self.assertEqual(incidentes.status_code, 200)
+        self.assertEqual(incidentes["Content-Type"], "application/pdf")
+        self.assertTrue(incidentes.content.startswith(b"%PDF"))
 
 
 class DocumentoDroneCadastroTests(TestCase):
@@ -1093,6 +1284,39 @@ class DocumentoDroneCadastroTests(TestCase):
         self.assertRedirects(resposta, reverse("drone_editar", args=[self.drone.pk]))
         documento.refresh_from_db()
         self.assertFalse(documento.ativo)
+
+    def test_salva_alteracoes_do_drone_e_documento_no_mesmo_envio(self):
+        self.client.force_login(self.admin)
+        arquivo = SimpleUploadedFile("seguro.pdf", b"seguro atualizado", content_type="application/pdf")
+        resposta = self.client.post(reverse("drone_editar", args=[self.drone.pk]), {
+            "acao": "salvar_drone", "nome": "Drone Atualizado", "prefixo": "DR-02",
+            "modelo": "Modelo Y", "numero_serie": "SERIE-2", "localizacao": "Hangar 2",
+            "status": "ativo", "titulo": "Seguro aeronáutico", "tipo": "seguro",
+            "data_emissao": "2026-08-10", "data_validade": "2027-08-10",
+            "observacoes": "Apólice vigente", "arquivo": arquivo,
+        })
+        self.assertRedirects(resposta, reverse("drone_editar", args=[self.drone.pk]))
+        self.drone.refresh_from_db()
+        self.assertEqual(self.drone.nome, "Drone Atualizado")
+        self.assertEqual(self.drone.modelo, "Modelo Y")
+        documento = Documento.objects.get(drone=self.drone, titulo="Seguro aeronáutico")
+        self.assertEqual(documento.data_validade, date(2027, 8, 10))
+
+    def test_edita_drone_sem_exigir_documento(self):
+        self.client.force_login(self.admin)
+        pagina = self.client.get(reverse("drone_editar", args=[self.drone.pk]))
+        self.assertNotContains(pagina, 'name="titulo" required')
+        self.assertNotContains(pagina, 'name="arquivo" required')
+        resposta = self.client.post(reverse("drone_editar", args=[self.drone.pk]), {
+            "acao": "salvar_drone", "nome": "Drone sem novo documento", "prefixo": "DR-03",
+            "modelo": "Modelo X2", "numero_serie": "", "localizacao": "Hangar 3",
+            "status": "ativo", "titulo": "", "tipo": "registro_drone",
+            "data_emissao": "", "data_validade": "", "observacoes": "",
+        })
+        self.assertRedirects(resposta, reverse("drone_editar", args=[self.drone.pk]))
+        self.drone.refresh_from_db()
+        self.assertEqual(self.drone.nome, "Drone sem novo documento")
+        self.assertFalse(Documento.objects.filter(drone=self.drone).exists())
 
 
 class PapelTimbradoTests(TestCase):

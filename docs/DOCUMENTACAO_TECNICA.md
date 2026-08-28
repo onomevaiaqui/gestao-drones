@@ -102,9 +102,15 @@ gestao_drones/
 ### Autenticação e perfis
 
 - login e primeiro acesso;
-- alteração de senha e edição do próprio perfil, foto, CPF, código SARPAS e documentos;
+- alteração de senha e edição do perfil pessoal, foto, CPF, matrícula e código SARPAS;
+- habilitações, certificados, cursos e registros estruturados anteriores são apresentados em uma única seção chamada **Qualificações Operacionais**;
+- o piloto cadastra a qualificação anexando o comprovante e escolhendo uma classificação existente; emissão e validade são opcionais e controladas por seleções independentes;
+- os relatórios não ficam dentro do perfil: a central **Relatórios**, em Segurança e conformidade, reúne relatório operacional, perfil operacional individual e relatório de incidentes;
+- o próprio piloto e o administrador podem baixar ou visualizar o PDF individual, contendo identificação, experiência comprovada por telemetria, qualificações e documentos;
 - administrador pode escolher o modo Administrador, Coordenador ou Usuário no mesmo login;
 - coordenador nativo entra diretamente no modo de consulta.
+
+A identidade visual do menu autenticado reutiliza a mesma marca institucional branca apresentada na tela de login.
 
 ### Dashboard
 
@@ -144,6 +150,41 @@ Regras comuns:
 
 As validações de período e conflito são únicas para formulário de reserva, calendário e liberação. A situação temporal da reserva também é a única fonte para atualizar automaticamente a disponibilidade do drone. Isso evita que telas diferentes interpretem a mesma operação de maneiras distintas.
 
+### Cadastro da frota
+
+- na edição de uma aeronave, alterações cadastrais e um novo documento são enviados pelo mesmo formulário;
+- a gravação é atômica: drone e documento são salvos juntos, evitando atualização parcial;
+- se houver erro no documento, os dados digitados no cadastro permanecem preenchidos para correção antes do novo envio;
+- documentos já cadastrados continuam listados e podem ser consultados ou removidos separadamente.
+
+### Baterias e ciclos
+
+- o número de série do Flight Record vincula automaticamente cada uso à bateria cadastrada;
+- voos detectados são contados pelos logs concluídos e distintos, sem depender de lançamento manual no pós-voo;
+- quando o parser DJI fornece `BATTERY.cycleCount`, o SISMOD grava o contador real mais recente da própria bateria;
+- ciclos anteriores informados manualmente e voos detectados formam uma estimativa separada, usada somente quando o log não fornece o contador real;
+- a interface identifica claramente a origem como **ciclos reais pelo log** ou **ciclos estimados**; um voo não é apresentado como se fosse necessariamente um ciclo completo;
+- o comando `python manage.py sincronizar_ciclos_baterias` relê, sem modificar a telemetria, os logs existentes das baterias ainda sem contador detectado.
+
+### Equipamentos detectados nos logs
+
+- equipamentos e componentes possuem localização física opcional, exibida no inventário e pesquisável pelo filtro geral;
+- Flight Records DJI podem fornecer seriais de câmera/payload, gimbal, RTK e outros componentes reconhecidos pelo parser;
+- cada serial é armazenado na importação e comparado com o inventário de equipamentos;
+- antes do alerta, o sistema verifica a plataforma: câmeras/gimbals integrados das famílias Mavic 3, Mini 3/4, Matrice 4 e Matrice 30 não exigem cadastro separado; no Matrice 300/350 são tratados como payloads intercambiáveis;
+- módulos RTK detectados continuam cadastráveis, enquanto controles remotos são ignorados porque não são payloads da aeronave;
+- em modelos ainda não classificados, o aviso é preservado para não ocultar um equipamento real;
+- um serial destacável ainda não cadastrado gera alerta persistente na central e na telemetria até o administrador concluir o cadastro;
+- o formulário abre com serial, fabricante, aeronave, tipo e nome genérico já preenchidos; o administrador confirma o nome comercial, como Zenmuse L1 ou Manifold, quando o log não o informa;
+- o cadastro por serial elimina o alerta sem criar automaticamente um equipamento potencialmente incorreto;
+- `python manage.py sincronizar_componentes_logs` relê logs existentes e preenche apenas os metadados de acessórios, sem alterar pontos GPS ou trajetos.
+
+Na Central de Alertas, **Resolver** abre a origem da pendência para correção. O botão **Resolvido** encerra o alerta imediatamente e registra a chave, o administrador e a data da ação, sem exigir a edição do cadastro de origem.
+
+O piloto pode adicionar e editar as próprias qualificações operacionais, incluindo classificação, referência, datas, comprovante e observações. A verificação de propriedade impede a alteração de qualificações pertencentes a outro usuário; administradores mantêm acesso global.
+
+Limitação: nem todo firmware registra acessórios externos, e o Flight Record frequentemente informa apenas a categoria e o serial, não o nome comercial. Assim, a ausência do Manifold ou de outro payload no log não comprova que ele não foi utilizado.
+
 ### Organização da navegação operacional
 
 O menu segue o ciclo de trabalho, sem criar registros paralelos:
@@ -151,6 +192,16 @@ O menu segue o ciclo de trabalho, sem criar registros paralelos:
 1. **Visão geral:** dashboard e agenda;
 2. **Preparação:** planejamentos, reservas e calendário;
 3. **Operações realizadas:** voos comprovados e logs/telemetria.
+
+Na listagem de planejamentos, as operações são apresentadas da data e horário mais recentes para os mais antigos, mantendo os registros atuais no topo.
+
+Ao selecionar um arquivo KML ou KMZ no formulário, o polígono é interpretado e exibido imediatamente no mapa, sem exigir o salvamento prévio. O piloto pode conferir ou ajustar a geometria antes de consultar a previsão.
+
+Após salvar e consultar, a análise aeronáutica elimina aeródromos e helipontos que não intersectem a zona de triagem aplicável ao polígono e mantém apenas interseções com FRZ/EAC. Itens que exigem coordenação recebem marcador **T** no mapa e no cartão. O piloto pode abrir um Termo de Coordenação vinculado à condicionante, preencher os blocos do modelo oficial do DECEA e baixar o PDF para assinatura e envio no SARPAS. Áreas proibidas permanecem impeditivas: o termo não substitui a proibição.
+
+O comando `python manage.py atualizar_condicionantes_planejamentos` reaplica essa regra aos planejamentos antigos, preservando geometria, meteorologia e SISCLATEN. Para atualizar apenas um registro, use `--planejamento ID`.
+
+Em **Segurança e conformidade**, a navegação principal aponta para a central de relatórios. A gestão de incidentes continua disponível a partir do relatório de incidentes, evitando dois itens concorrentes no menu lateral.
 
 O registro manual de voo permanece disponível internamente por compatibilidade administrativa, mas não é apresentado como ação principal. A ação normal para comprovar um voo é importar a telemetria vinculada à reserva.
 

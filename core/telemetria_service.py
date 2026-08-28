@@ -139,6 +139,33 @@ def _processar_dji(importacao, bruto):
     importacao.drone_modelo_detectado = (detalhes.aircraft_name or ultimo.recover.aircraft_name or "")[:120]
     importacao.drone_serial_detectado = (detalhes.aircraft_sn or ultimo.recover.aircraft_sn or "")[:100]
     importacao.bateria_serial_detectada = (ultimo.battery.battery_serial or ultimo.recover.battery_sn or "")[:100]
+    ciclos_detectados = [frame.battery.cycle_count for frame in frames if frame.battery.cycle_count is not None]
+    importacao.bateria_ciclos_detectados = max(ciclos_detectados) if ciclos_detectados else None
+    from dji_flightlog_parser.record.component_serial import ComponentSerial
+    mapa_componentes = {
+        "Gimbal": ("gimbal", "Gimbal DJI detectado"),
+        "RightCamera": ("camera", "Câmera direita / payload DJI"),
+        "LeftCamera": ("camera", "Câmera esquerda / payload DJI"),
+        "RTK": ("sensor", "Módulo RTK DJI"),
+        "UNKNOWN": ("acessorio", "Acessório DJI detectado"),
+    }
+    componentes, seriais_componentes = [], set()
+    for registro in getattr(log, "_last_records", []) or []:
+        if not isinstance(registro.data, ComponentSerial) or not registro.data.serial:
+            continue
+        origem = registro.data.component_type.name
+        if origem not in mapa_componentes:
+            continue
+        serial = registro.data.serial.strip()[:100]
+        if not serial or serial in seriais_componentes:
+            continue
+        tipo, nome = mapa_componentes[origem]
+        componentes.append({"origem": origem, "serial": serial, "tipo": tipo, "nome": nome})
+        seriais_componentes.add(serial)
+    camera_serial = (detalhes.camera_sn or ultimo.recover.camera_sn or "").strip()[:100]
+    if camera_serial and not any(item["tipo"] == "camera" for item in componentes):
+        componentes.append({"origem": "Camera", "serial": camera_serial, "tipo": "camera", "nome": "Câmera / payload DJI"})
+    importacao.componentes_detectados = componentes
     importacao.colunas_reconhecidas = [
         "tempo", "gps", "altitude", "velocidade", "bateria", "satelites", "sinal", "alertas"
     ]
@@ -251,6 +278,8 @@ def _concluir_importacao(importacao, pontos, atualizar_voo):
     importacao.status = "concluida"
     importacao.mensagem_erro = ""
     importacao.save()
+    from .telemetria_bateria_service import sincronizar_ciclos_bateria
+    sincronizar_ciclos_bateria(importacao)
     if atualizar_voo:
         voo = _destinar_importacao_ao_voo_da_data(importacao)
         _recalcular_voo_pelos_logs(voo)

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Editar qualificação operacional{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Editar qualificação operacional</h1><p>{{ piloto.nome }}</p></div><a class="btn btn-light" href="{% url 'perfil_operacional' piloto.pk %}">Voltar</a></div>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}
+{% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+<div class="panel"><div class="profile-document-grid">
+<div class="mb-3"><label class="form-label">Nome da qualificação</label>{{ form.titulo }}{{ form.titulo.errors }}</div>
+<div class="mb-3"><label class="form-label">Classificação</label>{{ form.tipo }}{{ form.tipo.errors }}</div>
+<div class="mb-3"><label class="form-label">Número / referência</label>{{ form.numero }}{{ form.numero.errors }}</div>
+<div class="date-option-field"><label class="form-check">{{ form.possui_data_emissao }} <span>{{ form.possui_data_emissao.label }}</span></label>{{ form.data_emissao }}{{ form.data_emissao.errors }}</div>
+<div class="date-option-field"><label class="form-check">{{ form.possui_data_validade }} <span>{{ form.possui_data_validade.label }}</span></label>{{ form.data_validade }}{{ form.data_validade.errors }}</div>
+<div class="mb-3 wide"><label class="form-label">Documento comprobatório</label>{{ form.arquivo }}{{ form.arquivo.errors }}{% if documento.arquivo %}<div class="text-muted small mt-1">O arquivo atual será mantido caso nenhum novo seja selecionado.</div>{% endif %}</div>
+<div class="mb-3 wide"><label class="form-label">Observações</label>{{ form.observacoes }}{{ form.observacoes.errors }}</div>
+</div></div>
+<div class="form-actions"><a class="btn btn-light" href="{% url 'perfil_operacional' piloto.pk %}">Cancelar</a><button class="btn btn-primary" type="submit">Salvar alterações</button></div>
+</form>
+{% endblock %}
+{% block scripts %}<script>function atualizarData(tipo){const check=document.querySelector('[data-date-toggle="'+tipo+'"]');const data=document.getElementById('id_data_'+tipo);if(!check||!data)return;data.disabled=!check.checked;if(!check.checked)data.value='';}['emissao','validade'].forEach(function(tipo){const check=document.querySelector('[data-date-toggle="'+tipo+'"]');if(check){check.addEventListener('change',function(){atualizarData(tipo)});atualizarData(tipo);}});</script>{% endblock %}

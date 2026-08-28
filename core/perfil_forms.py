@@ -33,9 +33,36 @@ class PerfilUsuarioForm(forms.ModelForm):
 
 
 class DocumentoPerfilForm(DocumentoArquivoMixin, forms.ModelForm):
+    possui_data_emissao = forms.BooleanField(
+        required=False,
+        label="Possui data de emissão",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input", "data-date-toggle": "emissao"}),
+    )
+    possui_data_validade = forms.BooleanField(
+        required=False,
+        label="Possui data de validade",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input", "data-date-toggle": "validade"}),
+    )
+
     class Meta:
         model = Documento
         fields = ["titulo", "tipo", "numero", "data_emissao", "data_validade", "arquivo", "observacoes"]
         widgets = {campo: DOCUMENTO_WIDGETS[campo] for campo in (
             "titulo", "tipo", "numero", "data_emissao", "data_validade", "arquivo", "observacoes"
         )}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["possui_data_emissao"].initial = bool(self.instance and self.instance.data_emissao)
+        self.fields["possui_data_validade"].initial = bool(self.instance and self.instance.data_validade)
+
+    def clean(self):
+        dados = super().clean()
+        for sufixo in ("emissao", "validade"):
+            campo_data = f"data_{sufixo}"
+            campo_opcao = f"possui_data_{sufixo}"
+            if dados.get(campo_opcao) and not dados.get(campo_data):
+                self.add_error(campo_data, "Informe a data ou desmarque esta opção.")
+            elif not dados.get(campo_opcao):
+                dados[campo_data] = None
+        return dados

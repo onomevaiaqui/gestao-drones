@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .models import Bateria, ImportacaoLog, Voo
+from .models import Bateria, Componente, ImportacaoLog, Voo
 from .telemetria_forms import ImportacaoLogForm
 from .telemetria_service import processar_importacao
 from .views import _base_context, _sincronizar_voo_com_calendario, usuario_e_admin, usuario_e_coordenador, usuario_tem_visao_global
@@ -196,12 +196,29 @@ def telemetria_detalhe(request, pk):
         bateria_detectada = Bateria.objects.filter(
             numero_serie=importacao.bateria_serial_detectada
         ).first()
+    from .compatibilidade_componentes import componente_exige_cadastro
+    componentes_detectados = []
+    for detectado in importacao.componentes_detectados or []:
+        serial = str(detectado.get("serial") or "").strip()
+        cadastrado = Componente.objects.filter(numero_serie=serial).first() if serial else None
+        exige_cadastro, motivo_filtro = componente_exige_cadastro(
+            importacao.voo.drone, detectado, importacao.drone_modelo_detectado
+        )
+        componentes_detectados.append({
+            **detectado, "cadastrado": cadastrado,
+            "exige_cadastro": exige_cadastro, "motivo_filtro": motivo_filtro,
+        })
     ctx = {
         "importacao": importacao, "amostra_minutos": _resumir_pontos_por_minuto(pontos), "rota": rota,
         "alertas_mapa": alertas_mapa, "duracao_formatada": duracao,
         "data_voo": data_voo,
         "bateria_detectada": bateria_detectada,
         "bateria_serial_nova": bool(importacao.bateria_serial_detectada and not bateria_detectada),
+        "componentes_log": componentes_detectados,
+        "componentes_novos": [
+            item for item in componentes_detectados
+            if item["exige_cadastro"] and not item["cadastrado"]
+        ],
     }
     ctx.update(_base_context(request))
     return render(request, "telemetria/detalhe.html", ctx)

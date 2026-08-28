@@ -4,7 +4,8 @@ from urllib.parse import urlencode
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Alocacao, AvaliacaoRisco, Bateria, Documento, Drone, ImportacaoLog, Incidente, Manutencao, PlanoInspecao, QualificacaoPiloto
+from .compatibilidade_componentes import componente_exige_cadastro
+from .models import AlertaResolvido, Alocacao, AvaliacaoRisco, Bateria, Componente, Documento, Drone, ImportacaoLog, Incidente, Manutencao, PlanoInspecao, QualificacaoPiloto
 
 
 ORDEM_PRIORIDADE = {"critico": 0, "alto": 1, "medio": 2, "baixo": 3}
@@ -106,6 +107,31 @@ def gerar_alertas():
             importacao.voo.data,
         )
 
+    componentes_cadastrados = set(
+        Componente.objects.exclude(numero_serie="").values_list("numero_serie", flat=True)
+    )
+    componentes_alertados = set()
+    for importacao in ImportacaoLog.objects.filter(status="concluida").exclude(componentes_detectados=[]).select_related("voo__drone"):
+        for detectado in importacao.componentes_detectados or []:
+            serial = str(detectado.get("serial") or "").strip()
+            exige_cadastro, _ = componente_exige_cadastro(
+                importacao.voo.drone, detectado, importacao.drone_modelo_detectado
+            )
+            if not exige_cadastro or not serial or serial in componentes_cadastrados or serial in componentes_alertados:
+                continue
+            componentes_alertados.add(serial)
+            parametros = urlencode({
+                "numero_serie": serial, "drone": importacao.voo.drone_id,
+                "tipo": detectado.get("tipo", "acessorio"),
+                "nome": detectado.get("nome", "Acessório DJI detectado"),
+                "importacao": importacao.pk,
+            })
+            adicionar(
+                "Equipamentos", "alto", f"Novo equipamento identificado: {serial}",
+                f"{detectado.get('nome', 'Acessório DJI')} detectado no {importacao.voo.drone.nome}; cadastro pendente.",
+                f"{reverse('componente_novo')}?{parametros}", f"componente-novo-{serial}", importacao.voo.data,
+            )
+
     for drone in Drone.objects.exclude(status__in=["ativo", "em_campo"]):
         prioridade = "critico" if drone.status == "indisponivel" else "alto"
         adicionar("Frota", prioridade, f"Drone {drone.get_status_display().lower()}: {drone.nome}", drone.modelo, reverse("drone_historico", args=[drone.pk]), f"drone-{drone.pk}")
@@ -137,6 +163,8 @@ def gerar_alertas():
         elif qualificacao.situacao == "vencendo":
             adicionar("Pilotos", "alto", f"Qualificação próxima do vencimento: {qualificacao.piloto.nome}", f"{qualificacao.nome} · {qualificacao.dias_para_vencer} dia(s)", reverse("perfil_operacional", args=[qualificacao.piloto_id]), f"qualificacao-{qualificacao.pk}", qualificacao.data_validade)
 
+    chaves_resolvidas = set(AlertaResolvido.objects.values_list("chave", flat=True))
+    alertas = [alerta for alerta in alertas if alerta["chave"] not in chaves_resolvidas]
     alertas.sort(key=lambda a: (ORDEM_PRIORIDADE[a["prioridade"]], a["data"] or hoje, a["titulo"]))
     return alertas
 

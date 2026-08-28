@@ -3,6 +3,21 @@
 from .models import Bateria
 
 
+def sincronizar_ciclos_bateria(importacao):
+    """Atualiza o contador real somente quando serial e cycleCount vierem do log."""
+    serial = (importacao.bateria_serial_detectada or "").strip()
+    ciclos = importacao.bateria_ciclos_detectados
+    if not serial or ciclos is None:
+        return None
+    bateria = Bateria.objects.filter(numero_serie=serial).first()
+    if bateria is None:
+        return None
+    if bateria.ciclos_detectados_log is None or ciclos > bateria.ciclos_detectados_log:
+        bateria.ciclos_detectados_log = ciclos
+        bateria.save(update_fields=["ciclos_detectados_log", "atualizado_em"])
+    return bateria
+
+
 def seriais_bateria_do_voo(voo):
     return list(
         voo.importacoes_log.filter(status="concluida")

@@ -6,6 +6,7 @@ from django.views.decorators.http import require_POST
 from django.http import JsonResponse
 from django.http import HttpResponse
 from django.core.cache import cache
+from django.urls import reverse
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import json
@@ -13,9 +14,12 @@ import hashlib
 from django.utils.text import slugify
 from xml.sax.saxutils import escape
 
-from .models import Alocacao, PlanejamentoVoo, Piloto, SolicitacaoVoo
+from .models import Alocacao, PlanejamentoVoo, Piloto, SolicitacaoVoo, TermoCoordenacao
 from .operacao_service import normalizar_finalidade
 from .planejamento_forms import PlanejamentoVooForm
+from .planejamento_kml import extrair_poligono_kml
+from .termo_coordenacao_forms import TermoCoordenacaoForm
+from .termo_coordenacao_pdf import gerar_termo_coordenacao_pdf
 from .planejamento_service import consultar_previsao
 from .planejamento_aeronautico_service import consultar_condicionantes_aeronauticas, camadas_aeronauticas_bbox
 from .planejamento_sisclaten import classificar_sisclaten
@@ -23,7 +27,9 @@ from .views import _base_context, usuario_e_admin, usuario_e_coordenador, usuari
 
 
 def _planejamentos_visiveis(request):
-    qs = PlanejamentoVoo.objects.select_related("piloto", "criado_por")
+    qs = PlanejamentoVoo.objects.select_related("piloto", "criado_por").order_by(
+        "-data", "-hora_inicio", "-pk"
+    )
     if usuario_tem_visao_global(request.user):
         return qs
     return qs.filter(piloto__user=request.user)
@@ -65,6 +71,76 @@ def planejamentos(request):
     ctx = {"planejamentos": _planejamentos_visiveis(request)}
     ctx.update(_base_context(request))
     return render(request, "planejamentos/lista.html", ctx)
+
+
+@login_required
+@require_POST
+def planejamento_visualizar_arquivo(request):
+    arquivo = request.FILES.get("arquivo_area")
+    if not arquivo:
+        return JsonResponse({"erro": "Selecione um arquivo KML ou KMZ."}, status=400)
+    try:
+        geometria = extrair_poligono_kml(arquivo)
+    except (TypeError, ValueError) as erro:
+        return JsonResponse({"erro": str(erro)}, status=400)
+    return JsonResponse({"geometria": geometria})
+
+
+def _referencia_coordenacao(planejamento, tipo, referencia):
+    itens = (planejamento.resumo_meteorologico or {}).get("aeronautica", {}).get("itens", [])
+    return next((item for item in itens if item.get("necessita_termo") and str(item.get("tipo")) == tipo and str(item.get("id") or "") == referencia), None)
+
+
+@login_required
+def planejamento_termo_coordenacao(request, pk):
+    planejamento = get_object_or_404(_planejamentos_editaveis(request), pk=pk)
+    tipo = request.GET.get("tipo", "").strip()[:30]
+    referencia = request.GET.get("ref", "").strip()[:80]
+    item = _referencia_coordenacao(planejamento, tipo, referencia)
+    if not item:
+        messages.error(request, "A condicionante selecionada não exige Termo de Coordenação nesta análise.")
+        return redirect("planejamento_detalhe", pk=planejamento.pk)
+    coordenadas = planejamento.area_geojson.get("coordinates", [[]])[0]
+    texto_coordenadas = "; ".join(f"{float(lat):.7f}, {float(lon):.7f}" for lon, lat in coordenadas)
+    defaults = {
+        "referencia_nome": item.get("nome", ""), "operador_nome": planejamento.piloto.nome,
+        "operador_email": planejamento.piloto.user.email if planejamento.piloto.user_id else "",
+        "operador_sarpas": planejamento.piloto.codigo_sarpas, "local_codigo": referencia,
+        "local_natureza": f"{tipo.title()} - {item.get('nome', '')}",
+        "limites_verticais": f"Solo até {planejamento.altura_maxima_m} m AGL",
+        "limites_laterais": planejamento.local,
+        "coordenadas_wgs84": texto_coordenadas,
+        "objetivo_operacao": planejamento.get_finalidade_display(),
+        "periodo_operacao": f"{planejamento.data:%d/%m/%Y} a {planejamento.data_final:%d/%m/%Y}",
+        "horarios_operacao": f"{planejamento.hora_inicio:%H:%M} a {planejamento.hora_fim:%H:%M}",
+        "operacao_observacoes": planejamento.observacoes,
+        "representante_operador": planejamento.piloto.nome, "atualizado_por": request.user,
+    }
+    termo, _ = TermoCoordenacao.objects.get_or_create(
+        planejamento=planejamento, referencia_tipo=tipo, referencia_id=referencia,
+        defaults=defaults,
+    )
+    form = TermoCoordenacaoForm(request.POST or None, instance=termo)
+    if form.is_valid():
+        termo = form.save(commit=False)
+        termo.atualizado_por = request.user
+        termo.save()
+        messages.success(request, "Termo de Coordenação salvo.")
+        destino = reverse("planejamento_termo_coordenacao", args=[planejamento.pk])
+        return redirect(f"{destino}?{urlencode({'tipo': tipo, 'ref': referencia})}")
+    ctx = {"planejamento": planejamento, "termo": termo, "item": item, "form": form}
+    ctx.update(_base_context(request))
+    return render(request, "planejamentos/termo_coordenacao.html", ctx)
+
+
+@login_required
+def planejamento_termo_coordenacao_pdf(request, pk):
+    termo = get_object_or_404(TermoCoordenacao.objects.select_related("planejamento__piloto__user"), pk=pk)
+    if not usuario_tem_visao_global(request.user) and termo.planejamento.piloto.user_id != request.user.id:
+        return HttpResponse(status=403)
+    resposta = HttpResponse(gerar_termo_coordenacao_pdf(termo), content_type="application/pdf")
+    resposta["Content-Disposition"] = f'attachment; filename="termo-coordenacao-{termo.referencia_id}.pdf"'
+    return resposta
 
 
 def _form_planejamento(request, obj=None):

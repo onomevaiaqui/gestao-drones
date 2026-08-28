@@ -526,6 +526,61 @@ class PlanejamentoVoo(models.Model):
     def data_final(self):
         return self.data_fim or self.data
 
+
+class TermoCoordenacao(models.Model):
+    TIPO_OPERACAO_CHOICES = [("VLOS", "VLOS"), ("EVLOS", "EVLOS"), ("BVLOS", "BVLOS")]
+    planejamento = models.ForeignKey(PlanejamentoVoo, on_delete=models.CASCADE, related_name="termos_coordenacao")
+    referencia_tipo = models.CharField(max_length=30)
+    referencia_id = models.CharField(max_length=80)
+    referencia_nome = models.CharField(max_length=180, blank=True)
+    operador_nome = models.CharField(max_length=180)
+    operador_endereco = models.CharField(max_length=255, blank=True)
+    operador_telefone = models.CharField(max_length=50, blank=True)
+    operador_email = models.EmailField(blank=True)
+    operador_sarpas = models.CharField(max_length=80, blank=True)
+    responsavel_nome = models.CharField(max_length=180, blank=True)
+    responsavel_funcao = models.CharField(max_length=120, blank=True)
+    responsavel_endereco = models.CharField(max_length=255, blank=True)
+    responsavel_telefone = models.CharField(max_length=50, blank=True)
+    responsavel_email = models.EmailField(blank=True)
+    local_codigo = models.CharField(max_length=80, blank=True)
+    local_natureza = models.CharField(max_length=160, blank=True)
+    local_funcionamento = models.CharField(max_length=160, blank=True)
+    local_observacoes = models.TextField(blank=True)
+    limites_verticais = models.CharField(max_length=180, blank=True)
+    limites_laterais = models.TextField(blank=True)
+    coordenadas_wgs84 = models.TextField(blank=True)
+    objetivo_operacao = models.CharField(max_length=255)
+    periodo_operacao = models.CharField(max_length=120)
+    frequencia_duracao = models.CharField(max_length=160, blank=True)
+    horarios_operacao = models.CharField(max_length=120)
+    tipo_operacao = models.CharField(max_length=10, choices=TIPO_OPERACAO_CHOICES, default="VLOS")
+    operacao_observacoes = models.TextField(blank=True)
+    contato_previo = models.BooleanField(null=True)
+    informar_inicio_termino = models.BooleanField(null=True)
+    pessoal_dedicado_contatos = models.BooleanField(null=True)
+    suspensao_por_seguranca = models.BooleanField(null=True)
+    informar_contingencia = models.BooleanField(null=True)
+    procedimentos_emergencia = models.BooleanField(null=True)
+    descricao_coordenacao = models.TextField(blank=True)
+    validade_meses = models.PositiveSmallIntegerField(default=1)
+    local_assinatura = models.CharField(max_length=120, blank=True)
+    data_assinatura = models.DateField(null=True, blank=True)
+    representante_operador = models.CharField(max_length=180, blank=True)
+    representante_ats = models.CharField(max_length=180, blank=True)
+    atualizado_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="termos_coordenacao_atualizados")
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=["planejamento", "referencia_tipo", "referencia_id"],
+            name="termo_coordenacao_referencia_unica",
+        )]
+        ordering = ["referencia_tipo", "referencia_id"]
+
+    def __str__(self):
+        return f"TCo {self.referencia_id} - {self.planejamento}"
+
 class SolicitacaoVoo(models.Model):
     STATUS_CHOICES = [
         ("solicitado", "Pendente de avaliação"),
@@ -694,6 +749,7 @@ class Bateria(models.Model):
     )
     data_aquisicao = models.DateField(null=True, blank=True)
     ciclos_informados = models.PositiveIntegerField(default=0)
+    ciclos_detectados_log = models.PositiveIntegerField(null=True, blank=True, editable=False)
     saude_percentual = models.PositiveIntegerField(default=100)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="disponivel")
     localizacao = models.CharField(max_length=150, blank=True)
@@ -711,11 +767,27 @@ class Bateria(models.Model):
 
     @property
     def voos_registrados(self):
-        return self.registros_pos_voo.filter(concluido=True).count()
+        return (
+            ImportacaoLog.objects.filter(
+                bateria_serial_detectada=self.numero_serie,
+                status="concluida",
+            )
+            .values("voo_id")
+            .distinct()
+            .count()
+        )
 
     @property
     def ciclos_totais(self):
+        return self.ciclos_detectados_log if self.ciclos_detectados_log is not None else self.ciclos_estimados
+
+    @property
+    def ciclos_estimados(self):
         return self.ciclos_informados + self.voos_registrados
+
+    @property
+    def fonte_ciclos(self):
+        return "log" if self.ciclos_detectados_log is not None else "estimativa"
 
 
 # =========================================================
@@ -1111,6 +1183,8 @@ class ImportacaoLog(models.Model):
     drone_modelo_detectado = models.CharField(max_length=120, blank=True)
     drone_serial_detectado = models.CharField(max_length=100, blank=True)
     bateria_serial_detectada = models.CharField(max_length=100, blank=True)
+    bateria_ciclos_detectados = models.PositiveIntegerField(null=True, blank=True)
+    componentes_detectados = models.JSONField(default=list, blank=True)
     mensagem_erro = models.TextField(blank=True)
     importado_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="logs_importados")
     criado_em = models.DateTimeField(auto_now_add=True)
@@ -1166,6 +1240,7 @@ class Componente(models.Model):
     fabricante = models.CharField(max_length=100, blank=True)
     modelo = models.CharField(max_length=100, blank=True)
     numero_serie = models.CharField(max_length=100, blank=True)
+    localizacao = models.CharField(max_length=180, blank=True, verbose_name="Localização")
     drone = models.ForeignKey(Drone, on_delete=models.PROTECT, null=True, blank=True, related_name="componentes")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="disponivel")
     data_aquisicao = models.DateField(null=True, blank=True)
@@ -1199,3 +1274,16 @@ class MovimentacaoComponente(models.Model):
 
     def __str__(self):
         return f"{self.componente} - {self.criado_em}"
+
+
+class AlertaResolvido(models.Model):
+    chave = models.CharField(max_length=255, unique=True)
+    titulo = models.CharField(max_length=255, blank=True)
+    resolvido_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="alertas_resolvidos")
+    resolvido_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-resolvido_em"]
+
+    def __str__(self):
+        return self.titulo or self.chave

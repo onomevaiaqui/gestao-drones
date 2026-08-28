@@ -19,7 +19,7 @@ def componentes(request):
     status = request.GET.get("status", "").strip()
     itens = Componente.objects.select_related("drone")
     if busca:
-        itens = itens.filter(Q(codigo__icontains=busca) | Q(nome__icontains=busca) | Q(numero_serie__icontains=busca) | Q(modelo__icontains=busca) | Q(drone__nome__icontains=busca))
+        itens = itens.filter(Q(codigo__icontains=busca) | Q(nome__icontains=busca) | Q(numero_serie__icontains=busca) | Q(modelo__icontains=busca) | Q(localizacao__icontains=busca) | Q(drone__nome__icontains=busca))
     if status:
         itens = itens.filter(status=status)
     resumo = {
@@ -35,7 +35,21 @@ def componentes(request):
 
 @admin_required
 def componente_novo(request):
-    form = ComponenteForm(request.POST or None)
+    serial = request.GET.get("numero_serie", "").strip()[:100]
+    drone_id = request.GET.get("drone", "").strip()
+    tipo = request.GET.get("tipo", "acessorio").strip()
+    nome = request.GET.get("nome", "Acessório DJI detectado").strip()[:150]
+    importacao_id = request.GET.get("importacao", "").strip()
+    tipos_validos = {valor for valor, _ in Componente.TIPO_CHOICES}
+    initial = {}
+    if serial:
+        initial.update({
+            "codigo": f"EQP-{serial[-8:]}", "nome": nome, "tipo": tipo if tipo in tipos_validos else "acessorio",
+            "fabricante": "DJI", "numero_serie": serial, "status": "instalado",
+        })
+    if drone_id.isdigit():
+        initial["drone"] = drone_id
+    form = ComponenteForm(request.POST or None, initial=initial)
     if form.is_valid():
         item = form.save(commit=False)
         item.criado_por = request.user
@@ -45,8 +59,10 @@ def componente_novo(request):
             motivo=form.cleaned_data.get("motivo_movimentacao") or "Cadastro inicial", realizado_por=request.user,
         )
         messages.success(request, "Equipamento/componente cadastrado.")
+        if importacao_id.isdigit():
+            return redirect("telemetria_detalhe", pk=importacao_id)
         return redirect("componente_detalhe", pk=item.pk)
-    ctx = {"form": form, "titulo": "Novo equipamento ou componente"}
+    ctx = {"form": form, "titulo": "Cadastrar equipamento identificado no log" if serial else "Novo equipamento ou componente"}
     ctx.update(_base_context(request))
     return render(request, "componentes/form.html", ctx)
 

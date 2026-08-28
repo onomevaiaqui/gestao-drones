@@ -81,7 +81,7 @@ def _consultar_camada(nome, bbox):
 def consultar_condicionantes_aeronauticas(planejamento):
     area = _pontos_area(planejamento)
     lats, lons = [p[0] for p in area], [p[1] for p in area]
-    margem = 0.25  # aproximadamente 25 km, suficiente para indicar aeródromos próximos
+    margem = 0.10  # consulta de apoio; somente interseções aplicáveis entram no resultado final
     bbox = (min(lons)-margem, min(lats)-margem, max(lons)+margem, max(lats)+margem)
     itens, geojson = [], []
     for tipo, camada in CAMADAS.items():
@@ -93,18 +93,21 @@ def consultar_condicionantes_aeronauticas(planejamento):
                 if len(coords) < 2: continue
                 lon, lat = float(coords[0]), float(coords[1])
                 distancia_km = _distancia_area(lat, lon, area) / 1000
-                if distancia_km > 25: continue
-                nivel = "desfavoravel" if distancia_km <= 2 else "atencao" if distancia_km <= 9.26 else "informativo"
-                item = {"tipo":tipo, "id":prop.get("localidade_id") or prop.get("ciad"),
+                raio_frz_m = 9260 if tipo == "aerodromo" else 2000
+                if distancia_km * 1000 > raio_frz_m:
+                    continue
+                nivel = "desfavoravel"
+                item = {"tipo":tipo, "id":prop.get("localidade_id") or prop.get("ciad") or prop.get("nome") or tipo,
                         "nome":prop.get("nome") or "Sem nome", "distancia_km":round(distancia_km,2),
                         "nivel":nivel, "cidade":prop.get("cidade"), "operacao":prop.get("opr"),
-                        "raio_atencao_m":9260 if tipo == "aerodromo" else 2000}
+                        "raio_atencao_m":raio_frz_m, "zona":"FRZ", "necessita_termo":True}
             else:
                 if not _intersecta(area, geom): continue
                 nivel = "desfavoravel" if tipo == "proibida" else "atencao"
-                item = {"tipo":tipo, "id":prop.get("id"), "nome":prop.get("nome") or "Sem nome",
+                item = {"tipo":tipo, "id":prop.get("id") or prop.get("nome") or tipo, "nome":prop.get("nome") or "Sem nome",
                         "nivel":nivel, "limite_inferior":prop.get("lowerlimit"), "unidade_inferior":prop.get("uom_llimit"),
-                        "limite_superior":prop.get("upperlimit"), "unidade_superior":prop.get("uom_ulimit")}
+                        "limite_superior":prop.get("upperlimit"), "unidade_superior":prop.get("uom_ulimit"),
+                        "zona":"EAC", "necessita_termo":tipo != "proibida"}
             itens.append(item)
             geojson.append({"type":"Feature", "geometry":geom, "properties":item})
     ordem = {"desfavoravel":2, "atencao":1, "informativo":0}
@@ -113,7 +116,7 @@ def consultar_condicionantes_aeronauticas(planejamento):
         "status": ["favoravel", "atencao", "desfavoravel"][nivel], "itens": itens,
         "geojson": {"type":"FeatureCollection", "features":geojson},
         "fonte":"AISWEB/DECEA – geosserviço oficial", "consultado":True,
-        "aviso":"Esta é uma triagem para planejamento. Não substitui a consulta às publicações aeronáuticas, NOTAM nem a autorização no SARPAS.",
+        "aviso":"São exibidas somente interseções do planejamento com EAC ou zonas de triagem FRZ. Confirme a verificação oficial de interseções no SARPAS, além das publicações e NOTAM.",
         "referencia":"ICA 100-40/2026 e dados aeronáuticos AISWEB/DECEA",
     }
 

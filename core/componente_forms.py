@@ -12,7 +12,7 @@ class ComponenteForm(forms.ModelForm):
     class Meta:
         model = Componente
         fields = [
-            "codigo", "nome", "tipo", "fabricante", "modelo", "numero_serie",
+            "codigo", "nome", "tipo", "fabricante", "modelo", "numero_serie", "localizacao",
             "drone", "status", "data_aquisicao", "data_instalacao", "vida_util_horas", "observacoes",
         ]
         widgets = {
@@ -22,6 +22,10 @@ class ComponenteForm(forms.ModelForm):
             "fabricante": forms.TextInput(attrs={"class": "form-control"}),
             "modelo": forms.TextInput(attrs={"class": "form-control"}),
             "numero_serie": forms.TextInput(attrs={"class": "form-control"}),
+            "localizacao": forms.TextInput(attrs={
+                "class": "form-control",
+                "placeholder": "Ex.: Almoxarifado, Laboratório ou aeronave",
+            }),
             "drone": forms.Select(attrs={"class": "form-select"}),
             "status": forms.Select(attrs={"class": "form-select"}),
             "data_aquisicao": forms.DateInput(attrs={"class": "form-control", "type": "date"}),

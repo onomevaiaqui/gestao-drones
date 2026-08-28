@@ -1,12 +1,22 @@
 from collections import defaultdict
+from io import BytesIO
+from xml.sax.saxutils import escape
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from .models import ImportacaoLog, Piloto, QualificacaoPiloto, Voo
+from .models import ConfiguracaoPapelTimbrado, ImportacaoLog, Piloto, QualificacaoPiloto, Voo
+from .papel_timbrado import aplicar_papel_timbrado, tamanho_pagina_do_modelo
+from .perfil_forms import DocumentoPerfilForm
 from .qualificacao_forms import QualificacaoPilotoForm
 from .views import _base_context, admin_required, usuario_e_admin, usuario_tem_visao_global, visao_global_required
 from .voo_service import filtrar_voos_realizados
@@ -49,12 +59,37 @@ def _perfil_contexto(piloto):
     ultimo_voo = max((v.data for v in voos), default=None)
     dias_sem_voar = (timezone.localdate() - ultimo_voo).days if ultimo_voo else None
     qualificacoes = list(piloto.qualificacoes.select_related("documento"))
+    documentos = list(piloto.documentos.filter(ativo=True))
+    documentos_vinculados = {q.documento_id for q in qualificacoes if q.documento_id}
+    qualificacoes_operacionais = []
+    for q in qualificacoes:
+        qualificacoes_operacionais.append({
+            "titulo": q.nome, "detalhe": q.instituicao, "classificacao": q.get_categoria_display(),
+            "data_emissao": q.data_conclusao, "data_validade": q.data_validade,
+            "situacao": q.situacao, "dias_para_vencer": q.dias_para_vencer,
+            "arquivo": q.documento.arquivo if q.documento_id and q.documento.arquivo else None,
+            "qualificacao_id": q.pk, "documento_id": q.documento_id,
+        })
+    for documento in documentos:
+        if documento.pk in documentos_vinculados:
+            continue
+        qualificacoes_operacionais.append({
+            "titulo": documento.titulo, "detalhe": documento.numero,
+            "classificacao": documento.get_tipo_display(), "data_emissao": documento.data_emissao,
+            "data_validade": documento.data_validade, "situacao": documento.situacao,
+            "dias_para_vencer": documento.dias_para_vencer, "arquivo": documento.arquivo,
+            "qualificacao_id": None, "documento_id": documento.pk,
+        })
+    qualificacoes_operacionais.sort(key=lambda item: (item["titulo"] or "").lower())
+    validas_operacionais = sum(item["situacao"] in ("valida", "valido", "sem_validade") for item in qualificacoes_operacionais)
+    atencao_operacional = sum(item["situacao"] in ("vencendo", "vencida", "vencido") for item in qualificacoes_operacionais)
     return {
-        "piloto": piloto, "qualificacoes": qualificacoes, "experiencia": experiencia,
+        "piloto": piloto, "qualificacoes": qualificacoes, "qualificacoes_operacionais": qualificacoes_operacionais,
+        "documentos": documentos, "experiencia": experiencia,
         "total_voos_piloto": len(voos), "total_horas_piloto": _formatar_duracao(total_segundos),
         "ultimo_voo": ultimo_voo, "dias_sem_voar": dias_sem_voar,
-        "qualificacoes_validas": sum(q.situacao == "valida" for q in qualificacoes),
-        "qualificacoes_atencao": sum(q.situacao in ["vencendo", "vencida"] for q in qualificacoes),
+        "qualificacoes_validas": validas_operacionais,
+        "qualificacoes_atencao": atencao_operacional,
     }
 
 
@@ -97,8 +132,76 @@ def perfil_operacional(request, pk):
         return redirect("dashboard")
     ctx = _perfil_contexto(piloto)
     ctx["perfil_proprio"] = piloto.user_id == request.user.id
+    ctx["documento_form"] = DocumentoPerfilForm()
+    ctx["pode_editar_perfil_operacional"] = usuario_e_admin(request.user) or ctx["perfil_proprio"]
     ctx.update(_base_context(request))
     return render(request, "qualificacoes/perfil.html", ctx)
+
+
+@login_required
+def perfil_operacional_pdf(request, pk):
+    piloto = get_object_or_404(Piloto.objects.select_related("user"), pk=pk)
+    if not usuario_e_admin(request.user) and piloto.user_id != request.user.id:
+        return HttpResponse(status=403)
+
+    contexto = _perfil_contexto(piloto)
+    documentos = list(piloto.documentos.filter(ativo=True))
+    configuracao = ConfiguracaoPapelTimbrado.atual()
+    pagina = tamanho_pagina_do_modelo(configuracao.modelo_relatorios, A4)
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=pagina, leftMargin=20 * mm, rightMargin=17 * mm,
+        topMargin=32 * mm, bottomMargin=24 * mm,
+    )
+    estilos = getSampleStyleSheet()
+    titulo = ParagraphStyle("PerfilTitulo", parent=estilos["Title"], fontSize=17, leading=20, textColor=colors.HexColor("#0C2238"))
+    secao = ParagraphStyle("PerfilSecao", parent=estilos["Heading2"], fontSize=11, leading=14, textColor=colors.HexColor("#0C2238"), spaceBefore=8, spaceAfter=6)
+    pequeno = ParagraphStyle("PerfilPequeno", parent=estilos["Normal"], fontSize=8, leading=10)
+    elementos = [Paragraph("Relatório do Perfil Operacional", titulo), Spacer(1, 3 * mm)]
+
+    dados_pessoais = [
+        ["Piloto", piloto.nome], ["Usuário", piloto.user.username],
+        ["E-mail", piloto.user.email or "Não informado"], ["Matrícula", piloto.matricula or "Não informada"],
+        ["CPF", piloto.cpf or "Não informado"], ["Código SARPAS", piloto.codigo_sarpas or "Não informado"],
+    ]
+    tabela_dados = Table(dados_pessoais, colWidths=[38 * mm, 122 * mm])
+    tabela_dados.setStyle(TableStyle([("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#EAF0F7")), ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"), ("GRID", (0, 0), (-1, -1), .35, colors.HexColor("#D8E1EB")), ("FONTSIZE", (0, 0), (-1, -1), 8), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("PADDING", (0, 0), (-1, -1), 5)]))
+    elementos.extend([Paragraph("Identificação", secao), tabela_dados])
+
+    resumo = Table([["Voos com telemetria", "Horas comprovadas", "Último voo"], [str(contexto["total_voos_piloto"]), contexto["total_horas_piloto"], contexto["ultimo_voo"].strftime("%d/%m/%Y") if contexto["ultimo_voo"] else "Sem voos"]], colWidths=[53 * mm] * 3)
+    resumo.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0C2238")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("GRID", (0, 0), (-1, -1), .35, colors.HexColor("#D8E1EB")), ("FONTSIZE", (0, 0), (-1, -1), 8), ("PADDING", (0, 0), (-1, -1), 6)]))
+    elementos.extend([Paragraph("Resumo operacional", secao), resumo])
+
+    experiencia = [["Aeronave", "Voos", "Tempo de voo"]] + [[escape(item["drone"]), str(item["voos"]), item["duracao"]] for item in contexto["experiencia"]]
+    if len(experiencia) == 1:
+        experiencia.append(["Nenhuma experiência registrada", "—", "—"])
+    tabela_experiencia = Table(experiencia, repeatRows=1, colWidths=[80 * mm, 35 * mm, 45 * mm])
+    tabela_experiencia.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0C2238")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), .35, colors.HexColor("#D8E1EB")), ("FONTSIZE", (0, 0), (-1, -1), 8), ("PADDING", (0, 0), (-1, -1), 5)]))
+    elementos.extend([Paragraph("Experiência por aeronave", secao), tabela_experiencia])
+
+    qualificacoes = [["Qualificação / curso", "Categoria", "Conclusão", "Validade", "Situação"]]
+    for item in contexto["qualificacoes"]:
+        qualificacoes.append([Paragraph(escape(item.nome), pequeno), item.get_categoria_display(), item.data_conclusao.strftime("%d/%m/%Y") if item.data_conclusao else "—", item.data_validade.strftime("%d/%m/%Y") if item.data_validade else "Sem validade", item.situacao.title()])
+    if len(qualificacoes) == 1:
+        qualificacoes.append(["Nenhuma qualificação cadastrada", "—", "—", "—", "—"])
+    tabela_qualificacoes = Table(qualificacoes, repeatRows=1, colWidths=[55 * mm, 35 * mm, 25 * mm, 25 * mm, 20 * mm])
+    tabela_qualificacoes.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0C2238")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), .35, colors.HexColor("#D8E1EB")), ("FONTSIZE", (0, 0), (-1, -1), 7), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("PADDING", (0, 0), (-1, -1), 4)]))
+    elementos.extend([Paragraph("Qualificações e treinamentos", secao), tabela_qualificacoes])
+
+    docs = [["Documento", "Tipo", "Emissão", "Validade", "Situação"]]
+    for item in documentos:
+        docs.append([Paragraph(escape(item.titulo), pequeno), item.get_tipo_display(), item.data_emissao.strftime("%d/%m/%Y") if item.data_emissao else "Não possui", item.data_validade.strftime("%d/%m/%Y") if item.data_validade else "Não possui", item.situacao.replace("_", " ").title()])
+    if len(docs) == 1:
+        docs.append(["Nenhum documento cadastrado", "—", "—", "—", "—"])
+    tabela_docs = Table(docs, repeatRows=1, colWidths=[55 * mm, 38 * mm, 24 * mm, 24 * mm, 20 * mm])
+    tabela_docs.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0C2238")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), .35, colors.HexColor("#D8E1EB")), ("FONTSIZE", (0, 0), (-1, -1), 7), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("PADDING", (0, 0), (-1, -1), 4)]))
+    elementos.extend([Paragraph("Documentos operacionais", secao), tabela_docs, Spacer(1, 5 * mm), Paragraph(f"Relatório gerado pelo SISMOD em {timezone.localtime().strftime('%d/%m/%Y %H:%M')}.", pequeno)])
+    doc.build(elementos)
+    conteudo = aplicar_papel_timbrado(buffer.getvalue(), configuracao.modelo_relatorios)
+    resposta = HttpResponse(conteudo, content_type="application/pdf")
+    modo = "inline" if request.GET.get("modo") == "visualizar" else "attachment"
+    resposta["Content-Disposition"] = f'{modo}; filename="perfil_operacional_{piloto.pk}.pdf"'
+    return resposta
 
 
 @visao_global_required
@@ -124,9 +227,12 @@ def qualificacao_nova(request, piloto_id):
     return render(request, "qualificacoes/form.html", ctx)
 
 
-@admin_required
+@login_required
 def qualificacao_editar(request, pk):
     qualificacao = get_object_or_404(QualificacaoPiloto.objects.select_related("piloto"), pk=pk)
+    if not usuario_e_admin(request.user) and qualificacao.piloto.user_id != request.user.id:
+        messages.error(request, "Você só pode editar suas próprias qualificações.")
+        return redirect("dashboard")
     form = QualificacaoPilotoForm(request.POST or None, instance=qualificacao, piloto=qualificacao.piloto)
     if form.is_valid():
         form.save()
