@@ -13,6 +13,7 @@ from . import componente_views
 from . import perfil_views
 from . import planejamento_views
 from . import dji_cloud_views
+from . import livestream_views
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
@@ -118,6 +119,7 @@ urlpatterns = [
     path("usuarios/<int:pk>/documentos/novo/", perfil_views.documento_perfil_novo, name="documento_perfil_novo"),
     path("qualificacoes-operacionais/<int:pk>/editar/", perfil_views.documento_perfil_editar, name="documento_perfil_editar"),
     path("integracoes/dji/", dji_cloud_views.dji_cloud_configuracao, name="dji_cloud_configuracao"),
+    path("livestream/", livestream_views.transmissoes_ao_vivo, name="livestream"),
     path("integracoes/dji/pilot/login/", dji_cloud_views.DJIPilotLoginView.as_view(), name="dji_pilot_login"),
     path("integracoes/dji/pilot/", dji_cloud_views.dji_pilot_portal, name="dji_pilot_portal"),
     path("integracoes/dji/pilot/identificar/", dji_cloud_views.dji_pilot_identificar, name="dji_pilot_identificar"),

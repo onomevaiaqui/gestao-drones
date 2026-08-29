@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, time, timedelta
 
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -6,7 +6,7 @@ from django.test import override_settings
 from django.urls import reverse
 
 from .geo_utils import distancia_km, distancia_m
-from .models import Alocacao, Bateria, Drone, ImportacaoLog, Piloto, RegistroPosVoo, Voo
+from .models import Alocacao, Bateria, Drone, ImportacaoLog, Piloto, PlanejamentoVoo, RegistroPosVoo, Voo
 from .operacao_service import (
     erro_intervalo,
     existe_conflito_alocacao,
@@ -245,6 +245,47 @@ class DJICloudFoundationTests(TestCase):
         self.assertContains(resposta, "Transmissões ao vivo")
         self.assertContains(resposta, f"https://media.example.com/{transmissao.chave_stream}")
         self.assertNotContains(resposta, "rtmps://media.example.com/live")
+
+    def test_agendamento_aparece_no_modulo_e_pode_ser_escolhido_no_pilot(self):
+        planejamento = PlanejamentoVoo.objects.create(
+            titulo="Inspeção programada", piloto=self.piloto,
+            data=date.today() + timedelta(days=1), data_fim=date.today() + timedelta(days=1), hora_inicio=time(8), hora_fim=time(18),
+            finalidade="inspecao", local="Área de teste",
+            area_geojson={"type": "Polygon", "coordinates": [[[-54.6, -25.4], [-54.5, -25.4], [-54.5, -25.5], [-54.6, -25.4]]]},
+            centro_latitude=-25.45, centro_longitude=-54.55,
+            livestream_planejada=True, livestream_titulo="Inspeção ao vivo",
+            criado_por=self.usuario,
+        )
+        self.client.force_login(self.usuario)
+        modulo = self.client.get(reverse("livestream") + "?aba=agendadas")
+        self.assertContains(modulo, "Inspeção ao vivo")
+        portal = self.client.get(reverse("dji_pilot_portal"))
+        self.assertContains(portal, "Operação programada")
+        self.assertContains(portal, f'value="{planejamento.pk}"')
+
+        self.client.post(
+            reverse("dji_pilot_identificar"),
+            data='{"aeronave_sn":"AIRCRAFT-123","controle_sn":"RC-123"}',
+            content_type="application/json",
+        )
+        preparar = self.client.post(
+            reverse("dji_livestream_preparar"),
+            data=f'{{"planejamento_id":{planejamento.pk}}}', content_type="application/json",
+        )
+        self.assertEqual(preparar.status_code, 200)
+        transmissao = planejamento.transmissoes_ao_vivo.get()
+        self.assertEqual(transmissao.origem, "agendada")
+
+    def test_usuario_pode_abrir_transmissao_avulsa_e_coordenador_nao_recebe_botao(self):
+        self.client.force_login(self.usuario)
+        usuario = self.client.get(reverse("livestream"))
+        self.assertContains(usuario, "Iniciar transmissão agora")
+
+        self.client.force_login(self.admin)
+        self.client.post(reverse("selecionar_modo_acesso"), {"modo": "coordenador"})
+        coordenador = self.client.get(reverse("livestream"))
+        self.assertNotContains(coordenador, "Iniciar transmissão agora")
+        self.assertNotContains(coordenador, "Configurações")
 
     @override_settings(DJI_CLOUD_ENABLED=False)
     def test_integracao_desativada_bloqueia_portal_identificacao_e_mqtt(self):

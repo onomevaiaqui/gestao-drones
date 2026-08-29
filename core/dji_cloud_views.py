@@ -15,7 +15,7 @@ from .dji_cloud_service import (
     diagnostico_open_platforms, endereco_ingestao, token_pilot,
     usuario_mqtt, validar_token_pilot,
 )
-from .models import Alocacao, Drone, Piloto, TransmissaoAoVivo
+from .models import Alocacao, Drone, Piloto, PlanejamentoVoo, TransmissaoAoVivo
 from .permissoes import admin_required
 from .views import _base_context
 
@@ -60,6 +60,13 @@ def dji_pilot_portal(request):
         return _integracao_desativada()
     diagnostico = diagnostico_open_platforms()
     token = token_pilot(request.user)
+    piloto = Piloto.objects.filter(user=request.user, ativo=True).first()
+    agendamentos = PlanejamentoVoo.objects.none()
+    if piloto:
+        hoje = timezone.localdate()
+        agendamentos = PlanejamentoVoo.objects.filter(
+            piloto=piloto, livestream_planejada=True,
+        ).filter(Q(data_fim__gte=hoje) | Q(data_fim__isnull=True, data__gte=hoje)).order_by("data", "hora_inicio")[:20]
     ctx = {
         "diagnostico": diagnostico,
         "cloud": {
@@ -77,6 +84,7 @@ def dji_pilot_portal(request):
             "token": token,
             "livestream_enabled": settings.DJI_LIVESTREAM_ENABLED,
         },
+        "agendamentos_livestream": agendamentos,
     }
     return render(request, "dji_cloud/pilot_portal.html", ctx)
 
@@ -162,6 +170,19 @@ def dji_livestream_preparar(request):
     if not drone:
         return JsonResponse({"ok": False, "erro": "Cadastre o número de série da aeronave antes de transmitir."}, status=400)
 
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    planejamento_id = payload.get("planejamento_id")
+    planejamento = None
+    if planejamento_id:
+        planejamento = PlanejamentoVoo.objects.filter(
+            pk=planejamento_id, piloto=piloto, livestream_planejada=True,
+        ).first()
+        if not planejamento:
+            return JsonResponse({"ok": False, "erro": "Agendamento de transmissão inválido."}, status=400)
+
     TransmissaoAoVivo.objects.filter(piloto=piloto, status__in=["preparada", "ao_vivo"]).update(
         status="finalizada", finalizada_em=timezone.now()
     )
@@ -169,6 +190,8 @@ def dji_livestream_preparar(request):
         piloto=piloto,
         drone=drone,
         alocacao=_reserva_atual(piloto, drone),
+        planejamento=planejamento,
+        origem="agendada" if planejamento else "avulsa",
         aeronave_serial=aeronave_sn,
         controle_serial=controle_sn,
     )

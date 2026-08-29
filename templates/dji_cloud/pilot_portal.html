@@ -1,7 +1,7 @@
 {% load static %}
 <!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SISMOD · DJI Pilot 2</title><link rel="stylesheet" href="{% static 'css/sistema.css' %}?v=31"></head>
 <body class="dji-pilot-page"><main class="dji-pilot-card"><strong class="dji-pilot-brand">SISMOD</strong><h1>DJI Open Platforms</h1><p id="pilot-message">Pronto para verificar o controle e a aeronave.</p>
-{% if diagnostico.pronto %}<button id="connect-button" class="btn btn-primary" type="button">Conectar ao SISMOD</button><div id="live-actions" class="dji-live-actions" hidden><button id="start-live-button" class="btn btn-primary" type="button"{% if not diagnostico.livestream.pronto %} disabled{% endif %}>Iniciar transmissão</button><button id="stop-live-button" class="btn btn-light" type="button" disabled>Encerrar transmissão</button>{% if not diagnostico.livestream.pronto %}<small>A transmissão ficará disponível depois da configuração do servidor de mídia.</small>{% endif %}</div>{% else %}<div class="alert alert-warning">O administrador ainda precisa concluir a configuração da integração.</div>{% endif %}
+{% if diagnostico.pronto %}<button id="connect-button" class="btn btn-primary" type="button">Conectar ao SISMOD</button><div id="live-actions" class="dji-live-actions" hidden><label for="live-planning">Operação programada</label><select id="live-planning" class="form-select"><option value="">Transmissão avulsa — iniciar agora</option>{% for item in agendamentos_livestream %}<option value="{{ item.pk }}">{{ item.data|date:"d/m" }} {{ item.hora_inicio|time:"H:i" }} · {{ item.livestream_titulo|default:item.titulo }}</option>{% endfor %}</select><button id="start-live-button" class="btn btn-primary" type="button"{% if not diagnostico.livestream.pronto %} disabled{% endif %}>Iniciar transmissão</button><button id="stop-live-button" class="btn btn-light" type="button" disabled>Encerrar transmissão</button>{% if not diagnostico.livestream.pronto %}<small>A transmissão ficará disponível depois da configuração do servidor de mídia.</small>{% endif %}</div>{% else %}<div class="alert alert-warning">O administrador ainda precisa concluir a configuração da integração.</div>{% endif %}
 <div id="pilot-result" class="dji-pilot-result" hidden></div></main>
 {{ cloud|json_script:"dji-cloud-config" }}
 <script>
@@ -41,7 +41,8 @@ async function notifyLive(evento, metricas={}, mensagem="") {
   await fetch("{% url 'dji_livestream_status' %}", {method:"POST", headers:{"Content-Type":"application/json","X-CSRFToken":csrfToken()}, body:JSON.stringify({evento,metricas,mensagem})});
 }
 async function startLive() {
-  const response = await fetch("{% url 'dji_livestream_preparar' %}", {method:"POST", headers:{"X-CSRFToken":csrfToken()}});
+  const planning = document.getElementById("live-planning")?.value || null;
+  const response = await fetch("{% url 'dji_livestream_preparar' %}", {method:"POST", headers:{"Content-Type":"application/json","X-CSRFToken":csrfToken()}, body:JSON.stringify({planejamento_id:planning})});
   const live = await response.json();
   if (!response.ok) { message.textContent = live.erro || "Não foi possível preparar a transmissão."; return; }
   const loaded = bridgeResult(window.djiBridge.platformLoadComponent("liveshare", JSON.stringify({videoPublishType:"video-by-manual",statusCallback:"sismodLiveStatus"})));

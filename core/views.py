@@ -675,9 +675,14 @@ def dashboard(request):
         from .dji_cloud_service import endereco_reproducao
         transmissoes = list(
             TransmissaoAoVivo.objects.filter(status="ao_vivo")
-            .select_related("piloto", "drone", "alocacao")
+            .select_related("piloto", "drone", "alocacao", "planejamento")
             .order_by("-iniciada_em")
         )
+        if usuario_e_coordenador(request.user):
+            transmissoes = [
+                item for item in transmissoes
+                if not item.planejamento_id or item.planejamento.livestream_acesso == "coordenacao"
+            ]
         ctx["transmissoes_ao_vivo"] = [
             {"sessao": item, "playback_url": endereco_reproducao(item)}
             for item in transmissoes

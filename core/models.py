@@ -480,6 +480,10 @@ class PlanejamentoVoo(models.Model):
         ("laser", "Varredura a laser / LiDAR"), ("espectral", "Pancromático ou espectral"),
         ("geofisico", "Aerogeofísico"), ("outro", "Outro aerolevantamento"),
     ]
+    LIVESTREAM_ACESSO_CHOICES = [
+        ("coordenacao", "Coordenadores e administradores"),
+        ("administracao", "Somente administradores"),
+    ]
 
     titulo = models.CharField(max_length=150)
     piloto = models.ForeignKey(Piloto, on_delete=models.PROTECT, related_name="planejamentos_voo")
@@ -495,6 +499,13 @@ class PlanejamentoVoo(models.Model):
     centro_longitude = models.DecimalField(max_digits=10, decimal_places=7)
     area_hectares = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     observacoes = models.TextField(blank=True)
+    livestream_planejada = models.BooleanField(default=False, verbose_name="Transmitir esta operação ao vivo")
+    livestream_titulo = models.CharField(max_length=150, blank=True, verbose_name="Título da transmissão")
+    livestream_acesso = models.CharField(
+        max_length=20, choices=LIVESTREAM_ACESSO_CHOICES, default="coordenacao",
+        verbose_name="Quem poderá assistir",
+    )
+    livestream_gravar = models.BooleanField(default=False, verbose_name="Gravar a transmissão quando o servidor permitir")
     gera_dados_aerolevantamento = models.BooleanField(
         default=False, verbose_name="A operação produzirá dados de aerolevantamento",
         help_text="Marque se haverá captura destinada a ortomosaico, mapa, modelo 3D, nuvem de pontos, LiDAR, dado espectral ou geofísico.",
@@ -1302,6 +1313,8 @@ class TransmissaoAoVivo(models.Model):
     piloto = models.ForeignKey(Piloto, on_delete=models.PROTECT, related_name="transmissoes_ao_vivo")
     drone = models.ForeignKey(Drone, on_delete=models.PROTECT, null=True, blank=True, related_name="transmissoes_ao_vivo")
     alocacao = models.ForeignKey(Alocacao, on_delete=models.SET_NULL, null=True, blank=True, related_name="transmissoes_ao_vivo")
+    planejamento = models.ForeignKey(PlanejamentoVoo, on_delete=models.SET_NULL, null=True, blank=True, related_name="transmissoes_ao_vivo")
+    origem = models.CharField(max_length=20, choices=[("agendada", "Agendada"), ("avulsa", "Avulsa")], default="avulsa")
     aeronave_serial = models.CharField(max_length=100, blank=True)
     controle_serial = models.CharField(max_length=100, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="preparada")

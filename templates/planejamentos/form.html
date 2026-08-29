@@ -6,7 +6,7 @@
 <form method="post" enctype="multipart/form-data" id="planning-form">{% csrf_token %}
 <div class="planning-form-grid">
 <div class="panel"><div class="planning-fields">
-{% for field in form %}{% if field.name != "area_geojson_texto" %}<div class="planning-field field-{{ field.name }}">{% if field.name == "gera_dados_aerolevantamento" or field.name == "atividade_agroflorestal" %}<label class="planning-check-option">{{ field }}<span>{{ field.label }}</span></label>{% else %}<label>{{ field.label }}</label>{{ field }}{% endif %}{% if field.help_text %}<div class="text-muted small mt-1">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endif %}{% endfor %}
+{% for field in form %}{% if field.name != "area_geojson_texto" %}<div class="planning-field field-{{ field.name }}">{% if field.name == "gera_dados_aerolevantamento" or field.name == "atividade_agroflorestal" or field.name == "livestream_planejada" or field.name == "livestream_gravar" %}<label class="planning-check-option">{{ field }}<span>{{ field.label }}</span></label>{% else %}<label>{{ field.label }}</label>{{ field }}{% endif %}{% if field.help_text %}<div class="text-muted small mt-1">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endif %}{% endfor %}
 {{ form.area_geojson_texto }}{% for error in form.area_geojson_texto.errors %}<div class="text-danger small planning-map-error">{{ error }}</div>{% endfor %}
 </div></div>
 <div class="panel planning-draw-panel"><div class="planning-map-heading"><div><h3>Área planejada</h3><p class="text-muted small">Clique em “Desenhar área” e marque os limites no mapa. Áreas restritas ou proibidas não bloqueiam o desenho; os alertas serão analisados ao salvar.</p></div><div class="header-actions"><button type="button" class="btn btn-primary" id="start-drawing-area">Desenhar área</button><button type="button" class="btn btn-light" id="download-drawn-kml">Baixar KML da área</button></div></div><div class="airspace-legend"><span class="airport">● Aeródromo/raio de atenção</span><span class="danger">■ Área perigosa</span><span class="restricted">■ Área restrita</span><span class="prohibited">■ Área proibida</span></div><div id="planning-map"></div><p class="text-muted small mt-2">Localização: © OpenStreetMap contributors · Dados aeronáuticos: AISWEB/DECEA. Os raios não representam proibição automática.</p></div>
@@ -45,6 +45,9 @@
  const aeroFields=['tipo_aerolevantamento','atividade_agroflorestal','dentro_condicionantes_ica','interseca_area_sensivel_defesa','projeto_contiguo_12_meses'];
  function toggleSisclaten(){const show=aeroCheck&&aeroCheck.checked;aeroFields.forEach(n=>{const el=document.querySelector('.field-'+n);if(el)el.style.display=show?'':'none'});const rural=document.querySelector('.field-exclusivo_proprietario_rural');if(rural)rural.style.display=show&&agroCheck&&agroCheck.checked?'':'none'}
  aeroCheck?.addEventListener('change',toggleSisclaten);agroCheck?.addEventListener('change',toggleSisclaten);toggleSisclaten();
+ const liveCheck=document.getElementById('id_livestream_planejada');
+ function toggleLivestream(){const show=liveCheck&&liveCheck.checked;['livestream_titulo','livestream_acesso','livestream_gravar'].forEach(name=>{const field=document.querySelector('.field-'+name);if(field)field.style.display=show?'':'none';});}
+ liveCheck?.addEventListener('change',toggleLivestream);toggleLivestream();
  setTimeout(()=>map.invalidateSize(),100);
 })();
 </script>

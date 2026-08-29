@@ -271,6 +271,15 @@ Variáveis adicionais:
 
 A importação manual de Flight Records não depende dessas variáveis e continua disponível mesmo com a livestream desligada.
 
+O menu **Transmissões ao vivo** organiza a operação em quatro abas:
+
+- **Ao vivo:** players autorizados e identificação da sessão;
+- **Agendadas:** planejamentos futuros marcados para transmissão;
+- **Histórico:** sessões finalizadas ou com erro;
+- **Configurações:** diagnóstico disponível somente ao administrador.
+
+No planejamento, o piloto pode marcar **Transmitir esta operação ao vivo**, informar título, público autorizado e intenção de gravação. O agendamento não liga a câmera automaticamente: no DJI Pilot 2 o piloto escolhe a operação e confirma **Iniciar transmissão**. Também existe o caminho avulso **Iniciar transmissão agora**, sem planejamento; essa sessão fica identificada como avulsa e não cria reserva ou voo fictício. Coordenadores somente acompanham, enquanto piloto e administrador podem iniciar conforme o dispositivo e as permissões.
+
 O portal somente habilita o botão de conexão quando todas as configurações estão presentes e válidas. O endereço precisa ser público e HTTPS. A integração ainda não recebe tópicos MQTT nem arquivos automaticamente; isso será habilitado depois da instalação e configuração do broker.
 
 Variáveis necessárias:

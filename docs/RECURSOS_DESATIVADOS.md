@@ -24,6 +24,8 @@ Não habilite a chave geral somente para testar em `localhost`: o controle preci
 
 **Situação:** implementada no SISMOD e desativada por padrão; depende de infraestrutura externa.
 
+Mesmo desativados, o menu, os agendamentos no planejamento e o histórico podem ser validados localmente. O botão de início real permanece indisponível até que Open Platforms e servidor de mídia estejam prontos. Isso impede tentativa acidental de conexão externa durante desenvolvimento.
+
 Antes de ativar:
 
 1. concluir a ativação do DJI Open Platforms;

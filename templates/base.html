@@ -25,6 +25,7 @@
             <a href="{% url 'planejamentos' %}" class="{% if 'planejamento' in request.resolver_match.url_name %}active{% endif %}">⌖ <span>Planejamentos</span></a>
             <a href="{% url 'solicitacoes_voo' %}" class="{% if 'solicitacao' in request.resolver_match.url_name %}active{% endif %}">✎ <span>Reservas de drones</span></a>
             <a href="{% url 'calendario' %}" class="{% if 'calendario' in request.resolver_match.url_name or 'alocacao' in request.resolver_match.url_name %}active{% endif %}">▣ <span>Calendário</span></a>
+            <a href="{% url 'livestream' %}" class="{% if request.resolver_match.url_name == 'livestream' %}active{% endif %}">◉ <span>Transmissões ao vivo</span></a>
 
             <span class="nav-section">Operações realizadas</span>
             <a href="{% url 'voos' %}" class="{% if request.resolver_match.url_name == 'voos' or request.resolver_match.url_name == 'voo_novo' %}active{% endif %}">✈ <span>Voos realizados</span></a>

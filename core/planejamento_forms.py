@@ -17,6 +17,7 @@ class PlanejamentoVooForm(forms.ModelForm):
         model = PlanejamentoVoo
         fields = [
             "titulo", "piloto", "local", "data", "data_fim", "hora_inicio", "hora_fim", "finalidade",
+            "livestream_planejada", "livestream_titulo", "livestream_acesso", "livestream_gravar",
             "altura_maxima_m", "gera_dados_aerolevantamento", "tipo_aerolevantamento",
             "atividade_agroflorestal", "exclusivo_proprietario_rural", "dentro_condicionantes_ica",
             "interseca_area_sensivel_defesa", "projeto_contiguo_12_meses", "observacoes",
@@ -30,6 +31,10 @@ class PlanejamentoVooForm(forms.ModelForm):
             "hora_inicio": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
             "hora_fim": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
             "finalidade": forms.Select(attrs={"class": "form-select"}),
+            "livestream_planejada": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "livestream_titulo": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex.: Inspeção ao vivo — Usina"}),
+            "livestream_acesso": forms.Select(attrs={"class": "form-select"}),
+            "livestream_gravar": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "altura_maxima_m": forms.NumberInput(attrs={"class": "form-control", "min": 1, "max": 500}),
             "gera_dados_aerolevantamento": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "tipo_aerolevantamento": forms.Select(attrs={"class": "form-select"}),
@@ -45,6 +50,7 @@ class PlanejamentoVooForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.order_fields([
             "titulo", "piloto", "local", "data", "data_fim", "hora_inicio", "hora_fim", "finalidade",
+            "livestream_planejada", "livestream_titulo", "livestream_acesso", "livestream_gravar",
             "altura_maxima_m", "arquivo_area", "gera_dados_aerolevantamento", "tipo_aerolevantamento",
             "atividade_agroflorestal", "exclusivo_proprietario_rural", "dentro_condicionantes_ica",
             "interseca_area_sensivel_defesa", "projeto_contiguo_12_meses", "observacoes", "area_geojson_texto",
@@ -58,6 +64,7 @@ class PlanejamentoVooForm(forms.ModelForm):
         self.fields["tipo_aerolevantamento"].required = False
         self.fields["tipo_aerolevantamento"].help_text = "Preencha quando a operação produzir dados de aerolevantamento."
         self.fields["interseca_area_sensivel_defesa"].help_text = "A camada AISWEB não substitui esta confirmação; consulte o SisCLATEN/Ministério da Defesa."
+        self.fields["livestream_planejada"].help_text = "O piloto ainda deverá confirmar o início no DJI Pilot 2; o agendamento não liga a câmera automaticamente."
 
     def clean(self):
         dados = super().clean()
@@ -69,6 +76,8 @@ class PlanejamentoVooForm(forms.ModelForm):
             self.add_error("hora_fim", "O horário final deve ser posterior ao inicial.")
         if dados.get("gera_dados_aerolevantamento") and not dados.get("tipo_aerolevantamento"):
             self.add_error("tipo_aerolevantamento", "Informe o tipo de aerolevantamento.")
+        if dados.get("livestream_planejada") and not dados.get("livestream_titulo"):
+            dados["livestream_titulo"] = dados.get("titulo") or "Transmissão da operação"
         bruto = dados.get("area_geojson_texto")
         arquivo = dados.get("arquivo_area")
         if arquivo:
