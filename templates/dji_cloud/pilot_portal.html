@@ -1,7 +1,7 @@
 {% load static %}
 <!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SISMOD · DJI Pilot 2</title><link rel="stylesheet" href="{% static 'css/sistema.css' %}?v=31"></head>
 <body class="dji-pilot-page"><main class="dji-pilot-card"><strong class="dji-pilot-brand">SISMOD</strong><h1>DJI Open Platforms</h1><p id="pilot-message">Pronto para verificar o controle e a aeronave.</p>
-{% if diagnostico.pronto %}<button id="connect-button" class="btn btn-primary" type="button">Conectar ao SISMOD</button>{% else %}<div class="alert alert-warning">O administrador ainda precisa concluir a configuração da integração.</div>{% endif %}
+{% if diagnostico.pronto %}<button id="connect-button" class="btn btn-primary" type="button">Conectar ao SISMOD</button><div id="live-actions" class="dji-live-actions" hidden><button id="start-live-button" class="btn btn-primary" type="button"{% if not diagnostico.livestream.pronto %} disabled{% endif %}>Iniciar transmissão</button><button id="stop-live-button" class="btn btn-light" type="button" disabled>Encerrar transmissão</button>{% if not diagnostico.livestream.pronto %}<small>A transmissão ficará disponível depois da configuração do servidor de mídia.</small>{% endif %}</div>{% else %}<div class="alert alert-warning">O administrador ainda precisa concluir a configuração da integração.</div>{% endif %}
 <div id="pilot-result" class="dji-pilot-result" hidden></div></main>
 {{ cloud|json_script:"dji-cloud-config" }}
 <script>
@@ -11,6 +11,10 @@ const result = document.getElementById("pilot-result");
 function bridgeResult(value) { try { return JSON.parse(value); } catch (_) { return {code:-1,message:String(value || "Resposta inválida")}; } }
 function csrfToken() { const match = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/); return match ? decodeURIComponent(match[1]) : ""; }
 window.sismodMqttCallback = function(value) { message.textContent = "Estado MQTT: " + value; };
+window.sismodLiveStatus = function(value) {
+  const metrics = bridgeResult(value);
+  fetch("{% url 'dji_livestream_status' %}", {method:"POST", headers:{"Content-Type":"application/json","X-CSRFToken":csrfToken()}, body:JSON.stringify({evento:"status",metricas:metrics.data || metrics})});
+};
 async function identifyDevice() {
   const aircraft = bridgeResult(window.djiBridge.platformGetAircraftSN());
   const controller = bridgeResult(window.djiBridge.platformGetRemoteControllerSN());
@@ -31,6 +35,36 @@ async function connectPilot() {
   result.hidden = false;
   result.textContent = device.drone_encontrado ? `Conectado: ${device.drone} · ${device.piloto}` : `Aeronave ${device.aeronave_sn} não encontrada no cadastro do SISMOD.`;
   message.textContent = device.drone_encontrado ? "Conexão preparada com sucesso." : "Conexão preparada, mas o serial precisa ser cadastrado no drone.";
+  document.getElementById("live-actions").hidden = !device.drone_encontrado;
+}
+async function notifyLive(evento, metricas={}, mensagem="") {
+  await fetch("{% url 'dji_livestream_status' %}", {method:"POST", headers:{"Content-Type":"application/json","X-CSRFToken":csrfToken()}, body:JSON.stringify({evento,metricas,mensagem})});
+}
+async function startLive() {
+  const response = await fetch("{% url 'dji_livestream_preparar' %}", {method:"POST", headers:{"X-CSRFToken":csrfToken()}});
+  const live = await response.json();
+  if (!response.ok) { message.textContent = live.erro || "Não foi possível preparar a transmissão."; return; }
+  const loaded = bridgeResult(window.djiBridge.platformLoadComponent("liveshare", JSON.stringify({videoPublishType:"video-by-manual",statusCallback:"sismodLiveStatus"})));
+  if (loaded.code !== 0) { await notifyLive("erro", {}, loaded.message); message.textContent = "Falha ao carregar o módulo de vídeo: " + loaded.message; return; }
+  window.djiBridge.liveshareSetVideoPublishType?.("video-by-manual");
+  const configured = bridgeResult(window.djiBridge.liveshareSetConfig(2, JSON.stringify({url:live.rtmp_url})));
+  if (configured.code !== 0) { await notifyLive("erro", {}, configured.message); message.textContent = "Falha ao configurar o vídeo: " + configured.message; return; }
+  const started = bridgeResult(window.djiBridge.liveshareStartLive());
+  if (started.code !== 0) { await notifyLive("erro", {}, started.message); message.textContent = "Falha ao iniciar o vídeo: " + started.message; return; }
+  await notifyLive("iniciada");
+  message.textContent = "Transmissão ao vivo iniciada.";
+  document.getElementById("start-live-button").disabled = true;
+  document.getElementById("stop-live-button").disabled = false;
+}
+async function stopLive() {
+  const stopped = bridgeResult(window.djiBridge.liveshareStopLive());
+  if (stopped.code !== 0) { message.textContent = "Falha ao encerrar o vídeo: " + stopped.message; return; }
+  await notifyLive("finalizada");
+  message.textContent = "Transmissão encerrada.";
+  document.getElementById("start-live-button").disabled = false;
+  document.getElementById("stop-live-button").disabled = true;
 }
 const button = document.getElementById("connect-button"); if (button) button.addEventListener("click", connectPilot);
+const startButton = document.getElementById("start-live-button"); if (startButton) startButton.addEventListener("click", startLive);
+const stopButton = document.getElementById("stop-live-button"); if (stopButton) stopButton.addEventListener("click", stopLive);
 </script></body></html>

@@ -24,7 +24,29 @@ def diagnostico_open_platforms():
         "configurado": configurado,
         "habilitado": settings.DJI_CLOUD_ENABLED,
         "pronto": settings.DJI_CLOUD_ENABLED and configurado,
+        "livestream": diagnostico_livestream(),
     }
+
+
+def diagnostico_livestream():
+    rtmp = _rtmp_valido(settings.DJI_LIVESTREAM_RTMP_BASE_URL)
+    playback = _https_valido(settings.DJI_LIVESTREAM_PLAYBACK_BASE_URL)
+    configurado = rtmp and playback
+    return {
+        "itens": {"rtmp": rtmp, "playback": playback},
+        "configurado": configurado,
+        "habilitado": settings.DJI_LIVESTREAM_ENABLED,
+        "pronto": settings.DJI_CLOUD_ENABLED and settings.DJI_LIVESTREAM_ENABLED and configurado,
+    }
+
+
+def endereco_ingestao(transmissao):
+    return f"{settings.DJI_LIVESTREAM_RTMP_BASE_URL}/{transmissao.chave_stream}"
+
+
+def endereco_reproducao(transmissao):
+    """Página WebRTC do MediaMTX/SRS; nunca expõe a URL privada de ingestão."""
+    return f"{settings.DJI_LIVESTREAM_PLAYBACK_BASE_URL}/{transmissao.chave_stream}"
 
 
 def token_pilot(user):
@@ -65,3 +87,8 @@ def _https_valido(valor):
 def _mqtt_valido(valor):
     parsed = urlparse(valor)
     return parsed.scheme in ("tcp", "ssl", "ws", "wss") and bool(parsed.netloc)
+
+
+def _rtmp_valido(valor):
+    parsed = urlparse(valor)
+    return parsed.scheme in ("rtmp", "rtmps") and bool(parsed.netloc)

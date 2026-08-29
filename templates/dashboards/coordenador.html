@@ -3,6 +3,7 @@
 <div class="page-header dashboard-profile-header"><div><span class="dashboard-eyebrow">Centro de operações</span><h1>Dashboard do coordenador</h1><p>Consciência situacional da equipe, agenda, mapa e conformidade operacional.</p></div><form method="get" class="period-filter"><input type="date" name="grafico_inicio" value="{{ grafico_inicio }}"><span>até</span><input type="date" name="grafico_fim" value="{{ grafico_fim }}"><button class="btn btn-primary">Aplicar</button></form></div>
 {% if alertas_resumo_global.total %}<a class="dashboard-alert-summary coordinator-alert-summary" href="{% url 'alertas' %}"><div><strong>⚠ {{ alertas_resumo_global.total }} alertas operacionais</strong><span>{{ alertas_resumo_global.criticos }} críticos · {{ regularizacoes_total }} regularizações</span></div><span>Acompanhar →</span></a>{% endif %}
 <div class="coordinator-kpi-grid"><div class="kpi-card"><div><span>Voando agora</span><strong>{{ operacoes_agora_total }}</strong><small>Conforme agenda atual</small></div><div class="kpi-icon live">●</div></div><div class="kpi-card"><div><span>Operações previstas</span><strong>{{ operacoes_previstas|length }}</strong><small>Agenda futura</small></div><div class="kpi-icon">▣</div></div><div class="kpi-card"><div><span>Pilotos ativos</span><strong>{{ pilotos_ativos_total }}</strong><small>Equipe liberada</small></div><div class="kpi-icon green">♙</div></div><div class="kpi-card"><div><span>Regularizações</span><strong>{{ regularizacoes_total }}</strong><small>Etapas incompletas</small></div><div class="kpi-icon orange">!</div></div></div>
+<section class="panel coordinator-live-streams"><div class="panel-title-row"><div><h3>Transmissões ao vivo</h3><p>Imagem enviada pelo DJI Pilot 2 durante a operação.</p></div>{% if transmissoes_ao_vivo %}<span class="live-update-note"><i></i>{{ transmissoes_ao_vivo|length }} ao vivo</span>{% endif %}</div>{% if transmissoes_ao_vivo %}<div class="live-stream-grid">{% for item in transmissoes_ao_vivo %}<article class="live-stream-card"><div class="live-stream-player"><iframe src="{{ item.playback_url }}" title="Transmissão de {{ item.sessao.piloto.nome }}" loading="lazy" allow="autoplay; fullscreen" referrerpolicy="same-origin"></iframe><span class="live-stream-badge">● AO VIVO</span></div><div class="live-stream-meta"><strong>{{ item.sessao.piloto.nome }}</strong><span>{{ item.sessao.drone.nome|default:"Aeronave não vinculada" }}{% if item.sessao.drone.prefixo %} · {{ item.sessao.drone.prefixo }}{% endif %}</span><small>{% if item.sessao.alocacao %}{{ item.sessao.alocacao.local|default:"Local não informado" }}{% else %}Operação sem reserva vinculada{% endif %}</small></div></article>{% endfor %}</div>{% else %}<div class="live-stream-empty"><strong>Nenhuma transmissão ativa.</strong><span>{% if livestream_habilitada %}Quando um piloto iniciar o vídeo no DJI Pilot 2, ele aparecerá aqui.{% else %}A infraestrutura está preparada e será ativada quando o servidor de mídia estiver disponível.{% endif %}</span></div>{% endif %}</section>
 <div class="panel coordinator-map-panel"><div class="panel-title-row"><div><h3>Mapa operacional</h3><p>Operações previstas com área planejada.</p></div><div class="coordinator-map-legend"><span><i class="current"></i>Em andamento</span><span><i class="reserved"></i>Prevista</span></div></div><div id="coordinator-operations-map"></div>{% if not operacoes_mapa %}<div class="coordinator-map-empty"><strong>Nenhuma área disponível</strong><span>As operações com planejamento geográfico aparecerão aqui.</span></div>{% endif %}</div>
 <div class="panel coordinator-live-panel"><div class="panel-title-row"><div><h3>Operações previstas e em andamento</h3><p>Clique nas linhas com mapa para localizar a operação.</p></div><a href="{% url 'calendario' %}">Calendário completo →</a></div><div class="table-responsive"><table class="modern-table"><thead><tr><th>Período</th><th>Piloto</th><th>Drone</th><th>Local</th><th>Finalidade</th><th>Situação</th></tr></thead><tbody>{% for item in operacoes_previstas %}{% with o=item.reserva %}<tr class="coordinator-operation-row{% if item.tem_mapa %} has-map{% endif %}"{% if item.tem_mapa %} data-operation-id="{{ o.pk }}" tabindex="0"{% endif %}><td>{{ o.data|date:"d/m/Y" }} {{ o.hora_inicio|time:"H:i" }}<small class="table-subtext">até {{ o.data_final|date:"d/m/Y" }} {{ o.hora_fim|time:"H:i" }}</small></td><td><strong>{{ o.piloto.nome }}</strong></td><td>{{ o.drone.nome }}<small class="table-subtext">{{ o.drone.prefixo }}</small></td><td>{{ o.local|default:"Não informado" }}</td><td>{{ o.finalidade }}</td><td><span class="badge-soft {% if item.situacao == 'em_andamento' %}green{% else %}blue{% endif %}">{{ item.situacao_label }}</span></td></tr>{% endwith %}{% empty %}<tr><td colspan="6">Nenhuma operação futura.</td></tr>{% endfor %}</tbody></table></div></div>
 <div class="chart-grid main"><div class="panel"><div class="panel-title-row"><div><h3>Atividade da equipe</h3><p>Horas comprovadas por piloto.</p></div><a href="{% url 'equipe_operacional' %}">Ver equipe →</a></div><canvas id="chartPilotos"></canvas></div><div class="panel"><h3>Utilização das aeronaves</h3><canvas id="chartDrones"></canvas></div></div>
@@ -13,4 +14,95 @@
 <div class="panel"><div class="panel-title-row"><div><h3>Indicadores dos últimos 30 dias</h3><p>Comparação operacional baseada somente em telemetria processada.</p></div></div><div class="coordinator-kpi-grid"><div class="kpi-card"><div><span>Voos com log</span><strong>{{ indicadores_gerenciais.voos_30 }}</strong></div><div class="kpi-icon">✈</div></div><div class="kpi-card"><div><span>Horas de voo</span><strong>{{ indicadores_gerenciais.horas_30 }}</strong></div><div class="kpi-icon green">◷</div></div><div class="kpi-card"><div><span>Distância</span><strong>{{ indicadores_gerenciais.distancia_30 }} km</strong><small>Somente telemetria processada</small></div><div class="kpi-icon purple">⌖</div></div><div class="kpi-card"><div><span>Conformidade dos logs</span><strong>{{ indicadores_gerenciais.conformidade_logs }}%</strong></div><div class="kpi-icon orange">✓</div></div></div></div>
 {{ operacoes_mapa|json_script:"coordinator-map-data" }}{{ pilotos_data|json_script:"coord-pilotos" }}{{ drones_data|json_script:"coord-drones" }}
 {% endblock %}
-{% block scripts %}<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>const p=JSON.parse(document.getElementById('coord-pilotos').textContent),d=JSON.parse(document.getElementById('coord-drones').textContent);const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}};new Chart(document.getElementById('chartPilotos'),{type:'bar',data:{labels:p.map(x=>x.nome),datasets:[{label:'Horas',data:p.map(x=>x.horas),backgroundColor:'#1769e0'}]},options:opts});new Chart(document.getElementById('chartDrones'),{type:'doughnut',data:{labels:d.map(x=>x.nome),datasets:[{data:d.map(x=>x.horas),backgroundColor:['#1769e0','#21a179','#7a55d9','#f59e0b','#e05260']}]},options:opts});const ops=JSON.parse(document.getElementById('coordinator-map-data').textContent),el=document.getElementById('coordinator-operations-map');if(el&&ops.length){const map=L.map(el).setView([-25.5,-54.5],8);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);const layers={},all=[];ops.forEach(o=>{const l=L.geoJSON(o.area,{style:{color:o.situacao==='em_andamento'?'#21a179':'#1769e0',weight:3,fillOpacity:.15}}).addTo(map).bindPopup(`<strong>${o.piloto}</strong><br>${o.drone}<br>${o.local}<br>${o.horario}`);layers[String(o.id)]=l;all.push(l)});map.fitBounds(L.featureGroup(all).getBounds(),{padding:[25,25],maxZoom:15});document.querySelectorAll('.coordinator-operation-row.has-map').forEach(r=>r.addEventListener('click',()=>{const l=layers[r.dataset.operationId];map.fitBounds(l.getBounds(),{padding:[50,50],maxZoom:16});l.openPopup();el.scrollIntoView({behavior:'smooth'})}));setTimeout(()=>map.invalidateSize(),100)}</script>{% endblock %}
+{% block scripts %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+    const readJson = (id, fallback) => {
+        const node = document.getElementById(id);
+        if (!node) return fallback;
+        try { return JSON.parse(node.textContent); } catch (error) { return fallback; }
+    };
+
+    // Uma falha no provedor dos gráficos não pode impedir a abertura do mapa.
+    if (typeof Chart !== "undefined") {
+        const pilotos = readJson("coord-pilotos", []);
+        const drones = readJson("coord-drones", []);
+        const options = {responsive: true, maintainAspectRatio: false, plugins: {legend: {position: "bottom"}}};
+        new Chart(document.getElementById("chartPilotos"), {
+            type: "bar",
+            data: {labels: pilotos.map(item => item.nome), datasets: [{label: "Horas", data: pilotos.map(item => item.horas), backgroundColor: "#1769e0"}]},
+            options
+        });
+        new Chart(document.getElementById("chartDrones"), {
+            type: "doughnut",
+            data: {labels: drones.map(item => item.nome), datasets: [{data: drones.map(item => item.horas), backgroundColor: ["#1769e0", "#21a179", "#7a55d9", "#f59e0b", "#e05260"]}]},
+            options
+        });
+    }
+
+    const container = document.getElementById("coordinator-operations-map");
+    if (!container || typeof L === "undefined") return;
+
+    const operations = readJson("coordinator-map-data", []);
+    const map = L.map(container, {scrollWheelZoom: false}).setView([-14.5, -52.5], 4);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap",
+        referrerPolicy: "origin"
+    }).addTo(map);
+
+    const layers = {};
+    const validLayers = [];
+    operations.forEach(operation => {
+        try {
+            const layer = L.geoJSON(operation.area, {
+                style: {
+                    color: operation.situacao === "em_andamento" ? "#21a179" : "#1769e0",
+                    weight: 3,
+                    fillOpacity: .15
+                }
+            }).addTo(map).bindPopup(
+                `<strong>${operation.piloto}</strong><br>${operation.drone}<br>${operation.local}<br>${operation.horario}`
+            );
+            if (layer.getBounds().isValid()) {
+                layers[String(operation.id)] = layer;
+                validLayers.push(layer);
+            } else {
+                map.removeLayer(layer);
+            }
+        } catch (error) {
+            console.warn("Área de operação inválida ignorada no mapa.", error);
+        }
+    });
+
+    if (validLayers.length) {
+        const bounds = L.featureGroup(validLayers).getBounds();
+        if (bounds.isValid()) map.fitBounds(bounds, {padding: [25, 25], maxZoom: 15});
+    }
+
+    const focusOperation = row => {
+        const layer = layers[row.dataset.operationId];
+        if (!layer) return;
+        const bounds = layer.getBounds();
+        if (bounds.isValid()) map.fitBounds(bounds, {padding: [50, 50], maxZoom: 16});
+        layer.openPopup();
+        container.scrollIntoView({behavior: "smooth", block: "center"});
+    };
+    document.querySelectorAll(".coordinator-operation-row.has-map").forEach(row => {
+        row.addEventListener("click", () => focusOperation(row));
+        row.addEventListener("keydown", event => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                focusOperation(row);
+            }
+        });
+    });
+
+    requestAnimationFrame(() => map.invalidateSize());
+    window.addEventListener("load", () => map.invalidateSize(), {once: true});
+    window.addEventListener("resize", () => map.invalidateSize());
+})();
+</script>
+{% endblock %}

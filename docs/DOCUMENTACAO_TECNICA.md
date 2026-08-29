@@ -248,6 +248,29 @@ Por segurança, a integração fica desativada por padrão com `DJI_CLOUD_ENABLE
 - token assinado e temporário para API e MQTT;
 - endpoint de autenticação HTTP compatível com broker EMQX 5.
 
+#### Transmissão ao vivo
+
+A fundação de livestream DJI está implementada, mas permanece desligada até a implantação de um servidor de mídia público. O fluxo previsto é **aeronave → DJI Pilot 2 → RTMP/RTMPS → MediaMTX ou SRS → player WebRTC no SISMOD**.
+
+- o piloto conecta o controle e a aeronave pelo portal Open Platforms;
+- o SISMOD identifica o drone pelo número de série;
+- **Iniciar transmissão** cria uma sessão com chave aleatória e endereço de ingestão temporário;
+- o módulo oficial `liveshare` do DJI Pilot 2 configura o RTMP e inicia/encerra o envio;
+- estado e métricas de qualidade são devolvidos ao SISMOD;
+- a sessão é vinculada ao piloto, drone e, quando houver, à reserva em andamento;
+- a dashboard do coordenador mostra somente o endereço HTTPS de reprodução e nunca a URL RTMP de ingestão;
+- sessões finalizadas ou com erro deixam de aparecer como ativas.
+
+O modelo `TransmissaoAoVivo` registra identificador, chave de stream, piloto, aeronave, reserva, seriais do equipamento, situação, métricas e horários. A chave não substitui controle de acesso do servidor: em produção, o player deve ficar atrás de HTTPS, autenticação e regras de rede/reverse proxy.
+
+Variáveis adicionais:
+
+- `DJI_LIVESTREAM_ENABLED=false`, chave independente e desligada por padrão;
+- `DJI_LIVESTREAM_RTMP_BASE_URL`, destino RTMP/RTMPS aceito pelo servidor de mídia;
+- `DJI_LIVESTREAM_PLAYBACK_BASE_URL`, endereço HTTPS do player WebRTC.
+
+A importação manual de Flight Records não depende dessas variáveis e continua disponível mesmo com a livestream desligada.
+
 O portal somente habilita o botão de conexão quando todas as configurações estão presentes e válidas. O endereço precisa ser público e HTTPS. A integração ainda não recebe tópicos MQTT nem arquivos automaticamente; isso será habilitado depois da instalação e configuração do broker.
 
 Variáveis necessárias:
@@ -261,7 +284,7 @@ Variáveis necessárias:
 - nomes da plataforma, workspace e descrição;
 - `SISMOD_ALLOWED_HOSTS` e `SISMOD_CSRF_TRUSTED_ORIGINS` para o domínio publicado.
 
-Referências oficiais: [DJI Pilot 2 Access to Cloud](https://developer.dji.com/doc/cloud-api-tutorial/en/feature-set/pilot-feature-set/pilot-access-to-cloud.html) e [DJI JSBridge](https://developer.dji.com/doc/cloud-api-tutorial/en/api-reference/pilot-to-cloud/jsbridge.html).
+Referências oficiais: [DJI Pilot 2 Access to Cloud](https://developer.dji.com/doc/cloud-api-tutorial/en/feature-set/pilot-feature-set/pilot-access-to-cloud.html), [DJI JSBridge](https://developer.dji.com/doc/cloud-api-tutorial/en/api-reference/pilot-to-cloud/jsbridge.html) e [DJI Live Stream](https://developer.dji.com/doc/cloud-api-tutorial/en/feature-set/pilot-feature-set/pilot-livestream.html).
 
 ### Avaliação de risco
 
@@ -417,8 +440,12 @@ Nunca publicar chaves DJI, CPF, documentos, banco ou mídia no GitHub.
 
 ## 13. Limitações conhecidas
 
+O procedimento consolidado de ativação está em [`docs/RECURSOS_DESATIVADOS.md`](RECURSOS_DESATIVADOS.md).
+
 - logs são importados manualmente;
-- integração automática DJI/Autel não existe ainda;
+- ingestão automática de logs DJI/Autel ainda não está ativa;
+- livestream DJI está implementada no SISMOD, mas depende da implantação e proteção do broker e do servidor de mídia;
+- livestream Autel ainda não está integrada;
 - token SARPAS não está integrado;
 - meteorologia/neblina/camadas aeronáuticas são apoio à decisão;
 - tiles OSM públicos têm política de uso e não atendem alto volume;
@@ -445,6 +472,8 @@ Nunca publicar chaves DJI, CPF, documentos, banco ou mídia no GitHub.
 - python-dotenv: https://bbc2.github.io/python-dotenv/
 - qrcode: https://github.com/lincolnloop/python-qrcode
 - Parser DJI: https://github.com/olavbolav/dji-flightlog-parser
+- DJI Cloud API Live Stream: https://developer.dji.com/doc/cloud-api-tutorial/en/feature-set/pilot-feature-set/pilot-livestream.html
+- MediaMTX: https://mediamtx.org/docs/kickoff/introduction
 - AISWEB/DECEA: https://aisweb.decea.mil.br/
 - SARPAS/DECEA: https://sarpas.decea.mil.br/
 - SISCLATEN: https://sisclaten.defesa.gov.br/sisclaten/

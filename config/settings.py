@@ -100,3 +100,8 @@ DJI_CLOUD_WORKSPACE_NAME = os.getenv("DJI_CLOUD_WORKSPACE_NAME", "Operações SI
 DJI_CLOUD_WORKSPACE_DESCRIPTION = os.getenv(
     "DJI_CLOUD_WORKSPACE_DESCRIPTION", "Monitoramento e gestão de operações com drones"
 ).strip()
+
+# Livestream DJI. Permanece desligada até existir um servidor de mídia público.
+DJI_LIVESTREAM_ENABLED = os.getenv("DJI_LIVESTREAM_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+DJI_LIVESTREAM_RTMP_BASE_URL = os.getenv("DJI_LIVESTREAM_RTMP_BASE_URL", "").strip().rstrip("/")
+DJI_LIVESTREAM_PLAYBACK_BASE_URL = os.getenv("DJI_LIVESTREAM_PLAYBACK_BASE_URL", "").strip().rstrip("/")

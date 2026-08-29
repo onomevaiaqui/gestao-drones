@@ -37,6 +37,7 @@ from .models import (
     ImportacaoLog,
     SolicitacaoVoo,
     Incidente,
+    TransmissaoAoVivo,
 )
 from .drone_documento_forms import DocumentoDroneForm
 from .papel_timbrado import PapelTimbradoRelatorioForm, aplicar_papel_timbrado, tamanho_pagina_do_modelo
@@ -669,6 +670,19 @@ def dashboard(request):
         if usuario_e_admin(request.user):
             from .dji_cloud_service import diagnostico_open_platforms
             ctx["diagnostico_dji"] = diagnostico_open_platforms()
+
+    if visao_global:
+        from .dji_cloud_service import endereco_reproducao
+        transmissoes = list(
+            TransmissaoAoVivo.objects.filter(status="ao_vivo")
+            .select_related("piloto", "drone", "alocacao")
+            .order_by("-iniciada_em")
+        )
+        ctx["transmissoes_ao_vivo"] = [
+            {"sessao": item, "playback_url": endereco_reproducao(item)}
+            for item in transmissoes
+        ] if settings.DJI_LIVESTREAM_ENABLED else []
+        ctx["livestream_habilitada"] = settings.DJI_LIVESTREAM_ENABLED
 
     ctx.update(_base_context(request))
     if usuario_e_admin(request.user):

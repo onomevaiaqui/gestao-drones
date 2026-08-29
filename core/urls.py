@@ -122,4 +122,6 @@ urlpatterns = [
     path("integracoes/dji/pilot/", dji_cloud_views.dji_pilot_portal, name="dji_pilot_portal"),
     path("integracoes/dji/pilot/identificar/", dji_cloud_views.dji_pilot_identificar, name="dji_pilot_identificar"),
     path("integracoes/dji/mqtt/auth/", dji_cloud_views.dji_mqtt_autorizar, name="dji_mqtt_autorizar"),
+    path("integracoes/dji/pilot/livestream/preparar/", dji_cloud_views.dji_livestream_preparar, name="dji_livestream_preparar"),
+    path("integracoes/dji/pilot/livestream/status/", dji_cloud_views.dji_livestream_status, name="dji_livestream_status"),
 ]

@@ -1287,3 +1287,33 @@ class AlertaResolvido(models.Model):
 
     def __str__(self):
         return self.titulo or self.chave
+
+
+class TransmissaoAoVivo(models.Model):
+    STATUS_CHOICES = [
+        ("preparada", "Preparada"),
+        ("ao_vivo", "Ao vivo"),
+        ("finalizada", "Finalizada"),
+        ("erro", "Erro"),
+    ]
+
+    identificador = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    chave_stream = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    piloto = models.ForeignKey(Piloto, on_delete=models.PROTECT, related_name="transmissoes_ao_vivo")
+    drone = models.ForeignKey(Drone, on_delete=models.PROTECT, null=True, blank=True, related_name="transmissoes_ao_vivo")
+    alocacao = models.ForeignKey(Alocacao, on_delete=models.SET_NULL, null=True, blank=True, related_name="transmissoes_ao_vivo")
+    aeronave_serial = models.CharField(max_length=100, blank=True)
+    controle_serial = models.CharField(max_length=100, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="preparada")
+    metricas = models.JSONField(default=dict, blank=True)
+    mensagem_erro = models.CharField(max_length=255, blank=True)
+    iniciada_em = models.DateTimeField(null=True, blank=True)
+    finalizada_em = models.DateTimeField(null=True, blank=True)
+    criada_em = models.DateTimeField(auto_now_add=True)
+    atualizada_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-criada_em"]
+
+    def __str__(self):
+        return f"{self.piloto} - {self.get_status_display()}"

@@ -142,6 +142,9 @@ class TelemetriaBateriaTests(TestCase):
     DJI_CLOUD_MQTT_USERNAME_PREFIX="sismod-pilot",
     DJI_CLOUD_PLATFORM_NAME="SISMOD", DJI_CLOUD_WORKSPACE_NAME="Operações",
     DJI_CLOUD_WORKSPACE_DESCRIPTION="Testes",
+    DJI_LIVESTREAM_ENABLED=True,
+    DJI_LIVESTREAM_RTMP_BASE_URL="rtmps://media.example.com/live",
+    DJI_LIVESTREAM_PLAYBACK_BASE_URL="https://media.example.com",
 )
 class DJICloudFoundationTests(TestCase):
     def setUp(self):
@@ -185,6 +188,63 @@ class DJICloudFoundationTests(TestCase):
             data={"username": f"sismod-pilot-{self.usuario.pk}", "password": "invalido"},
         )
         self.assertEqual(negada.json()["result"], "deny")
+
+    def test_piloto_prepara_e_atualiza_transmissao_sem_expor_ingestao_na_dashboard(self):
+        from .models import TransmissaoAoVivo
+
+        self.client.force_login(self.usuario)
+        self.client.post(
+            reverse("dji_pilot_identificar"),
+            data='{"aeronave_sn":"AIRCRAFT-123","controle_sn":"RC-123"}',
+            content_type="application/json",
+        )
+        preparar = self.client.post(reverse("dji_livestream_preparar"))
+        self.assertEqual(preparar.status_code, 200)
+        self.assertTrue(preparar.json()["rtmp_url"].startswith("rtmps://media.example.com/live/"))
+        transmissao = TransmissaoAoVivo.objects.get()
+        self.assertEqual(transmissao.piloto, self.piloto)
+        self.assertEqual(transmissao.drone, self.drone)
+
+        status = self.client.post(
+            reverse("dji_livestream_status"),
+            data='{"evento":"iniciada","metricas":{"fps":30,"videoBitRate":2500}}',
+            content_type="application/json",
+        )
+        self.assertEqual(status.status_code, 200)
+        transmissao.refresh_from_db()
+        self.assertEqual(transmissao.status, "ao_vivo")
+        self.assertEqual(transmissao.metricas["fps"], 30)
+
+        encerrada = self.client.post(
+            reverse("dji_livestream_status"),
+            data='{"evento":"finalizada"}', content_type="application/json",
+        )
+        self.assertEqual(encerrada.status_code, 200)
+        transmissao.refresh_from_db()
+        self.assertEqual(transmissao.status, "finalizada")
+        self.assertIsNotNone(transmissao.finalizada_em)
+
+    @override_settings(DJI_LIVESTREAM_ENABLED=False)
+    def test_livestream_desativada_nao_cria_sessao(self):
+        from .models import TransmissaoAoVivo
+
+        self.client.force_login(self.usuario)
+        resposta = self.client.post(reverse("dji_livestream_preparar"))
+        self.assertEqual(resposta.status_code, 503)
+        self.assertFalse(TransmissaoAoVivo.objects.exists())
+
+    def test_coordenador_visualiza_player_sem_endereco_de_ingestao(self):
+        from .models import TransmissaoAoVivo
+
+        transmissao = TransmissaoAoVivo.objects.create(
+            piloto=self.piloto, drone=self.drone, status="ao_vivo",
+        )
+        self.client.force_login(self.admin)
+        self.client.post(reverse("selecionar_modo_acesso"), {"modo": "coordenador"})
+        resposta = self.client.get(reverse("dashboard"))
+        self.assertContains(resposta, "Transmissões ao vivo")
+        self.assertContains(resposta, f"https://media.example.com/{transmissao.chave_stream}")
+        self.assertNotContains(resposta, "rtmps://media.example.com/live")
 
     @override_settings(DJI_CLOUD_ENABLED=False)
     def test_integracao_desativada_bloqueia_portal_identificacao_e_mqtt(self):
