@@ -39,10 +39,11 @@ def bateria_nova(request):
     importacao_id = request.GET.get("importacao", "").strip()
     initial = {}
     if serial:
+        importacao = ImportacaoLog.objects.filter(pk=importacao_id).first() if importacao_id.isdigit() else None
         initial.update({
             "numero_serie": serial,
             "codigo": f"BAT-{serial[-8:]}",
-            "fabricante": "DJI",
+            "fabricante": "Autel" if importacao and importacao.origem == "autel_csv" else "DJI",
         })
     if drone_id.isdigit():
         initial["drone"] = drone_id

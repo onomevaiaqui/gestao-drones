@@ -8,15 +8,19 @@
     <div class="mb-3"><label class="form-label">{{ form.voo.label }}</label>{{ form.voo }}{{ form.voo.errors }}<div class="form-text">Voos antigos e voos que já possuem logs continuam disponíveis. Todos os arquivos selecionados serão vinculados ao mesmo voo.</div></div>
     <div class="mb-3"><label class="form-label">Como deseja importar?</label>{{ form.modo }}{{ form.modo.errors }}</div>
     <div class="mb-3" id="single-file-field"><label class="form-label">Arquivo</label>{{ form.arquivo }}{{ form.arquivo.errors }}</div>
-    <div class="mb-3" id="folder-field"><label class="form-label">Pasta</label>{{ form.pasta }}{{ form.pasta.errors }}<div class="form-text">Arquivos que não sejam CSV ou TXT serão ignorados.</div></div>
-    <div class="form-text mb-3">Cada arquivo pode ter até 20 MB e 100.000 pontos. Uma pasta pode conter até 100 logs.</div>
+    <div class="mb-3" id="folder-field"><label class="form-label">Pasta</label>{{ form.pasta }}{{ form.pasta.errors }}<div class="form-text">Arquivos que não sejam CSV, TXT, JSON, BIN ou ULG serão ignorados.</div></div>
+    <div class="form-text mb-3">CSV/TXT podem ter até 20 MB; BIN/ULG, até 200 MB. São aceitos até 100.000 pontos GPS por arquivo e 100 logs por pasta.</div>
     <div class="info-box mb-3">Data, horários, distância e percentuais de bateria reconhecidos serão aplicados automaticamente ao voo.</div>
     <button class="btn btn-primary" type="submit">Importar e processar</button>
   </form>
-  <div class="panel"><h3>Formatos reconhecidos</h3><p class="text-muted">Envie diretamente o arquivo DJIFlightRecord do controle ou um CSV exportado por outro aplicativo.</p>
+  <div class="panel"><h3>Formatos reconhecidos</h3><p class="text-muted">Envie diretamente o DJIFlightRecord ou o registro de voo CSV exportado pelo aplicativo do fabricante.</p>
     <div class="alert alert-info"><strong>DJI Pilot 2:</strong> leitura manual de Flight Record v13/v14 com a chave DJI configurada.</div>
+    <div class="alert alert-info"><strong>Autel Enterprise / Autel Sky:</strong> exporte o registro de voo em CSV. Pacotes <code>.LOG</code>, <code>.tar</code> e logs de diagnóstico não são telemetria de voo e não devem ser enviados nesta tela.</div>
+    <div class="alert alert-info"><strong>Pixhawk:</strong> envie o DataFlash <code>.BIN</code> do ArduPilot ou o <code>.ULG</code> do PX4. O firmware, e não a marca da controladora, define qual formato utilizar.</div>
+    <div class="alert alert-info"><strong>Wingtra:</strong> envie o registro <code>.ULG</code> da pasta <code>FLIGHT RECORDS</code>.</div>
+    <div class="alert alert-info"><strong>senseFly eBee:</strong> no eMotion, marque <em>Create JSON flight log</em> e envie o <code>.JSON</code>. A leitura direta de <code>.BB3/.BBZ</code> será validada com uma amostra real.</div>
     <div class="telemetry-columns"><span>timestamp</span><span>seconds</span><span>latitude</span><span>longitude</span><span>altitude</span><span>speed</span><span>battery</span><span>satellites</span><span>signal</span><span>warning</span></div>
-    <p class="text-muted small mt-3">O separador pode ser vírgula, ponto e vírgula, tabulação ou barra vertical. Decimais aceitam ponto ou vírgula.</p>
+    <p class="text-muted small mt-3">O separador pode ser vírgula, ponto e vírgula, tabulação ou barra vertical. Decimais aceitam ponto ou vírgula. Cabeçalhos Autel em inglês e unidades m, ft, m/s, km/h ou mph são normalizados automaticamente.</p>
     <a class="btn btn-light" href="{% url 'telemetria_modelo_csv' %}">Baixar CSV de exemplo</a>
   </div>
 </div>

@@ -38,6 +38,8 @@ O sistema auxilia a gestão. As análises meteorológicas, aeronáuticas, SARPAS
 | `Django` | Framework da aplicação web e acesso ao banco pelo ORM. |
 | `python-dotenv` | Carrega segredos e configurações locais do `.env`. |
 | `dji-flightlog-parser` | Decodifica Flight Records binários DJI antes da normalização. |
+| `pymavlink` | Lê logs DataFlash `.BIN` produzidos pelo ArduPilot em controladoras Pixhawk. |
+| `pyulog` | Lê logs `.ULG` produzidos pelo PX4 em controladoras Pixhawk. |
 | `reportlab` | Gera PDFs de relatórios e avaliações de risco. |
 | `pypdf` | Lê, combina e aplica papel timbrado aos PDFs. |
 | `qrcode[pil]` | Gera QR Codes de componentes. |
@@ -312,12 +314,25 @@ Referências oficiais: [DJI Pilot 2 Access to Cloud](https://developer.dji.com/d
 - telemetria sem planejamento prévio entra no calendário como **Regularização pendente**;
 - o aviso permanece para piloto, coordenador e administrador até a vinculação do planejamento e a conclusão de checklist e pós-voo;
 - o fluxo de regularização preenche automaticamente piloto, drone, data, horários, finalidade e local, exigindo que o usuário confirme e desenhe a área efetivamente sobrevoada;
-- suporta CSV normalizado e Flight Records DJI processados pelo parser;
+- suporta CSV normalizado, CSV de registro de voo exportado pelos aplicativos Autel e Flight Records DJI processados pelo parser;
 - exibe rota, `hh:mm:ss`, distância, altitude, velocidade, bateria, satélites e alertas;
 - consolida dados por minuto e explica estados normal, atenção e erro;
 - alertas georreferenciados aparecem no mapa.
 
 Modelos DJI previstos na identificação incluem Matrice 4T/4E, Matrice 300 RTK, Matrice 30T e família Mavic 3. A compatibilidade real depende do formato/firmware e deve ser validada com amostras de cada equipamento.
+
+Na Autel, a primeira camada de compatibilidade é a importação manual do **CSV de registro de voo** exportado pelo Autel Enterprise ou Autel Sky. O normalizador reconhece cabeçalhos em inglês, inclusive em `camelCase`, localiza a tabela depois de um preâmbulo de metadados e converte pés, km/h e mph para as unidades internas. Quando presentes, são lidos modelo, serial da aeronave, serial/ciclos da bateria, tempo, rota, altitude, velocidade, bateria, satélites, sinal e avisos. Arquivos `.LOG`, pacotes de diagnóstico e arquivos de suporte do equipamento não são tratados como telemetria operacional. Cada aplicativo, modelo e versão de firmware deve ser validado com um CSV real antes do uso definitivo.
+
+Para controladoras Pixhawk, o formato depende do firmware instalado:
+
+- **ArduPilot:** DataFlash `.BIN`, interpretado com `pymavlink`; são normalizados GPS, tempo, altitude, velocidade, bateria, satélites, sinal e mensagens `ERR`;
+- **PX4:** `.ULG`, interpretado com `pyulog`; são combinados os tópicos `vehicle_gps_position`, `vehicle_local_position` e `battery_status`, além das mensagens de severidade relevante;
+- BIN/ULG podem ter até 200 MB; o processamento continua limitado a 100.000 posições GPS para proteger memória e banco de dados;
+- Pixhawk identifica a controladora, não necessariamente o fabricante da aeronave. A associação oficial continua sendo feita ao voo/drone selecionado pelo usuário.
+
+O Wingtra usa ULog e passa pelo leitor PX4, recebendo identificação própria no resumo quando os metadados do arquivo indicam WingtraOne/WingtraRAY. Os registros ficam normalmente na pasta `FLIGHT RECORDS` do projeto.
+
+No senseFly eBee, o formato binário `.BB3/.BBZ` é proprietário. A integração inicial usa o JSON gerado pelo eMotion pela opção **Create JSON flight log**. O leitor procura de forma segura a série de telemetria no documento, inclusive quando posição e sensores estão aninhados, e normaliza rota, tempo, altitude, velocidade, bateria, satélites, sinal e alertas. O suporte direto ao BB3/BBZ somente será declarado depois da inspeção de uma amostra real e da confirmação de um método de decodificação sustentável.
 
 ### Pós-voo
 
@@ -459,7 +474,7 @@ O procedimento consolidado de ativação está em [`docs/RECURSOS_DESATIVADOS.md
 - meteorologia/neblina/camadas aeronáuticas são apoio à decisão;
 - tiles OSM públicos têm política de uso e não atendem alto volume;
 - SQLite precisa ser reavaliado para implantação multiusuário;
-- cada modelo/firmware DJI requer log real de teste.
+- cada modelo/firmware DJI, Autel, ArduPilot ou PX4 requer log real de teste; na Autel, apenas o CSV de voo está coberto nesta etapa.
 
 ## 14. Documentação oficial
 
@@ -482,6 +497,15 @@ O procedimento consolidado de ativação está em [`docs/RECURSOS_DESATIVADOS.md
 - qrcode: https://github.com/lincolnloop/python-qrcode
 - Parser DJI: https://github.com/olavbolav/dji-flightlog-parser
 - DJI Cloud API Live Stream: https://developer.dji.com/doc/cloud-api-tutorial/en/feature-set/pilot-feature-set/pilot-livestream.html
+- Autel — segurança e exportação de registros CSV: https://www.autelrobotics.com/news/white-paper/
+- Autel — Cloud API: https://developer.autelrobotics.com/cloudApi
+- Autel — API de logs de diagnóstico: https://developer.autelrobotics.com/doc/v2.5/android_api_reference/en/10/31
+- ArduPilot — estrutura das mensagens de log: https://ardupilot.org/copter/docs/logmessages.html
+- ArduPilot — pymavlink: https://github.com/ArduPilot/pymavlink
+- PX4 — formato ULog: https://docs.px4.io/main/en/dev_log/ulog_file_format.html
+- PX4 — pyulog: https://github.com/PX4/pyulog
+- Wingtra — organização dos registros de voo: https://knowledge.wingtra.com/es/organizacion-de-datos-wingtraone
+- senseFly — obtenção dos registros BB3/BBZ: https://sensefly.zendesk.com/hc/en-us/articles/360017004300-eBee-X-eBee-TAC-What-to-share-with-technical-support
 - MediaMTX: https://mediamtx.org/docs/kickoff/introduction
 - AISWEB/DECEA: https://aisweb.decea.mil.br/
 - SARPAS/DECEA: https://sarpas.decea.mil.br/

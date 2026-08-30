@@ -1,6 +1,9 @@
 from datetime import date, time, timedelta
 from io import BytesIO
 import tempfile
+from decimal import Decimal
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -654,6 +657,142 @@ class TelemetriaTests(TestCase):
         self.assertContains(resposta, "invalidateSize")
         self.assertEqual(len(resposta.context["amostra_minutos"]), 1)
         self.assertEqual(resposta.context["amostra_minutos"][0]["status"], "atencao")
+
+    def test_processa_csv_autel_com_metadados_camelcase_e_conversao_de_unidades(self):
+        conteudo = (
+            "Relatório exportado pelo Autel Enterprise\n"
+            "Timestamp,Aircraft Latitude (Degrees),Aircraft Longitude (Degrees),Altitude Above Takeoff (ft),HorizontalSpeed(km/h),BatteryPercent,GPSSatelliteCount,WarningMessage,Aircraft Model,Aircraft SN,Battery SN,Battery Cycle Count\n"
+            "1787576400000,-25.5163000,-54.5854000,32.8084,36,98,,Vento forte,EVO Max 4T,AUTEL-UAV-01,AUTEL-BAT-01,12\n"
+            "1787576410000,-25.5164000,-54.5855000,65.6168,18,92,24,,EVO Max 4T,AUTEL-UAV-01,AUTEL-BAT-01,12\n"
+        ).encode()
+        importacao = ImportacaoLog.objects.create(
+            voo=self.voo,
+            arquivo=SimpleUploadedFile("Autel_EVO_Max_flight.csv", conteudo, content_type="text/csv"),
+            nome_original="Autel_EVO_Max_flight.csv", formato="csv", importado_por=self.usuario,
+        )
+        processar_importacao(importacao, atualizar_voo=True)
+        importacao.refresh_from_db()
+        self.assertEqual(importacao.origem, "autel_csv")
+        self.assertEqual(importacao.formato, "autel-csv")
+        self.assertEqual(importacao.drone_modelo_detectado, "EVO Max 4T")
+        self.assertEqual(importacao.drone_serial_detectado, "AUTEL-UAV-01")
+        self.assertEqual(importacao.bateria_serial_detectada, "AUTEL-BAT-01")
+        self.assertEqual(importacao.bateria_ciclos_detectados, 12)
+        self.assertEqual(importacao.total_pontos, 2)
+        primeiro, segundo = list(importacao.pontos.all())
+        self.assertEqual(primeiro.altitude_m, Decimal("10.00"))
+        self.assertEqual(primeiro.velocidade_ms, Decimal("10.00"))
+        self.assertEqual(segundo.satelites, 24)
+        self.assertEqual(importacao.total_alertas, 1)
+
+    def test_processa_px4_ulog_com_gps_bateria_e_alerta(self):
+        from .pixhawk_service import processar_px4
+
+        def conjunto(nome, dados):
+            return SimpleNamespace(name=nome, multi_id=0, data=dados)
+
+        ulog = SimpleNamespace(
+            data_list=[
+                conjunto("vehicle_gps_position", {
+                    "timestamp": [1_000_000, 2_000_000],
+                    "time_utc_usec": [1_787_576_400_000_000, 1_787_576_401_000_000],
+                    "lat": [-255163000, -255164000], "lon": [-545854000, -545855000],
+                    "alt": [610_000, 620_000], "vel_m_s": [5.0, 8.0],
+                    "satellites_used": [18, 20],
+                }),
+                conjunto("vehicle_local_position", {"timestamp": [1_000_000, 2_000_000], "z": [-10.0, -20.0]}),
+                conjunto("battery_status", {"timestamp": [1_000_000, 2_000_000], "remaining": [0.95, 0.80]}),
+            ],
+            logged_messages=[SimpleNamespace(timestamp=2_000_000, log_level=3, message="Failsafe de teste")],
+            msg_info_dict={"ver_hw": "Pixhawk 6X", "ver_sw": "v1.16", "sys_uuid": "PX4-UUID-01"},
+        )
+        importacao = ImportacaoLog(voo=self.voo, nome_original="voo.ulg", importado_por=self.usuario)
+        with patch("pyulog.ULog", return_value=ulog):
+            pontos = processar_px4(importacao, b"ULog-sintetico")
+        self.assertEqual(importacao.origem, "pixhawk_px4")
+        self.assertEqual(importacao.formato, "px4-ulog")
+        self.assertIn("Pixhawk 6X", importacao.drone_modelo_detectado)
+        self.assertEqual(importacao.drone_serial_detectado, "PX4-UUID-01")
+        self.assertEqual(len(pontos), 2)
+        self.assertEqual(pontos[0].altitude_m, Decimal("10.0"))
+        self.assertEqual(pontos[0].bateria_percentual, 95)
+        self.assertEqual(pontos[1].satelites, 20)
+        self.assertIn("Failsafe", pontos[1].alerta)
+
+    def test_processa_ardupilot_bin_com_gps_bateria_e_erro(self):
+        from .pixhawk_service import processar_ardupilot
+
+        class Mensagem(SimpleNamespace):
+            def get_type(self):
+                return self.tipo
+
+        mensagens = iter([
+            Mensagem(tipo="MSG", Message="ArduCopter V4.5"),
+            Mensagem(tipo="VER", UID=987654),
+            Mensagem(tipo="BAT", RemPct=88),
+            Mensagem(tipo="GPS", Lat=-25.5163, Lng=-54.5854, RelAlt=12.5, Spd=6.0, NSats=17,
+                     TimeUS=1_000_000, _timestamp=1_787_576_400),
+            Mensagem(tipo="ERR", Subsys=5, ECode=2),
+            Mensagem(tipo="GPS", Lat=-25.5164, Lng=-54.5855, RelAlt=20.0, Spd=9.0, NSats=19,
+                     TimeUS=2_000_000, _timestamp=1_787_576_401),
+        ])
+        leitor = SimpleNamespace(recv_msg=lambda: next(mensagens, None))
+        importacao = ImportacaoLog(voo=self.voo, nome_original="voo.bin", importado_por=self.usuario)
+        with patch("pymavlink.DFReader.DFReader_binary", return_value=leitor):
+            pontos = processar_ardupilot(importacao, b"BIN-sintetico")
+        self.assertEqual(importacao.origem, "pixhawk_ardupilot")
+        self.assertEqual(importacao.formato, "ardupilot-bin")
+        self.assertEqual(importacao.drone_serial_detectado, "987654")
+        self.assertEqual(len(pontos), 2)
+        self.assertEqual(pontos[0].bateria_percentual, 88)
+        self.assertEqual(pontos[1].segundos, Decimal("1.0"))
+        self.assertIn("subsistema 5", pontos[1].alerta)
+
+    def test_formulario_aceita_logs_pixhawk_bin_e_ulg(self):
+        from .telemetria_forms import ImportacaoLogForm
+
+        for nome in ("ardupilot.bin", "px4.ulg", "sensefly.json"):
+            arquivo = SimpleUploadedFile(nome, b"log")
+            self.assertTrue(ImportacaoLogForm._validar_arquivo(arquivo))
+
+    def test_processa_json_sensefly_emotion(self):
+        import json
+        from .sensefly_service import processar_sensefly_json
+
+        documento = {
+            "aircraft": {"model": "eBee X", "serialNumber": "EB-01-234"},
+            "telemetry": [
+                {"timestamp": 1787576400000, "position": {"latitude": -25.51, "longitude": -54.58},
+                 "altitude": 80, "groundSpeed": 20, "batteryPercent": 90, "satelliteCount": 16},
+                {"timestamp": 1787576410000, "position": {"latitude": -25.52, "longitude": -54.59},
+                 "altitude": 90, "groundSpeed": 22, "batteryPercent": 85, "satelliteCount": 18},
+            ],
+        }
+        importacao = ImportacaoLog(voo=self.voo, nome_original="eBee.json", importado_por=self.usuario)
+        pontos = processar_sensefly_json(importacao, json.dumps(documento).encode())
+        self.assertEqual(importacao.origem, "sensefly_emotion")
+        self.assertEqual(importacao.formato, "sensefly-json")
+        self.assertEqual(importacao.drone_modelo_detectado, "eBee X")
+        self.assertEqual(importacao.drone_serial_detectado, "EB-01-234")
+        self.assertEqual(len(pontos), 2)
+        self.assertEqual(pontos[1].satelites, 18)
+
+    def test_ulog_wingtra_recebe_identificacao_propria(self):
+        from .pixhawk_service import processar_px4
+
+        gps = SimpleNamespace(name="vehicle_gps_position", multi_id=0, data={
+            "timestamp": [1_000_000], "time_utc_usec": [1_787_576_400_000_000],
+            "lat": [-255163000], "lon": [-545854000], "alt": [610_000],
+            "vel_m_s": [18.0], "satellites_used": [20],
+        })
+        ulog = SimpleNamespace(data_list=[gps], logged_messages=[], msg_info_dict={"ver_hw": "WingtraOne GEN II"})
+        importacao = ImportacaoLog(voo=self.voo, nome_original="flight_record.ulg", importado_por=self.usuario)
+        with patch("pyulog.ULog", return_value=ulog):
+            pontos = processar_px4(importacao, b"ULog-Wingtra")
+        self.assertEqual(importacao.origem, "wingtra")
+        self.assertEqual(importacao.formato, "wingtra-ulog")
+        self.assertIn("WingtraOne", importacao.drone_modelo_detectado)
+        self.assertEqual(len(pontos), 1)
 
     def test_resumo_por_minuto_classifica_normal_atencao_e_erro(self):
         from .telemetria_views import _resumir_pontos_por_minuto

@@ -2,7 +2,10 @@ import csv
 import io
 import logging
 import math
+import os
+import re
 import unicodedata
+from datetime import datetime
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -15,22 +18,31 @@ from .models import PontoTelemetria
 
 
 ALIASES = {
-    "instante": ["timestamp", "datetime", "date_time", "data_hora", "time_stamp"],
-    "segundos": ["seconds", "second", "tempo_s", "time_s", "elapsed_time", "elapsed_seconds"],
-    "latitude": ["latitude", "lat", "gps_latitude"],
-    "longitude": ["longitude", "lon", "lng", "gps_longitude"],
-    "altitude_m": ["altitude", "altitude_m", "height", "height_m", "altura", "altura_m"],
-    "velocidade_ms": ["speed", "speed_ms", "velocity", "velocidade", "velocidade_ms"],
-    "bateria_percentual": ["battery", "battery_percent", "battery_percentage", "bateria", "bateria_percentual"],
-    "satelites": ["satellites", "satellite_count", "satelites", "gps_satellites"],
-    "sinal_percentual": ["signal", "signal_percent", "signal_strength", "sinal", "sinal_percentual"],
-    "alerta": ["warning", "warnings", "alert", "message", "alerta", "aviso"],
+    "instante": ["timestamp", "datetime", "date_time", "data_hora", "time_stamp", "record_time", "flight_datetime", "utc_time"],
+    "segundos": ["seconds", "second", "tempo_s", "time_s", "elapsed_time", "elapsed_seconds", "flight_time", "flighttime", "fly_time"],
+    "latitude": ["latitude", "lat", "gps_latitude", "aircraft_latitude", "aircraftlatitude", "drone_latitude", "uav_latitude"],
+    "longitude": ["longitude", "lon", "lng", "gps_longitude", "aircraft_longitude", "aircraftlongitude", "drone_longitude", "uav_longitude"],
+    "altitude_m": ["altitude", "altitude_m", "height", "height_m", "altura", "altura_m", "relative_altitude", "altitude_above_takeoff", "aircraft_altitude"],
+    "velocidade_ms": ["speed", "speed_ms", "velocity", "velocidade", "velocidade_ms", "horizontal_speed", "ground_speed", "flight_speed"],
+    "bateria_percentual": ["battery", "battery_percent", "battery_percentage", "bateria", "bateria_percentual", "battery_level", "battery_remaining", "remaining_capacity"],
+    "satelites": ["satellites", "satellite_count", "satelites", "gps_satellites", "gps_satellite_count", "gpssatellite_count", "gpssatellitecount", "satellite_number", "gps_count"],
+    "sinal_percentual": ["signal", "signal_percent", "signal_strength", "sinal", "sinal_percentual", "rc_signal", "remote_controller_signal", "transmission_signal"],
+    "alerta": ["warning", "warnings", "alert", "message", "alerta", "aviso", "warning_message", "flight_warning", "alarm"],
+}
+
+AUTEL_METADATA_ALIASES = {
+    "modelo": ["aircraft_model", "drone_model", "product_model", "device_model"],
+    "drone_serial": ["aircraft_sn", "aircraft_serial", "drone_sn", "drone_serial", "uav_sn"],
+    "bateria_serial": ["battery_sn", "battery_serial", "battery_serial_number"],
+    "bateria_ciclos": ["battery_cycle", "battery_cycles", "battery_cycle_count", "cycle_count"],
 }
 
 
 def _normalizar(valor):
     texto = unicodedata.normalize("NFKD", str(valor or "")).encode("ascii", "ignore").decode().lower().strip()
-    return "_".join(texto.replace("%", "percent").replace("(", " ").replace(")", " ").split())
+    texto = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", str(valor or "")).lower() if valor else texto
+    texto = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "_", texto.replace("%", "percent")).strip("_")
 
 
 def _decimal(valor):
@@ -53,10 +65,86 @@ def _inteiro_percentual(valor):
 def _instante(valor):
     if not valor:
         return None
-    resultado = parse_datetime(str(valor).strip().replace("Z", "+00:00"))
+    texto = str(valor).strip()
+    numero = _decimal(texto)
+    resultado = None
+    if numero is not None and texto.replace(".", "", 1).isdigit() and float(numero) > 1000000000:
+        timestamp = float(numero)
+        if timestamp > 100000000000:
+            timestamp /= 1000
+        try:
+            resultado = datetime.fromtimestamp(timestamp, tz=timezone.get_current_timezone())
+        except (OverflowError, OSError, ValueError):
+            resultado = None
+    if resultado is None:
+        resultado = parse_datetime(texto.replace("Z", "+00:00"))
     if resultado and timezone.is_naive(resultado):
         resultado = timezone.make_aware(resultado)
     return resultado
+
+
+def _cabecalho_corresponde(normalizado, aliases):
+    return normalizado in aliases or any(
+        normalizado.endswith(f"_{alias}")
+        or normalizado.startswith(f"{alias}_")
+        or f"_{alias}_" in normalizado
+        for alias in aliases
+    )
+
+
+def _mapear_cabecalhos(fieldnames, grupos):
+    cabecalhos = {_normalizar(nome): nome for nome in fieldnames or []}
+    mapa = {}
+    for destino, aliases in grupos.items():
+        for normalizado, original in cabecalhos.items():
+            if _cabecalho_corresponde(normalizado, aliases):
+                mapa[destino] = original
+                break
+    return mapa
+
+
+def _parece_csv_autel(nome, texto, fieldnames):
+    amostra = f"{nome}\n{texto[:4096]}".lower()
+    normalizados = {_normalizar(item) for item in fieldnames or []}
+    marcadores = ("autel", "evo_max", "evo max", "autel enterprise", "autel sky", "dragonfish")
+    metadados = {alias for aliases in AUTEL_METADATA_ALIASES.values() for alias in aliases}
+    return any(item in amostra for item in marcadores) or len(normalizados & metadados) >= 2
+
+
+def _converter_unidade(valor, cabecalho, grandeza):
+    numero = _decimal(valor)
+    if numero is None:
+        return None
+    nome = _normalizar(cabecalho)
+    if grandeza == "altitude" and ("feet" in nome or nome.endswith("_ft")):
+        return numero * Decimal("0.3048")
+    if grandeza == "velocidade":
+        if "km_h" in nome or "kmh" in nome or "kph" in nome:
+            return numero / Decimal("3.6")
+        if "mph" in nome:
+            return numero * Decimal("0.44704")
+    return numero
+
+
+def _primeiro_valor(linhas, coluna):
+    if not coluna:
+        return ""
+    return next((str(linha.get(coluna) or "").strip() for linha in linhas if str(linha.get(coluna) or "").strip()), "")
+
+
+def _localizar_cabecalho_csv(texto):
+    """Ignora o pequeno bloco de metadados que alguns exports colocam antes da tabela."""
+    linhas = texto.splitlines()
+    aliases_lat = ALIASES["latitude"]
+    aliases_lon = ALIASES["longitude"]
+    for indice, linha in enumerate(linhas[:40]):
+        partes = re.split(r"[,;\t|]", linha)
+        normalizadas = [_normalizar(parte.strip(' "\'')) for parte in partes]
+        tem_lat = any(_cabecalho_corresponde(item, aliases_lat) for item in normalizadas)
+        tem_lon = any(_cabecalho_corresponde(item, aliases_lon) for item in normalizadas)
+        if tem_lat and tem_lon:
+            return "\n".join(linhas[indice:])
+    return texto
 
 
 def _distancia(lat1, lon1, lat2, lon2):
@@ -290,37 +378,46 @@ def _concluir_importacao(importacao, pontos, atualizar_voo):
 
 @transaction.atomic
 def processar_importacao(importacao, atualizar_voo=False):
+    extensao = os.path.splitext(importacao.nome_original or "")[1].lower()
+    limite_bytes = (200 if extensao in (".bin", ".ulg") else 20) * 1024 * 1024
     arquivo = importacao.arquivo
     arquivo.open("rb")
-    bruto = arquivo.read(20 * 1024 * 1024 + 1)
+    bruto = arquivo.read(limite_bytes + 1)
     arquivo.close()
-    if len(bruto) > 20 * 1024 * 1024:
-        raise ValueError("O arquivo excede o limite de 20 MB.")
+    if len(bruto) > limite_bytes:
+        raise ValueError(f"O arquivo excede o limite de {limite_bytes // 1024 // 1024} MB.")
+    if extensao == ".bin":
+        from .pixhawk_service import processar_ardupilot
+        return _concluir_importacao(importacao, processar_ardupilot(importacao, bruto), atualizar_voo)
+    if extensao == ".ulg":
+        from .pixhawk_service import processar_px4
+        return _concluir_importacao(importacao, processar_px4(importacao, bruto), atualizar_voo)
+    if extensao == ".json":
+        from .sensefly_service import processar_sensefly_json
+        return _concluir_importacao(importacao, processar_sensefly_json(importacao, bruto), atualizar_voo)
     if _parece_log_dji(bruto, importacao.nome_original):
         return _concluir_importacao(importacao, _processar_dji(importacao, bruto), atualizar_voo)
     try:
         texto = bruto.decode("utf-8-sig")
     except UnicodeDecodeError:
         texto = bruto.decode("latin-1")
-    amostra = texto[:8192]
+    tabela = _localizar_cabecalho_csv(texto)
+    amostra = tabela[:8192]
     try:
         dialeto = csv.Sniffer().sniff(amostra, delimiters=",;\t|")
     except csv.Error:
         dialeto = csv.excel
-    leitor = csv.DictReader(io.StringIO(texto), dialect=dialeto)
+    leitor = csv.DictReader(io.StringIO(tabela), dialect=dialeto)
     if not leitor.fieldnames:
         raise ValueError("O arquivo não possui cabeçalho.")
-    cabecalhos = {_normalizar(nome): nome for nome in leitor.fieldnames}
-    mapa = {}
-    for destino, aliases in ALIASES.items():
-        for alias in aliases:
-            if alias in cabecalhos:
-                mapa[destino] = cabecalhos[alias]
-                break
+    mapa = _mapear_cabecalhos(leitor.fieldnames, ALIASES)
     if not mapa:
         raise ValueError("Nenhuma coluna de telemetria reconhecida.")
+    linhas = list(leitor)
+    if len(linhas) > 100000:
+        raise ValueError("O arquivo excede o limite de 100.000 pontos.")
     pontos = []
-    for indice, linha in enumerate(leitor, start=1):
+    for indice, linha in enumerate(linhas, start=1):
         if indice > 100000:
             raise ValueError("O arquivo excede o limite de 100.000 pontos.")
         pontos.append(PontoTelemetria(
@@ -329,8 +426,8 @@ def processar_importacao(importacao, atualizar_voo=False):
             segundos=_decimal(linha.get(mapa.get("segundos", ""))),
             latitude=_decimal(linha.get(mapa.get("latitude", ""))),
             longitude=_decimal(linha.get(mapa.get("longitude", ""))),
-            altitude_m=_decimal(linha.get(mapa.get("altitude_m", ""))),
-            velocidade_ms=_decimal(linha.get(mapa.get("velocidade_ms", ""))),
+            altitude_m=_converter_unidade(linha.get(mapa.get("altitude_m", "")), mapa.get("altitude_m", ""), "altitude"),
+            velocidade_ms=_converter_unidade(linha.get(mapa.get("velocidade_ms", "")), mapa.get("velocidade_ms", ""), "velocidade"),
             bateria_percentual=_inteiro_percentual(linha.get(mapa.get("bateria_percentual", ""))),
             satelites=max(0, int(_decimal(linha.get(mapa.get("satelites", ""))) or 0)) if mapa.get("satelites") else None,
             sinal_percentual=_inteiro_percentual(linha.get(mapa.get("sinal_percentual", ""))),
@@ -338,6 +435,15 @@ def processar_importacao(importacao, atualizar_voo=False):
         ))
     if not pontos:
         raise ValueError("O arquivo não possui linhas de dados.")
-    importacao.origem = "csv"
+    autel = _parece_csv_autel(importacao.nome_original, texto, leitor.fieldnames)
+    importacao.origem = "autel_csv" if autel else "csv"
+    importacao.formato = "autel-csv" if autel else "csv"
+    if autel:
+        metadados = _mapear_cabecalhos(leitor.fieldnames, AUTEL_METADATA_ALIASES)
+        importacao.drone_modelo_detectado = _primeiro_valor(linhas, metadados.get("modelo"))[:120]
+        importacao.drone_serial_detectado = _primeiro_valor(linhas, metadados.get("drone_serial"))[:100]
+        importacao.bateria_serial_detectada = _primeiro_valor(linhas, metadados.get("bateria_serial"))[:100]
+        ciclos = _decimal(_primeiro_valor(linhas, metadados.get("bateria_ciclos")))
+        importacao.bateria_ciclos_detectados = max(0, int(ciclos)) if ciclos is not None else None
     importacao.colunas_reconhecidas = sorted(mapa.keys())
     return _concluir_importacao(importacao, pontos, atualizar_voo)

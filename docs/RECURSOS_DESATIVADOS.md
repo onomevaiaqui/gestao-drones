@@ -54,9 +54,9 @@ A fundação Open Platforms não deve ser confundida com sincronização de Flig
 
 ## 4. Integrações Autel
 
-**Situação:** não implementadas.
+**Situação:** importação manual de CSV implementada; sincronização automática e vídeo ao vivo não implementados.
 
-Logs compatíveis podem continuar sendo enviados manualmente quando houver parser reconhecido. Sincronização e vídeo ao vivo exigirão integração própria com os produtos e SDKs Autel, testes por modelo e controle e credenciais separadas.
+O CSV de registro de voo exportado pelo Autel Enterprise ou Autel Sky pode ser enviado pela tela normal de telemetria. Arquivos `.LOG` e pacotes de diagnóstico não são aceitos como registros de voo. Sincronização e vídeo ao vivo exigirão integração própria com Autel Cloud API/SDKs, testes por modelo e controle e credenciais separadas.
 
 ## 5. SARPAS
 
