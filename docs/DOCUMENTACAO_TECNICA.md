@@ -1,6 +1,6 @@
 # Documentação técnica do SISMOD
 
-Versão documental: 1.3
+Versão documental: 1.4
 Última revisão: 31/08/2026
 
 ## 1. Finalidade
@@ -315,14 +315,14 @@ Referências oficiais: [DJI Pilot 2 Access to Cloud](https://developer.dji.com/d
 - telemetria sem planejamento prévio entra no calendário como **Regularização pendente**;
 - o aviso permanece para piloto, coordenador e administrador até a vinculação do planejamento e a conclusão de checklist e pós-voo;
 - o fluxo de regularização preenche automaticamente piloto, drone, data, horários, finalidade e local, exigindo que o usuário confirme e desenhe a área efetivamente sobrevoada;
-- suporta CSV normalizado, CSV de registro de voo exportado pelos aplicativos Autel e Flight Records DJI processados pelo parser;
+- suporta CSV normalizado, CSV Autel, Flight Record binário Autel `AUTEL_FR` v3 e Flight Records DJI processados pelo parser;
 - exibe rota, `hh:mm:ss`, distância, altitude, velocidade, bateria, satélites e alertas;
 - consolida dados por minuto e explica estados normal, atenção e erro;
 - alertas georreferenciados aparecem no mapa.
 
 Modelos DJI previstos na identificação incluem Matrice 4T/4E, Matrice 300 RTK, Matrice 30T e família Mavic 3. A compatibilidade real depende do formato/firmware e deve ser validada com amostras de cada equipamento.
 
-Na Autel, a primeira camada de compatibilidade é a importação manual do **CSV de registro de voo** exportado pelo Autel Enterprise ou Autel Sky. O normalizador reconhece cabeçalhos em inglês, inclusive em `camelCase`, localiza a tabela depois de um preâmbulo de metadados e converte pés, km/h e mph para as unidades internas. Quando presentes, são lidos modelo, serial da aeronave, serial/ciclos da bateria, tempo, rota, altitude, velocidade, bateria, satélites, sinal e avisos. Arquivos `.LOG`, pacotes de diagnóstico e arquivos de suporte do equipamento não são tratados como telemetria operacional. Cada aplicativo, modelo e versão de firmware deve ser validado com um CSV real antes do uso definitivo.
+Na Autel há duas camadas de compatibilidade. O **CSV de registro de voo** exportado pelo Autel Enterprise ou Autel Sky é normalizado, inclusive cabeçalhos `camelCase` e unidades em pés, km/h ou mph. O Flight Record proprietário sem extensão, identificado pela assinatura `AUTEL_FR`, também é aceito na versão 3. Esse leitor foi validado em onze amostras reais de EVO II 640T: nove continham trajetória e duas eram registros curtos de inicialização sem GPS de voo. Por não existir especificação pública do binário, o SISMOD extrai conservadoramente somente horário, latitude, longitude, altitude, velocidade horizontal, serial da aeronave e serial da bateria confirmados nas amostras. Percentual/ciclos da bateria, satélites, sinal e alertas continuam vazios nesse formato até serem comprovados. Arquivos `.LOG`, pacotes de diagnóstico e arquivos de suporte não são tratados como telemetria operacional. Cada outro modelo, aplicativo ou firmware exige validação com amostra real.
 
 Para controladoras Pixhawk, o formato depende do firmware instalado:
 
@@ -476,7 +476,7 @@ O procedimento consolidado de ativação está em [`docs/RECURSOS_DESATIVADOS.md
 - meteorologia/neblina/camadas aeronáuticas são apoio à decisão;
 - tiles OSM públicos têm política de uso e não atendem alto volume;
 - SQLite precisa ser reavaliado para implantação multiusuário;
-- cada modelo/firmware DJI, Autel, ArduPilot ou PX4 requer log real de teste; na Autel, apenas o CSV de voo está coberto nesta etapa.
+- cada modelo/firmware DJI, Autel, ArduPilot ou PX4 requer log real de teste; na Autel, CSV e `AUTEL_FR` v3 do EVO II 640T estão cobertos nesta etapa.
 
 ## 14. Documentação oficial
 

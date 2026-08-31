@@ -22,7 +22,7 @@ Cada empresa utiliza uma instalação independente. O primeiro administrador é 
 
 Para ler logs binários DJI, preencha `DJI_FLIGHT_RECORD_APP_KEY` no arquivo `.env`. Nunca envie esse arquivo ao GitHub.
 
-Registros de voo Autel podem ser importados manualmente em CSV exportado pelo Autel Enterprise ou Autel Sky. O SISMOD normaliza cabeçalhos e unidades comuns; arquivos `.LOG` de diagnóstico não substituem o CSV de voo. Valide cada modelo e firmware com uma amostra real antes do uso operacional.
+Registros de voo Autel podem ser importados em CSV exportado pelo aplicativo ou diretamente no formato binário sem extensão `AUTEL_FR` v3. A leitura binária foi validada com amostras reais do EVO II 640T e extrai horário, rota, altitude, velocidade e seriais confirmados. Arquivos `.LOG` de diagnóstico não são Flight Records. Valide outros modelos e firmwares com uma amostra real antes do uso operacional.
 
 Controladoras Pixhawk são aceitas nos formatos nativos dos dois principais firmwares: DataFlash `.BIN` do ArduPilot e `.ULG` do PX4. As dependências `pymavlink` e `pyulog` fazem a leitura binária; a compatibilidade deve ser validada com um log real do firmware e da configuração utilizada.
 

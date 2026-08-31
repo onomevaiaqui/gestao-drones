@@ -1,5 +1,6 @@
 import csv
 from collections import defaultdict
+from pathlib import Path
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -135,9 +136,10 @@ def telemetria_importar(request):
         arquivos = form.cleaned_data["arquivos"]
         importacoes, sucessos, erros = [], 0, 0
         for arquivo in arquivos:
+            extensao = Path(arquivo.name).suffix.lower().lstrip(".")
             importacao = ImportacaoLog.objects.create(
                 voo=voo_base, arquivo=arquivo, nome_original=arquivo.name[:255],
-                formato=arquivo.name.rsplit(".", 1)[-1].lower(), importado_por=request.user,
+                formato=extensao or "autel-fr", importado_por=request.user,
             )
             importacoes.append(importacao)
             try:

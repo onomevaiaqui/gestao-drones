@@ -379,7 +379,7 @@ def _concluir_importacao(importacao, pontos, atualizar_voo):
 @transaction.atomic
 def processar_importacao(importacao, atualizar_voo=False):
     extensao = os.path.splitext(importacao.nome_original or "")[1].lower()
-    limite_bytes = (200 if extensao in (".bin", ".ulg") else 20) * 1024 * 1024
+    limite_bytes = (200 if extensao in (".bin", ".ulg") or not extensao else 20) * 1024 * 1024
     arquivo = importacao.arquivo
     arquivo.open("rb")
     bruto = arquivo.read(limite_bytes + 1)
@@ -395,6 +395,9 @@ def processar_importacao(importacao, atualizar_voo=False):
     if extensao == ".json":
         from .sensefly_service import processar_sensefly_json
         return _concluir_importacao(importacao, processar_sensefly_json(importacao, bruto), atualizar_voo)
+    from .autel_binary_service import parece_autel_fr, processar_autel_fr
+    if parece_autel_fr(bruto):
+        return _concluir_importacao(importacao, processar_autel_fr(importacao, bruto), atualizar_voo)
     if _parece_log_dji(bruto, importacao.nome_original):
         return _concluir_importacao(importacao, _processar_dji(importacao, bruto), atualizar_voo)
     try:

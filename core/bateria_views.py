@@ -43,7 +43,7 @@ def bateria_nova(request):
         initial.update({
             "numero_serie": serial,
             "codigo": f"BAT-{serial[-8:]}",
-            "fabricante": "Autel" if importacao and importacao.origem == "autel_csv" else "DJI",
+            "fabricante": "Autel" if importacao and importacao.origem in ("autel_csv", "autel_flight_record") else "DJI",
         })
     if drone_id.isdigit():
         initial["drone"] = drone_id
