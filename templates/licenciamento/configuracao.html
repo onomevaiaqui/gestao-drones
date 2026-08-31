@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Licença · SISMOD{% endblock %}
+{% block content %}
+<div class="page-header mb-4">
+  <div><h1>Licença do SISMOD</h1><p>Ativação anual desta instalação empresarial.</p></div>
+</div>
+<div class="row g-4">
+  <div class="col-lg-7">
+    <section class="card border-0 shadow-sm"><div class="card-body p-4">
+      <h2 class="h5">Estado atual</h2>
+      <div class="alert {% if estado_licenca.permite_alteracoes %}alert-success{% else %}alert-danger{% endif %}">
+        <strong>{{ estado_licenca.titulo }}</strong><br>{{ estado_licenca.mensagem }}
+      </div>
+      {% if estado_licenca.licenca %}
+      <dl class="row mb-0">
+        <dt class="col-sm-4">Empresa</dt><dd class="col-sm-8">{{ estado_licenca.licenca.empresa_nome }}</dd>
+        <dt class="col-sm-4">CNPJ</dt><dd class="col-sm-8">{{ estado_licenca.licenca.empresa_cnpj|default:"—" }}</dd>
+        <dt class="col-sm-4">Validade</dt><dd class="col-sm-8">{{ estado_licenca.licenca.valida_ate|date:"d/m/Y" }}</dd>
+      </dl>
+      {% endif %}
+    </div></section>
+  </div>
+  <div class="col-lg-5">
+    <section class="card border-0 shadow-sm"><div class="card-body p-4">
+      <h2 class="h5">Ativar ou renovar</h2>
+      <p class="text-muted small">Informe ao fornecedor este código da instalação:</p>
+      <div class="input-group mb-3"><input class="form-control font-monospace" readonly value="{{ instalacao.identificador }}"><button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText('{{ instalacao.identificador }}')">Copiar</button></div>
+      <form method="post" enctype="multipart/form-data">{% csrf_token %}
+        {{ form.as_p }}
+        <button class="btn btn-primary w-100" type="submit">Ativar licença</button>
+      </form>
+    </div></section>
+  </div>
+</div>
+{% if historico %}<section class="card border-0 shadow-sm mt-4"><div class="card-body p-4"><h2 class="h5">Histórico</h2><div class="table-responsive"><table class="table"><thead><tr><th>Licença</th><th>Empresa</th><th>Validade</th><th>Ativada em</th></tr></thead><tbody>{% for item in historico %}<tr><td>{{ item.identificador }}</td><td>{{ item.empresa_nome }}</td><td>{{ item.valida_ate|date:"d/m/Y" }}</td><td>{{ item.ativada_em|date:"d/m/Y H:i" }}</td></tr>{% endfor %}</tbody></table></div></div></section>{% endif %}
+{% endblock %}

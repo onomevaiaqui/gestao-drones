@@ -48,6 +48,7 @@
             <span class="nav-section">Administração</span>
             <a href="{% url 'pilotos' %}" class="{% if 'piloto' in request.resolver_match.url_name %}active{% endif %}">♙ <span>Pilotos / Usuários</span></a>
             <a href="{% url 'dji_cloud_configuracao' %}" class="{% if 'dji_cloud' in request.resolver_match.url_name %}active{% endif %}">⌁ <span>Integração DJI</span></a>
+            <a href="{% url 'configuracao_licenca' %}" class="{% if request.resolver_match.url_name == 'configuracao_licenca' %}active{% endif %}">◇ <span>Licença</span></a>
             {% endif %}
             {% if visao_global %}<a href="{% url 'alertas' %}" class="{% if request.resolver_match.url_name == 'alertas' %}active{% endif %}">⚠ <span>Alertas{% if alertas_resumo_global.total %}<b class="nav-count">{{ alertas_resumo_global.total }}</b>{% endif %}</span></a>{% endif %}
         </nav>
@@ -84,6 +85,13 @@
             <button type="button" class="mobile-menu-button" aria-label="Abrir menu" aria-expanded="false">☰</button>
             <strong>Gestão de Drones</strong>
         </div>
+
+        {% if estado_licenca.codigo == 'expirando' or estado_licenca.codigo == 'tolerancia' or estado_licenca.codigo == 'expirada' or estado_licenca.codigo == 'ausente' or estado_licenca.codigo == 'configuracao' or estado_licenca.codigo == 'invalida' %}
+        <div class="alert {% if estado_licenca.permite_alteracoes %}alert-warning{% else %}alert-danger{% endif %} shadow-sm">
+            <strong>{{ estado_licenca.titulo }}.</strong> {{ estado_licenca.mensagem }}
+            {% if eh_admin %}<a href="{% url 'configuracao_licenca' %}" class="alert-link">Gerenciar licença</a>{% endif %}
+        </div>
+        {% endif %}
 
         {% if messages %}
             {% for message in messages %}

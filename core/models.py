@@ -1063,6 +1063,41 @@ class ConfiguracaoPapelTimbrado(models.Model):
         return configuracao
 
 
+class InstalacaoSISMOD(models.Model):
+    identificador = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Instalação SISMOD"
+        verbose_name_plural = "Instalações SISMOD"
+
+    @classmethod
+    def atual(cls):
+        instalacao, _ = cls.objects.get_or_create(pk=1)
+        return instalacao
+
+
+class LicencaSISMOD(models.Model):
+    identificador = models.CharField(max_length=100, unique=True)
+    instalacao = models.ForeignKey(InstalacaoSISMOD, on_delete=models.PROTECT, related_name="licencas")
+    empresa_nome = models.CharField(max_length=200)
+    empresa_cnpj = models.CharField(max_length=30, blank=True)
+    emitida_em = models.DateField()
+    valida_ate = models.DateField()
+    tolerancia_dias = models.PositiveSmallIntegerField(default=15)
+    recursos = models.JSONField(default=list, blank=True)
+    conteudo = models.JSONField(default=dict)
+    assinatura = models.TextField()
+    ativa = models.BooleanField(default=True)
+    ativada_por = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True)
+    ativada_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-ativada_em"]
+        verbose_name = "Licença SISMOD"
+        verbose_name_plural = "Licenças SISMOD"
+
+
 class Incidente(models.Model):
     GRAVIDADE_CHOICES = [("leve", "Leve"), ("moderado", "Moderado"), ("grave", "Grave"), ("critico", "Crítico")]
     STATUS_CHOICES = [("aberto", "Aberto"), ("investigacao", "Em investigação"), ("encerrado", "Encerrado")]

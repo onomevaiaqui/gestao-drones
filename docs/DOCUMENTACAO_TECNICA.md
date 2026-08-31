@@ -1,7 +1,7 @@
 # Documentação técnica do SISMOD
 
-Versão documental: 1.2
-Última revisão: 27/08/2026
+Versão documental: 1.3
+Última revisão: 31/08/2026
 
 ## 1. Finalidade
 
@@ -44,8 +44,9 @@ O sistema auxilia a gestão. As análises meteorológicas, aeronáuticas, SARPAS
 | `pypdf` | Lê, combina e aplica papel timbrado aos PDFs. |
 | `qrcode[pil]` | Gera QR Codes de componentes. |
 | `Pillow` | Suporte a imagens, fotos e QR Code. |
+| `cryptography` | Valida assinaturas Ed25519 das licenças anuais offline. |
 
-Pacotes como `asgiref`, `sqlparse`, `httpx`, `pydantic` e bibliotecas criptográficas são dependências transitivas instaladas pelos pacotes diretos. Não devem ser removidos manualmente do ambiente virtual.
+Pacotes como `asgiref`, `sqlparse`, `httpx` e `pydantic` são dependências transitivas instaladas pelos pacotes diretos. Não devem ser removidos manualmente do ambiente virtual.
 
 ### Interface e mapas
 
@@ -385,6 +386,7 @@ O horário reservado nunca soma horas de experiência.
 | Ver dados operacionais globais | Não | Sim | Sim |
 | Ver equipe, riscos, incidentes e logs globais | Não | Sim, leitura | Sim |
 | Gerenciar usuários, frota, documentos e manutenção | Não | Não | Sim |
+| Consultar e ativar a licença da instalação | Não | Não | Sim |
 | Django Admin | Não | Não | Sim |
 
 A interface oculta ações não permitidas e o servidor valida as rotas diretamente.
@@ -400,7 +402,7 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 python manage.py migrate
-python manage.py createsuperuser
+python manage.py criar_admin_inicial
 python manage.py runserver
 ```
 
@@ -495,6 +497,7 @@ O procedimento consolidado de ativação está em [`docs/RECURSOS_DESATIVADOS.md
 - Pillow: https://pillow.readthedocs.io/
 - python-dotenv: https://bbc2.github.io/python-dotenv/
 - qrcode: https://github.com/lincolnloop/python-qrcode
+- Cryptography — Ed25519: https://cryptography.io/en/latest/hazmat/primitives/asymmetric/ed25519/
 - Parser DJI: https://github.com/olavbolav/dji-flightlog-parser
 - DJI Cloud API Live Stream: https://developer.dji.com/doc/cloud-api-tutorial/en/feature-set/pilot-feature-set/pilot-livestream.html
 - Autel — segurança e exportação de registros CSV: https://www.autelrobotics.com/news/white-paper/
@@ -512,6 +515,22 @@ O procedimento consolidado de ativação está em [`docs/RECURSOS_DESATIVADOS.md
 - SISCLATEN: https://sisclaten.defesa.gov.br/sisclaten/
 - Autorização de aerolevantamentos: https://www.gov.br/pt-br/servicos/obter-autorizacao-para-realizar-aerolevantamentos
 
-## 15. Atualização obrigatória
+## 15. Licenciamento empresarial anual
+
+O SISMOD adota uma instalação isolada por empresa. `InstalacaoSISMOD` gera um UUID estável que identifica o servidor, e `LicencaSISMOD` preserva o histórico de ativações. A licença é um JSON assinado com Ed25519 contendo empresa, CNPJ, instalação, emissão, validade, tolerância e recursos.
+
+A validação usa somente a chave pública configurada no servidor. A chave privada permanece exclusivamente com o fornecedor. A assinatura é conferida na ativação e novamente durante a leitura do estado, detectando alteração do arquivo ou dos dados persistidos.
+
+Estados operacionais:
+
+- ativa: funcionamento normal;
+- expirando: funcionamento normal com aviso a partir de 60 dias;
+- tolerância: funcionamento normal por até 15 dias, ou pelo período emitido;
+- expirada, ausente, inválida ou sem configuração: consultas e exportações continuam disponíveis, mas requisições de alteração são bloqueadas;
+- desativada: modo local de desenvolvimento, controlado por variável de ambiente.
+
+O primeiro administrador é criado por `python manage.py criar_admin_inicial`. Depois disso, o comando recusa uma segunda execução e os usuários passam a ser gerenciados pela interface. O procedimento operacional completo está em [`LICENCIAMENTO_E_IMPLANTACAO.md`](LICENCIAMENTO_E_IMPLANTACAO.md).
+
+## 16. Atualização obrigatória
 
 Toda mudança funcional deve seguir `docs/MANUTENCAO_DOCUMENTACAO.md`. Código, testes e documentação afetada devem estar no mesmo commit.

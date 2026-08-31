@@ -3,6 +3,7 @@ qrcode[pil]>=7.4,<9.0
 python-dotenv>=1.0,<2.0
 reportlab>=4.0,<5.0
 pypdf>=5.0,<7.0
+cryptography>=43.0,<46.0
 dji-flightlog-parser @ git+https://github.com/olavbolav/dji-flightlog-parser.git@0a5f59d1d3dc00c8a9531c05d57146ee5f5f098b
 pymavlink>=2.4.49,<3.0
 pyulog>=1.2,<2.0

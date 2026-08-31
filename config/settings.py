@@ -34,6 +34,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "core.middleware.ModoAcessoMiddleware",
+    "core.middleware.LicencaSISMODMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -105,3 +106,8 @@ DJI_CLOUD_WORKSPACE_DESCRIPTION = os.getenv(
 DJI_LIVESTREAM_ENABLED = os.getenv("DJI_LIVESTREAM_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 DJI_LIVESTREAM_RTMP_BASE_URL = os.getenv("DJI_LIVESTREAM_RTMP_BASE_URL", "").strip().rstrip("/")
 DJI_LIVESTREAM_PLAYBACK_BASE_URL = os.getenv("DJI_LIVESTREAM_PLAYBACK_BASE_URL", "").strip().rstrip("/")
+
+# Licenciamento offline. Em desenvolvimento permanece desligado; nas instalações
+# comerciais deve ser ativado e receber somente a chave pública do fornecedor.
+SISMOD_LICENSE_ENFORCEMENT = os.getenv("SISMOD_LICENSE_ENFORCEMENT", "false").strip().lower() in ("1", "true", "yes", "on")
+SISMOD_LICENSE_PUBLIC_KEY = os.getenv("SISMOD_LICENSE_PUBLIC_KEY", "").strip()

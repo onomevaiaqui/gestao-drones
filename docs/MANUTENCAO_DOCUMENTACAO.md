@@ -21,6 +21,7 @@ Se afetar, atualizar no mesmo commit:
 2. `docs/DOCUMENTACAO_TECNICA.md`, quando mudar arquitetura, módulos, regras, integrações ou operação;
 3. `requirements.txt`, quando mudar dependências Python;
 4. `.env.example`, quando mudar variáveis de ambiente.
+5. `docs/LICENCIAMENTO_E_IMPLANTACAO.md`, quando mudar ativação, validade, bloqueios, implantação empresarial ou emissão de licenças.
 
 A mensagem final de cada atualização deve informar se a documentação foi alterada ou se não precisava de alteração.
 
@@ -34,4 +35,4 @@ A mensagem final de cada atualização deve informar se a documentação foi alt
 - [ ] Nenhum segredo, `.env`, banco, mídia ou backup entrou no commit?
 - [ ] Os links oficiais continuam válidos?
 
-Última revisão: 26/08/2026.
+Última revisão: 31/08/2026.

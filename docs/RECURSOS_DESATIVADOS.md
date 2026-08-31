@@ -68,6 +68,12 @@ O SISMOD produz planejamento, análise, avaliação de risco e Termo de Coordena
 
 O projeto local usa `DEBUG=True` e SQLite para desenvolvimento. Isso não é uma função a ser simplesmente ligada: antes da publicação é necessário criar configurações de produção com `DEBUG=False`, segredo Django externo, HTTPS, cookies seguros, banco multiusuário, armazenamento de mídia, servidor WSGI/ASGI, monitoramento e backups.
 
+## 7. Fiscalização da licença anual
+
+**Situação:** implementada e desligada no ambiente de desenvolvimento.
+
+Para uma instalação comercial, configure a chave pública Ed25519 do fornecedor em `SISMOD_LICENSE_PUBLIC_KEY`, altere `SISMOD_LICENSE_ENFORCEMENT=true`, reinicie a aplicação e envie a licença anual pela tela administrativa. A chave privada nunca é instalada no cliente. O procedimento completo está em `docs/LICENCIAMENTO_E_IMPLANTACAO.md`.
+
 ## Checklist antes de qualquer ativação
 
 - [ ] O recurso está marcado como **implementado** neste documento?

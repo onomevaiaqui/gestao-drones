@@ -12,11 +12,13 @@ python -m venv venv
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 python manage.py migrate
-python manage.py createsuperuser
+python manage.py criar_admin_inicial
 python manage.py runserver
 ```
 
 Acesse `http://127.0.0.1:8000/`.
+
+Cada empresa utiliza uma instalação independente. O primeiro administrador é criado pelo comando acima e cria os demais usuários pela interface. Em produção, a licença anual offline é ativada em **Administração > Licença**; consulte o [guia de licenciamento e implantação](docs/LICENCIAMENTO_E_IMPLANTACAO.md).
 
 Para ler logs binários DJI, preencha `DJI_FLIGHT_RECORD_APP_KEY` no arquivo `.env`. Nunca envie esse arquivo ao GitHub.
 
@@ -40,6 +42,7 @@ python manage.py test core
 - [Documentação técnica completa](docs/DOCUMENTACAO_TECNICA.md)
 - [Política obrigatória de atualização](docs/MANUTENCAO_DOCUMENTACAO.md)
 - [Inventário de arquivos legados](docs/ARQUIVOS_LEGADOS.md)
+- [Licenciamento anual e implantação por empresa](docs/LICENCIAMENTO_E_IMPLANTACAO.md)
 
 ## Situação atual
 

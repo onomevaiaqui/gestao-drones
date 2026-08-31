@@ -76,6 +76,7 @@ from .forms import (
 # =========================================================
 
 def _base_context(request):
+    from .licenciamento import estado_licenca
     eh_admin = usuario_e_admin(request.user)
     eh_coordenador = usuario_e_coordenador(request.user)
     contexto = {
@@ -84,6 +85,7 @@ def _base_context(request):
         "visao_global": eh_admin or eh_coordenador,
         "pode_escolher_modo": usuario_tem_perfil_admin(request.user),
         "modo_acesso": "admin" if eh_admin else ("coordenador" if eh_coordenador else "usuario"),
+        "estado_licenca": estado_licenca(),
     }
     if eh_admin or eh_coordenador:
         from .alerta_service import resumo_alertas

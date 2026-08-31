@@ -28,5 +28,7 @@ backup_corrigir_*/
 *.tmp
 *.bak
 *.swp
+*.sismod-license
+*.pem
 
 media/

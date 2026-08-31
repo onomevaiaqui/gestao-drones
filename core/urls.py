@@ -14,9 +14,11 @@ from . import perfil_views
 from . import planejamento_views
 from . import dji_cloud_views
 from . import livestream_views
+from . import licenca_views
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
+    path("configuracao/licenca/", licenca_views.configuracao_licenca, name="configuracao_licenca"),
 
     path("solicitacoes/", solicitacao_views.solicitacoes_voo, name="solicitacoes_voo"),
     path("planejamentos/", planejamento_views.planejamentos, name="planejamentos"),
