@@ -60,6 +60,10 @@ A entrega do KMZ já possui fingerprint e URL assinada de curta duração, mas n
 
 A central, triagem, revisão operacional e prévia da fila funcionam localmente. Toda prévia permanece com situação `bloqueado`, expira automaticamente e não é publicada. O catálogo e upload manual funcionam em armazenamento local, S3 ou MinIO; a emissão de credenciais temporárias para upload direto da Dock continua desativada.
 
+O Cockpit Virtual está disponível somente como simulador. A interface, auditoria, limites dos canais, operador exclusivo, neutralização e watchdog funcionam localmente. O relay DRC real, aquisição de autoridade e publicação em `drc/down` permanecem desativados até domínio, MQTT TLS, livestream de baixa latência e homologação física controlada. A área principal de vídeo e o monitor do entorno da Dock são espaços preparados para os streams futuros; eles não simulam imagens reais.
+
+Pendências para o controle físico: implementar o relay DRC autenticado; adquirir e renovar autoridade de voo e payload; receber os dois canais de vídeo com baixa latência; publicar `stick_control` continuamente na frequência exigida pela DJI; associar cada piloto a estações/missões autorizadas; executar o watchdog como serviço independente; homologar retorno, pouso e perda de enlace em ambiente controlado; e somente então habilitar as três travas DJI no servidor.
+
 ## 3. Sincronização automática de logs DJI
 
 **Situação:** ainda não implementada. O upload manual permanece como método oficial atual.

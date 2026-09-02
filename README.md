@@ -30,7 +30,7 @@ WingtraOne/WingtraRAY usam registros `.ULG`. O SISMOD aceita também a variante 
 
 A conexão DJI Open Platforms é configurada por variáveis `DJI_CLOUD_*` descritas no `.env.example`. Ela permanece bloqueada por padrão com `DJI_CLOUD_ENABLED=false`, sem afetar a importação manual de logs. Depois de publicar o SISMOD em HTTPS e concluir a infraestrutura, o administrador poderá ativá-la pela variável de ambiente. As credenciais reais permanecem apenas no `.env` ou no gerenciador de segredos do servidor.
 
-A base da DJI Dock 2 também pode ser validada localmente sem comandar equipamento. Defina `DJI_DOCK_SIMULATOR_ENABLED=true`, execute `python manage.py simular_dji_dock` e consulte **Administração > DJI Docks**. A conexão real permanece independente e desligada por `DJI_DOCK_ENABLED=false`.
+A base da DJI Dock 2 também pode ser validada localmente sem comandar equipamento. Defina `DJI_DOCK_SIMULATOR_ENABLED=true`, execute `python manage.py simular_dji_dock` e consulte **Estações Remotas > Monitoramento**. A conexão real permanece independente e desligada por `DJI_DOCK_ENABLED=false`.
 
 O consumidor MQTT somente leitura é iniciado separadamente com `python manage.py consumir_dji_dock`. Ele exige `paho-mqtt`, broker, credenciais e tópicos configurados, e recusa iniciar enquanto `DJI_DOCK_ENABLED=false`.
 
@@ -60,6 +60,8 @@ python manage.py test core
 ```
 
 O simulador aceita `--cenario normal`, `chuva`, `falha`, `offline`, `missao` ou `midia`; os dois últimos exigem `--missao ID`. A rotina `python manage.py expirar_comandos_dji` encerra prévias de fila vencidas.
+
+O menu **Estações Remotas** concentra Monitoramento, Central de missões, Cockpit Virtual e Mídias. Ele está disponível também para pilotos, que visualizam suas próprias missões, mídias e sessões; auditoria global e configuração permanecem administrativas. O cockpit prioriza o vídeo, apresenta mapa, telemetria sobreposta, painéis de missão/Dock e controles manuais compactos. Atualmente funciona exclusivamente em simulação, audita os canais DJI, mantém um único operador por Dock, neutraliza os manches ao encerrar e usa heartbeat. Execute `python manage.py encerrar_sessoes_drc` periodicamente como watchdog. Controle físico exige ativação conjunta e consciente de `DJI_DRC_ENABLED`, `DJI_DRC_COMMANDS_ENABLED` e `DJI_DOCK_ENABLED`, além da infraestrutura DRC real que ainda não está implementada.
 
 ## Documentação
 

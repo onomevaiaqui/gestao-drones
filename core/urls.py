@@ -13,6 +13,7 @@ from . import componente_views
 from . import perfil_views
 from . import planejamento_views
 from . import dji_cloud_views
+from . import dji_drc_views
 from . import livestream_views
 from . import licenca_views
 
@@ -127,6 +128,12 @@ urlpatterns = [
     path("integracoes/dji/midias/", dji_cloud_views.dji_midias, name="dji_midias"),
     path("integracoes/dji/midias/upload/", dji_cloud_views.dji_midia_upload, name="dji_midia_upload"),
     path("integracoes/dji/midias/<int:pk>/download/", dji_cloud_views.dji_midia_download, name="dji_midia_download"),
+    path("integracoes/dji/cockpit/", dji_drc_views.cockpit_lista, name="dji_cockpit"),
+    path("integracoes/dji/cockpit/iniciar/", dji_drc_views.cockpit_iniciar, name="dji_cockpit_iniciar"),
+    path("integracoes/dji/cockpit/<uuid:identificador>/", dji_drc_views.cockpit_sessao, name="dji_cockpit_sessao"),
+    path("integracoes/dji/cockpit/<uuid:identificador>/comando/", dji_drc_views.cockpit_comando, name="dji_cockpit_comando"),
+    path("integracoes/dji/cockpit/<uuid:identificador>/heartbeat/", dji_drc_views.cockpit_heartbeat, name="dji_cockpit_heartbeat"),
+    path("integracoes/dji/cockpit/<uuid:identificador>/finalizar/", dji_drc_views.cockpit_finalizar, name="dji_cockpit_finalizar"),
     path("integracoes/dji/docks/simular/", dji_cloud_views.dji_dock_simular, name="dji_dock_simular"),
     path("integracoes/dji/docks/<int:pk>/", dji_cloud_views.dji_dock_detalhe, name="dji_dock_detalhe"),
     path("integracoes/dji/docks/<int:pk>/preparar-missao/", dji_cloud_views.dji_dock_preparar_missao, name="dji_dock_preparar_missao"),

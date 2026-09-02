@@ -12,8 +12,9 @@ from django.urls import reverse
 from .dji_dock_service import preparar_missao, processar_mensagem_dock, registrar_intencao_comando
 from .dji_operacao_service import enfileirar_preparacao
 from .dji_storage_service import armazenar_upload_missao
+from .dji_drc_service import aplicar_comando_simulado, finalizar_sessao, iniciar_sessao_simulada
 from .dji_wpml_service import dados_flighttask_prepare, descritor_publico_wpml, gerar_kmz_wpml
-from .models import DJIDock, DJIDockArquivo, DJIDockEvento, DJIDockMissao, Drone, Piloto, PlanejamentoVoo
+from .models import DJIDock, DJIDockArquivo, DJIDockEvento, DJIDockMissao, DJIDRCComando, DJIDRCSessao, Drone, Piloto, PlanejamentoVoo
 
 
 class DJIDockServiceTests(TestCase):
@@ -251,6 +252,26 @@ class DJIDockServiceTests(TestCase):
         self.assertEqual(dock.status, "alerta")
         self.assertEqual(dock.eventos.first().nivel, "critico")
 
+    @override_settings(DJI_DRC_SIMULATOR_ENABLED=True)
+    def test_cockpit_simulado_limita_operador_e_neutraliza(self):
+        usuario = User.objects.create_superuser("drc_operador", password="teste123")
+        dock = DJIDock.objects.create(nome="Dock DRC", numero_serie="DOCK-DRC", drone=self.drone, online=True)
+        sessao = iniciar_sessao_simulada(dock, usuario, altitude_maxima=100, distancia_maxima=300)
+        with self.assertRaisesMessage(ValueError, "sessão ativa"):
+            iniciar_sessao_simulada(dock, usuario)
+        comando, telemetria = aplicar_comando_simulado(sessao, {
+            "roll": 1024, "pitch": 1200, "throttle": 1100, "yaw": 1024, "gimbal_pitch": 1024,
+        })
+        self.assertEqual(comando.sequencia, 1)
+        self.assertGreater(telemetria["altitude_m"], 0)
+        with self.assertRaisesMessage(ValueError, "fora do limite"):
+            aplicar_comando_simulado(sessao, {"roll": 2000})
+        finalizar_sessao(sessao, "Teste concluído")
+        sessao.refresh_from_db()
+        self.assertEqual(sessao.status, "finalizada")
+        neutro = DJIDRCComando.objects.filter(sessao=sessao).order_by("-sequencia").first()
+        self.assertEqual((neutro.roll, neutro.pitch, neutro.throttle, neutro.yaw), (1024, 1024, 1024, 1024))
+
     def test_retorno_dji_atualiza_progresso_e_conclusao_da_missao(self):
         usuario = User.objects.create_superuser("retorno_dock", password="teste123")
         piloto = Piloto.objects.create(user=usuario, nome="Piloto Retorno")
@@ -356,11 +377,56 @@ class DJIDockViewsTests(TestCase):
         self.assertEqual(missao.parametros_confirmados_por, self.admin)
         self.assertFalse(dock.comandos.exists())
 
-    def test_usuario_comum_nao_acessa_monitoramento(self):
+    @override_settings(DJI_DRC_SIMULATOR_ENABLED=True)
+    def test_admin_abre_cockpit_simulado(self):
+        self.client.force_login(self.admin)
+        dock = DJIDock.objects.create(nome="Dock cockpit", numero_serie="DOCK-COCKPIT", online=True)
+        resposta = self.client.post(reverse("dji_cockpit_iniciar"), {
+            "dock": dock.pk, "altitude_maxima_m": 100, "distancia_maxima_m": 400,
+        })
+        sessao = DJIDRCSessao.objects.get(dock=dock)
+        self.assertRedirects(resposta, reverse("dji_cockpit_sessao", args=[sessao.identificador]))
+        pagina = self.client.get(reverse("dji_cockpit_sessao", args=[sessao.identificador]))
+        self.assertContains(pagina, "SIMULAÇÃO")
+        self.assertContains(pagina, "Controles neutros")
+
+    def test_usuario_comum_acessa_estacoes_remotas(self):
         usuario = User.objects.create_user("usuario_dock", password="teste123")
+        Piloto.objects.create(user=usuario, nome="Piloto da estação", perfil="usuario")
+        DJIDock.objects.create(nome="Estação do piloto", numero_serie="DOCK-USUARIO", online=True)
         self.client.force_login(usuario)
         resposta = self.client.get(reverse("dji_docks"))
-        self.assertRedirects(resposta, reverse("dashboard"))
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "Estações Remotas")
+        self.assertEqual(self.client.get(reverse("dji_cockpit")).status_code, 200)
+
+    def test_usuario_visualiza_apenas_as_proprias_missoes(self):
+        usuario = User.objects.create_user("piloto_estacao", password="teste123")
+        outro = User.objects.create_user("outro_piloto_estacao", password="teste123")
+        piloto = Piloto.objects.create(user=usuario, nome="Piloto autorizado", perfil="usuario")
+        outro_piloto = Piloto.objects.create(user=outro, nome="Outro piloto", perfil="usuario")
+        dock = DJIDock.objects.create(nome="Estação compartilhada", numero_serie="DOCK-COMPARTILHADA")
+
+        def planejamento(nome, responsavel, criador):
+            return PlanejamentoVoo.objects.create(
+                titulo=nome, piloto=responsavel, data=date.today(), data_fim=date.today(),
+                hora_inicio=time(8), hora_fim=time(9), altura_maxima_m=70,
+                area_geojson={"type": "Polygon", "coordinates": [[[-54.6, -25.4], [-54.5, -25.4], [-54.5, -25.5], [-54.6, -25.4]]]},
+                centro_latitude=-25.45, centro_longitude=-54.55, criado_por=criador,
+            )
+
+        propria = planejamento("Missão visível do piloto", piloto, usuario)
+        alheia = planejamento("Missão confidencial de outro piloto", outro_piloto, outro)
+        DJIDockMissao.objects.create(dock=dock, planejamento=propria, altura_m=70, criada_por=usuario)
+        DJIDockMissao.objects.create(dock=dock, planejamento=alheia, altura_m=70, criada_por=outro)
+        self.client.force_login(usuario)
+
+        resposta = self.client.get(reverse("dji_missoes"))
+        self.assertContains(resposta, propria.titulo)
+        self.assertNotContains(resposta, alheia.titulo)
+        detalhe = self.client.get(reverse("dji_dock_detalhe", args=[dock.pk]))
+        self.assertContains(detalhe, propria.titulo)
+        self.assertNotContains(detalhe, alheia.titulo)
 
     @override_settings(DJI_DOCK_SIMULATOR_ENABLED=False)
     def test_simulador_desativado_recusa_ingestao(self):

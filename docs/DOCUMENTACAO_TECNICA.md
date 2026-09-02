@@ -292,6 +292,12 @@ A galeria aceita upload manual de JPG/JPEG, PNG, TIFF, MP4/MOV, PPK (`obs`, `rtk
 
 O `Dockerfile` executa Python 3.12, dependências, arquivos estáticos e Gunicorn. `infra/compose.homologacao.yaml` inclui PostgreSQL, MinIO privado, inicialização do bucket, EMQX e processos separados para web e consumidor. As portas de web e consoles ficam ligadas a `127.0.0.1`; o perfil `dock-real` não deve ser iniciado sem TLS e autenticação do broker. `verificar_implantacao` testa conexão com banco, escrita no armazenamento e informa o estado das travas DJI.
 
+### Cockpit Virtual / DRC
+
+O Cockpit Virtual fica na seção própria **Estações Remotas**, disponível para administradores, coordenadores e pilotos, e nesta versão opera apenas em simulação. Pilotos veem suas próprias missões, mídias e sessões, enquanto os dados globais de auditoria e configuração permanecem restritos. A interface em tela cheia reserva a área principal ao vídeo da aeronave, mantém mapa, saúde do enlace e um segundo monitor para a câmera fixa da Dock no painel lateral e sobrepõe os dados essenciais de voo; as abas secundárias apresentam missão e estado da Dock. O mapa usa a mesma fonte OpenStreetMap validada pela telemetria, aplica política de referência e exibe uma mensagem controlada se o provedor estiver indisponível. `DJIDRCSessao` garante uma sessão ativa por Dock por meio do serviço transacional e de uma restrição no banco, registrando operador, limites, heartbeat, sequência e telemetria simulada. `DJIDRCComando` audita os cinco canais no intervalo DJI de 364 a 1684, com 1024 neutro. Teclado e sliders retornam ao neutro quando liberados; encerramento e watchdog também gravam uma neutralização.
+
+O heartbeat do navegador é enviado a cada segundo. `encerrar_sessoes_drc` encerra sessões que ultrapassem `DJI_DRC_HEARTBEAT_TIMEOUT_SECONDS` ou `DJI_DRC_SESSION_TTL_SECONDS`. O controle real permanece inexistente mesmo que uma variável isolada seja alterada: as três travas `DJI_DRC_ENABLED`, `DJI_DRC_COMMANDS_ENABLED` e `DJI_DOCK_ENABLED` precisam estar ativas, e ainda será necessário implementar o relay DRC autenticado, autoridade de voo/payload, livestream de baixa latência e publicação contínua de `stick_control` a 5–10 Hz.
+
 Os eventos DJI `flighttask_ready` e `flighttask_progress` são correlacionados pelo UUID da missão para registrar disponibilidade, execução, pausa, conclusão, falha, percentual, etapa, waypoint e total de mídias. O evento `file_upload_callback` cria ou atualiza um inventário por `object_key`, com nome, caminho remoto, tipo, indicação de original e metadados de captura saneados. Respostas recebidas em `services_reply` são correlacionadas pelo `tid` com `DJIDockComando`, fechando a auditoria como confirmada ou erro; isso não implica que o SISMOD já publique comandos. Esse inventário não contém o arquivo binário nem credenciais de armazenamento; download e armazenamento somente serão ativados após configurar serviço de objetos privado e credenciais temporárias no ambiente de servidor.
 
 #### Transmissão ao vivo
@@ -348,6 +354,9 @@ Variáveis necessárias:
 - `SISMOD_MEDIA_STORAGE`, backend `local`, `s3` ou `minio`;
 - `SISMOD_STORAGE_BUCKET`, `SISMOD_STORAGE_ACCESS_KEY`, `SISMOD_STORAGE_SECRET_KEY`, `SISMOD_STORAGE_REGION` e `SISMOD_STORAGE_ENDPOINT_URL`, configuração privada do armazenamento;
 - `SISMOD_DB_HOST`, `SISMOD_DB_PORT`, `SISMOD_DB_NAME`, `SISMOD_DB_USER` e `SISMOD_DB_PASSWORD`, PostgreSQL opcional; sem host, o desenvolvimento continua em SQLite;
+- `DJI_DRC_ENABLED` e `DJI_DRC_COMMANDS_ENABLED`, travas independentes do controle físico, falsas por padrão;
+- `DJI_DRC_SIMULATOR_ENABLED`, libera somente o cockpit simulado;
+- `DJI_DRC_SESSION_TTL_SECONDS` e `DJI_DRC_HEARTBEAT_TIMEOUT_SECONDS`, limites do watchdog;
 - `SISMOD_ALLOWED_HOSTS` e `SISMOD_CSRF_TRUSTED_ORIGINS` para o domínio publicado.
 
 Referências oficiais: [DJI Pilot 2 Access to Cloud](https://developer.dji.com/doc/cloud-api-tutorial/en/feature-set/pilot-feature-set/pilot-access-to-cloud.html), [DJI JSBridge](https://developer.dji.com/doc/cloud-api-tutorial/en/api-reference/pilot-to-cloud/jsbridge.html) e [DJI Live Stream](https://developer.dji.com/doc/cloud-api-tutorial/en/feature-set/pilot-feature-set/pilot-livestream.html).

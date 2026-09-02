@@ -20,7 +20,7 @@ from .dji_wpml_service import gerar_kmz_wpml, validar_token_download_wpml
 from .dji_operacao_service import avaliar_liberacao_missao, enfileirar_preparacao
 from .dji_storage_service import armazenar_upload_missao, diagnostico_armazenamento
 from .models import Alocacao, DJIDock, DJIDockArquivo, DJIDockMissao, Drone, Piloto, PlanejamentoVoo, TransmissaoAoVivo
-from .permissoes import admin_required, visao_global_required
+from .permissoes import admin_required, usuario_e_admin, usuario_tem_visao_global
 from .views import _base_context
 
 
@@ -59,16 +59,18 @@ def dji_cloud_configuracao(request):
     return render(request, "dji_cloud/configuracao.html", ctx)
 
 
-@visao_global_required
+@login_required
 def dji_docks(request):
     ctx = {"docks": DJIDock.objects.filter(ativo=True).select_related("drone")}
     ctx.update(_base_context(request))
     return render(request, "dji_cloud/docks.html", ctx)
 
 
-@visao_global_required
+@login_required
 def dji_missoes(request):
     missoes = DJIDockMissao.objects.select_related("dock", "dock__drone", "planejamento", "planejamento__piloto")
+    if not usuario_tem_visao_global(request.user):
+        missoes = missoes.filter(planejamento__piloto__user=request.user)
     status = request.GET.get("status", "")
     dock_id = request.GET.get("dock", "")
     if status:
@@ -81,14 +83,18 @@ def dji_missoes(request):
     return render(request, "dji_cloud/missoes.html", ctx)
 
 
-@visao_global_required
+@login_required
 def dji_midias(request):
     itens = DJIDockArquivo.objects.select_related("missao__dock", "missao__planejamento")
+    missoes_disponiveis = DJIDockMissao.objects.select_related("planejamento")
+    if not usuario_tem_visao_global(request.user):
+        itens = itens.filter(missao__planejamento__piloto__user=request.user)
+        missoes_disponiveis = missoes_disponiveis.filter(planejamento__piloto__user=request.user)
     missao_id = request.GET.get("missao", "")
     if missao_id.isdigit():
         itens = itens.filter(missao_id=missao_id)
     ctx = {
-        "itens": itens[:300], "missoes": DJIDockMissao.objects.select_related("planejamento")[:200],
+        "itens": itens[:300], "missoes": missoes_disponiveis[:200],
         "missao_atual": missao_id, "armazenamento": diagnostico_armazenamento(),
     }
     ctx.update(_base_context(request))
@@ -113,11 +119,13 @@ def dji_midia_upload(request):
     return redirect("dji_midias")
 
 
-@visao_global_required
+@login_required
 def dji_midia_download(request, pk):
     from django.http import FileResponse, Http404
     from django.shortcuts import get_object_or_404
     item = get_object_or_404(DJIDockArquivo, pk=pk, status="concluido")
+    if not usuario_tem_visao_global(request.user) and item.missao.planejamento.piloto.user_id != request.user.id:
+        raise Http404
     if not item.arquivo:
         raise Http404
     return FileResponse(item.arquivo.open("rb"), as_attachment=True, filename=item.nome)
@@ -137,14 +145,23 @@ def dji_missao_enfileirar(request, pk):
     return redirect("dji_missoes")
 
 
-@visao_global_required
+@login_required
 def dji_dock_detalhe(request, pk):
     from django.shortcuts import get_object_or_404
     dock = get_object_or_404(DJIDock.objects.select_related("drone"), pk=pk, ativo=True)
+    acesso_global = usuario_tem_visao_global(request.user)
+    missoes = dock.missoes.select_related("planejamento", "criada_por").prefetch_related("arquivos")
+    if not acesso_global:
+        missoes = missoes.filter(planejamento__piloto__user=request.user)
     ctx = {
-        "dock": dock, "eventos": dock.eventos.all()[:100], "comandos": dock.comandos.all()[:50],
-        "missoes": dock.missoes.select_related("planejamento", "criada_por").prefetch_related("arquivos")[:50],
-        "planejamentos": PlanejamentoVoo.objects.exclude(missoes_dji_dock__dock=dock).order_by("-data", "-hora_inicio")[:100],
+        "dock": dock,
+        "eventos": dock.eventos.all()[:100] if acesso_global else (),
+        "comandos": dock.comandos.all()[:50] if acesso_global else (),
+        "missoes": missoes[:50],
+        "planejamentos": (
+            PlanejamentoVoo.objects.exclude(missoes_dji_dock__dock=dock).order_by("-data", "-hora_inicio")[:100]
+            if usuario_e_admin(request.user) else ()
+        ),
     }
     ctx.update(_base_context(request))
     return render(request, "dji_cloud/dock_detalhe.html", ctx)
@@ -162,12 +179,14 @@ def dji_dock_preparar_missao(request, pk):
     return redirect("dji_dock_detalhe", pk=dock.pk)
 
 
-@visao_global_required
+@login_required
 def dji_dock_missao_wpml(request, pk):
     from django.http import HttpResponse
     from django.shortcuts import get_object_or_404
     from django.utils.text import slugify
     missao = get_object_or_404(DJIDockMissao.objects.select_related("dock", "planejamento"), pk=pk)
+    if not usuario_tem_visao_global(request.user) and missao.planejamento.piloto.user_id != request.user.id:
+        return JsonResponse({"ok": False, "erro": "Esta missão pertence a outro piloto."}, status=403)
     try:
         conteudo = gerar_kmz_wpml(missao)
     except ValueError as erro:

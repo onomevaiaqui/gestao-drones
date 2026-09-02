@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}DJI Docks{% endblock %}
 {% block content %}
-<div class="page-header"><div><h1>DJI Docks</h1><p>Monitoramento em modo somente leitura.</p></div><a class="btn btn-light" href="{% url 'dji_cloud_configuracao' %}">Configuração</a></div>
+<div class="page-header"><div><h1>Estações Remotas</h1><p>Monitoramento das Docks e aeronaves conectadas.</p></div>{% if eh_admin %}<a class="btn btn-light" href="{% url 'dji_cloud_configuracao' %}">Configuração</a>{% endif %}</div>
 <section class="panel">
   <div class="table-responsive"><table class="modern-table"><thead><tr><th>Dock</th><th>Modo</th><th>Situação</th><th>Aeronave</th><th>Local</th><th>Último contato</th><th></th></tr></thead><tbody>
   {% for dock in docks %}<tr><td><strong>{{ dock.nome }}</strong><small>{{ dock.numero_serie }}</small></td><td>{{ dock.get_modo_display }}</td><td><span class="telemetry-status-badge {% if dock.status == 'online' %}normal{% elif dock.status == 'alerta' %}atencao{% else %}erro{% endif %}">{{ dock.get_status_display }}</span></td><td>{{ dock.drone|default:"Não vinculada" }}</td><td>{{ dock.localizacao|default:"—" }}</td><td>{{ dock.ultimo_contato_em|date:"d/m/Y H:i:s"|default:"Nunca" }}</td><td class="actions"><a href="{% url 'dji_dock_detalhe' dock.pk %}">Visualizar</a></td></tr>

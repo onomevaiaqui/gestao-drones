@@ -1558,3 +1558,60 @@ class DJIDockArquivo(models.Model):
 
     def __str__(self):
         return self.nome
+
+
+class DJIDRCSessao(models.Model):
+    STATUS_CHOICES = [
+        ("preparada", "Preparada"), ("ativa", "Ativa"),
+        ("finalizada", "Finalizada"), ("erro", "Erro"),
+    ]
+    MODO_CHOICES = [("simulacao", "Simulação"), ("real", "Equipamento real")]
+
+    identificador = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    dock = models.ForeignKey(DJIDock, on_delete=models.PROTECT, related_name="sessoes_drc")
+    missao = models.ForeignKey(DJIDockMissao, on_delete=models.SET_NULL, null=True, blank=True, related_name="sessoes_drc")
+    operador = models.ForeignKey(User, on_delete=models.PROTECT, related_name="sessoes_drc")
+    modo = models.CharField(max_length=20, choices=MODO_CHOICES, default="simulacao")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="preparada")
+    altitude_maxima_m = models.PositiveSmallIntegerField(default=120)
+    distancia_maxima_m = models.PositiveIntegerField(default=500)
+    sequencia_atual = models.PositiveBigIntegerField(default=0)
+    ultimo_heartbeat_em = models.DateTimeField(null=True, blank=True)
+    iniciada_em = models.DateTimeField(null=True, blank=True)
+    finalizada_em = models.DateTimeField(null=True, blank=True)
+    motivo_finalizacao = models.CharField(max_length=255, blank=True)
+    telemetria_simulada = models.JSONField(default=dict, blank=True)
+    criada_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-criada_em"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["dock"],
+                condition=models.Q(status="ativa"),
+                name="drc_dock_sessao_ativa_unica",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.dock.nome} - {self.operador.username} - {self.get_status_display()}"
+
+
+class DJIDRCComando(models.Model):
+    sessao = models.ForeignKey(DJIDRCSessao, on_delete=models.CASCADE, related_name="comandos")
+    sequencia = models.PositiveBigIntegerField()
+    roll = models.PositiveSmallIntegerField(default=1024)
+    pitch = models.PositiveSmallIntegerField(default=1024)
+    throttle = models.PositiveSmallIntegerField(default=1024)
+    yaw = models.PositiveSmallIntegerField(default=1024)
+    gimbal_pitch = models.PositiveSmallIntegerField(default=1024)
+    aceito = models.BooleanField(default=True)
+    motivo = models.CharField(max_length=255, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-sequencia"]
+        constraints = [models.UniqueConstraint(fields=["sessao", "sequencia"], name="drc_sessao_sequencia_unica")]
+
+    def __str__(self):
+        return f"DRC {self.sessao_id} #{self.sequencia}"

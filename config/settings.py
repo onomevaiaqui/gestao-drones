@@ -167,6 +167,11 @@ DJI_DOCK_MQTT_TOPIC = os.getenv(
 DJI_DOCK_MQTT_CA_CERT = os.getenv("DJI_DOCK_MQTT_CA_CERT", "").strip()
 DJI_DOCK_WPML_URL_TTL_SECONDS = int(os.getenv("DJI_DOCK_WPML_URL_TTL_SECONDS", "3600"))
 DJI_DOCK_COMMAND_TTL_SECONDS = int(os.getenv("DJI_DOCK_COMMAND_TTL_SECONDS", "300"))
+DJI_DRC_ENABLED = env_bool("DJI_DRC_ENABLED", False)
+DJI_DRC_SIMULATOR_ENABLED = env_bool("DJI_DRC_SIMULATOR_ENABLED", True)
+DJI_DRC_COMMANDS_ENABLED = env_bool("DJI_DRC_COMMANDS_ENABLED", False)
+DJI_DRC_SESSION_TTL_SECONDS = int(os.getenv("DJI_DRC_SESSION_TTL_SECONDS", "900"))
+DJI_DRC_HEARTBEAT_TIMEOUT_SECONDS = int(os.getenv("DJI_DRC_HEARTBEAT_TIMEOUT_SECONDS", "3"))
 
 # Livestream DJI. Permanece desligada até existir um servidor de mídia público.
 DJI_LIVESTREAM_ENABLED = os.getenv("DJI_LIVESTREAM_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")

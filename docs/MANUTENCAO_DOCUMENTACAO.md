@@ -35,4 +35,4 @@ A mensagem final de cada atualização deve informar se a documentação foi alt
 - [ ] Nenhum segredo, `.env`, banco, mídia ou backup entrou no commit?
 - [ ] Os links oficiais continuam válidos?
 
-Última revisão: 31/08/2026.
+Última revisão: 02/09/2026.
