@@ -212,6 +212,88 @@ class SelecaoPerfilAcessoTests(TestCase):
         self.assertRedirects(resposta, reverse("dashboard"))
 
 
+class CoerenciaPerfisEOperacoesTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_user(username="piloto_coerencia", password="teste123")
+        self.piloto = Piloto.objects.create(
+            user=self.usuario, nome="Piloto Coerência", primeiro_acesso=False,
+        )
+        self.admin = User.objects.create_superuser(username="admin_coerencia", password="teste123")
+        self.piloto_admin = Piloto.objects.create(
+            user=self.admin, nome="Admin Coerência", perfil="administrador", primeiro_acesso=False,
+        )
+        self.drone = Drone.objects.create(nome="Drone Coerência", modelo="Teste", status="ativo")
+        self.alocacao = Alocacao.objects.create(
+            data=timezone.localdate(), hora_inicio=time(9), hora_fim=time(10),
+            piloto=self.piloto, drone=self.drone, finalidade="mapeamento",
+            criado_por=self.usuario,
+        )
+        self.solicitacao = SolicitacaoVoo.objects.create(
+            piloto=self.piloto, drone=self.drone, data=self.alocacao.data,
+            hora_inicio=self.alocacao.hora_inicio, hora_fim=self.alocacao.hora_fim,
+            finalidade="mapeamento", status="aprovado", alocacao=self.alocacao,
+            criado_por=self.usuario,
+        )
+
+    def test_inativar_piloto_tambem_inativa_conta_django(self):
+        from .forms import PilotoEditForm
+        form = PilotoEditForm({
+            "nome": self.piloto.nome, "cpf": "", "codigo_sarpas": "", "matricula": "",
+            "perfil": "usuario", "ativo": "", "username": self.usuario.username,
+            "email": "", "nova_senha": "", "enviar_email_acesso": "",
+        }, instance=self.piloto)
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+        self.usuario.refresh_from_db()
+        self.assertFalse(self.usuario.is_active)
+
+    def test_sessao_existente_de_piloto_inativo_e_encerrada(self):
+        self.client.force_login(self.usuario)
+        self.piloto.ativo = False
+        self.piloto.save(update_fields=["ativo"])
+        resposta = self.client.get(reverse("dashboard"))
+        self.assertRedirects(resposta, reverse("login"))
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_criacao_direta_de_alocacao_encaminha_para_reserva(self):
+        self.client.force_login(self.usuario)
+        self.assertRedirects(self.client.get(reverse("alocacao_nova")), reverse("solicitacao_voo_nova"))
+
+    def test_edicao_de_alocacao_vinculada_encaminha_para_solicitacao(self):
+        self.client.force_login(self.admin)
+        resposta = self.client.get(reverse("alocacao_editar", args=[self.alocacao.pk]))
+        self.assertRedirects(
+            resposta, reverse("solicitacao_voo_editar", args=[self.solicitacao.pk]),
+            fetch_redirect_response=False,
+        )
+
+    def test_exclusao_direta_nao_remove_reserva_vinculada(self):
+        self.client.force_login(self.admin)
+        resposta = self.client.post(reverse("alocacao_excluir", args=[self.alocacao.pk]))
+        self.assertRedirects(resposta, reverse("solicitacoes_voo"))
+        self.assertTrue(Alocacao.objects.filter(pk=self.alocacao.pk).exists())
+
+    def test_usuario_nao_exclui_telemetria_de_pos_voo_concluido(self):
+        voo = Voo.objects.create(
+            data=self.alocacao.data, piloto=self.piloto, drone=self.drone,
+            finalidade="mapeamento", local="Área", hora_inicio=time(9), hora_fim=time(10),
+            criado_por=self.usuario, alocacao_calendario=self.alocacao,
+        )
+        registro = RegistroPosVoo.objects.create(
+            alocacao=self.alocacao, voo=voo, hora_inicio_real=time(9), hora_fim_real=time(10),
+            resultado="concluido", concluido=True, preenchido_por=self.usuario,
+        )
+        importacao = ImportacaoLog.objects.create(
+            voo=voo, arquivo="telemetria/teste.csv", nome_original="teste.csv",
+            status="concluida", importado_por=self.usuario,
+        )
+        self.assertTrue(registro.concluido)
+        self.client.force_login(self.usuario)
+        resposta = self.client.post(reverse("telemetria_excluir", args=[importacao.pk]))
+        self.assertRedirects(resposta, reverse("telemetria_detalhe", args=[importacao.pk]))
+        self.assertTrue(ImportacaoLog.objects.filter(pk=importacao.pk).exists())
+
+
 class BateriaTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="piloto_teste", password="teste123")
@@ -781,18 +863,44 @@ class TelemetriaTests(TestCase):
         from .pixhawk_service import processar_px4
 
         gps = SimpleNamespace(name="vehicle_gps_position", multi_id=0, data={
-            "timestamp": [1_000_000], "time_utc_usec": [1_787_576_400_000_000],
-            "lat": [-255163000], "lon": [-545854000], "alt": [610_000],
-            "vel_m_s": [18.0], "satellites_used": [20],
+            "timestamp": [1_000_000, 2_000_000],
+            "time_utc_usec": [1_787_576_400_000_000, 1_787_576_401_000_000],
+            "lat": [-255163000, -255164000], "lon": [-545854000, -545855000],
+            "alt": [610_000, 730_000], "vel_m_s": [18.0, 20.0], "satellites_used": [20, 21],
         })
-        ulog = SimpleNamespace(data_list=[gps], logged_messages=[], msg_info_dict={"ver_hw": "WingtraOne GEN II"})
+        global_position = SimpleNamespace(name="vehicle_global_position", multi_id=0, data={
+            "timestamp": [1_000_000, 2_000_000], "alt": [610.0, 730.0],
+        })
+        ulog = SimpleNamespace(
+            data_list=[gps, global_position], logged_messages=[],
+            msg_info_dict={"ver_hw": "WingtraOne GEN II", "vehicle_name": "WingtraRAY 10473"},
+        )
         importacao = ImportacaoLog(voo=self.voo, nome_original="flight_record.ulg", importado_por=self.usuario)
         with patch("pyulog.ULog", return_value=ulog):
             pontos = processar_px4(importacao, b"ULog-Wingtra")
         self.assertEqual(importacao.origem, "wingtra")
         self.assertEqual(importacao.formato, "wingtra-ulog")
-        self.assertIn("WingtraOne", importacao.drone_modelo_detectado)
-        self.assertEqual(len(pontos), 1)
+        self.assertEqual(importacao.drone_modelo_detectado, "WingtraRAY 10473")
+        self.assertEqual(importacao.drone_serial_detectado, "10473")
+        self.assertEqual(len(pontos), 2)
+        self.assertEqual(pontos[1].altitude_m, Decimal("120.0"))
+
+    def test_ulog_v2_wingtra_remove_crc_sem_alterar_mensagens(self):
+        import os
+        import struct
+        from .pixhawk_service import _arquivo_ulog_temporario
+
+        cabecalho = bytearray(b"ULog\x01\x12\x35\x02" + b"\0" * 8)
+        mensagem = struct.pack("<Hc", 3, b"I") + b"abc"
+        bruto = bytes(cabecalho) + mensagem + b"\x12\x34"
+        caminho = _arquivo_ulog_temporario(bruto)
+        try:
+            with open(caminho, "rb") as arquivo:
+                normalizado = arquivo.read()
+        finally:
+            os.unlink(caminho)
+        self.assertEqual(normalizado[7], 1)
+        self.assertEqual(normalizado[16:], mensagem)
 
     def test_resumo_por_minuto_classifica_normal_atencao_e_erro(self):
         from .telemetria_views import _resumir_pontos_por_minuto

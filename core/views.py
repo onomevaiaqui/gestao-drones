@@ -1752,6 +1752,10 @@ def alocacao_nova(request):
     if usuario_e_coordenador(request.user):
         messages.error(request, "O perfil de coordenador possui acesso somente para consulta.")
         return redirect("calendario")
+    messages.info(request, "As novas reservas são registradas pelo fluxo único de Reservas de drones.")
+    return redirect("solicitacao_voo_nova")
+
+    # Fluxo legado mantido temporariamente até todas as instalações estarem migradas.
     form = AlocacaoForm(
         request.POST or None
     )
@@ -1871,6 +1875,10 @@ def alocacao_editar(request, pk):
         pk=pk
     )
 
+    solicitacao = getattr(alocacao, "solicitacao_voo", None)
+    if solicitacao is not None:
+        return redirect("solicitacao_voo_editar", pk=solicitacao.pk)
+
     eh_admin = usuario_e_admin(
         request.user
     )
@@ -1989,6 +1997,10 @@ def alocacao_excluir(request, pk):
         Alocacao,
         pk=pk
     )
+
+    if hasattr(alocacao, "solicitacao_voo"):
+        messages.error(request, "Esta reserva deve ser cancelada pela área Reservas de drones.")
+        return redirect("solicitacoes_voo")
 
     if usuario_e_admin(
         request.user

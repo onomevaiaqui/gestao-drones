@@ -83,29 +83,28 @@ def gerar_alertas():
     seriais_cadastrados = set(
         Bateria.objects.exclude(numero_serie="").values_list("numero_serie", flat=True)
     )
-    importacoes_com_bateria = (
-        ImportacaoLog.objects.filter(status="concluida")
-        .exclude(bateria_serial_detectada="")
-        .select_related("voo__drone")
-        .order_by("bateria_serial_detectada", "criado_em")
-    )
+    from .telemetria_bateria_service import baterias_detectadas_da_importacao
+    importacoes_com_bateria = ImportacaoLog.objects.filter(
+        status="concluida"
+    ).select_related("voo__drone").order_by("criado_em")
     seriais_alertados = set()
     for importacao in importacoes_com_bateria:
-        serial = importacao.bateria_serial_detectada.strip()
-        if not serial or serial in seriais_cadastrados or serial in seriais_alertados:
-            continue
-        seriais_alertados.add(serial)
-        parametros = urlencode({
-            "numero_serie": serial,
-            "drone": importacao.voo.drone_id,
-            "importacao": importacao.pk,
-        })
-        adicionar(
-            "Baterias", "alto", f"Nova bateria identificada: {serial}",
-            f"Detectada na telemetria do {importacao.voo.drone.nome}; cadastro pendente.",
-            f"{reverse('bateria_nova')}?{parametros}", f"bateria-nova-{serial}",
-            importacao.voo.data,
-        )
+        for detectada in baterias_detectadas_da_importacao(importacao):
+            serial = detectada["serial"]
+            if serial in seriais_cadastrados or serial in seriais_alertados:
+                continue
+            seriais_alertados.add(serial)
+            parametros = urlencode({
+                "numero_serie": serial,
+                "drone": importacao.voo.drone_id,
+                "importacao": importacao.pk,
+            })
+            adicionar(
+                "Baterias", "alto", f"Nova bateria identificada: {serial}",
+                f"Detectada na telemetria do {importacao.voo.drone.nome}; cadastro pendente.",
+                f"{reverse('bateria_nova')}?{parametros}", f"bateria-nova-{serial}",
+                importacao.voo.data,
+            )
 
     componentes_cadastrados = set(
         Componente.objects.exclude(numero_serie="").values_list("numero_serie", flat=True)

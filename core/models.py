@@ -778,15 +778,15 @@ class Bateria(models.Model):
 
     @property
     def voos_registrados(self):
-        return (
-            ImportacaoLog.objects.filter(
-                bateria_serial_detectada=self.numero_serie,
-                status="concluida",
-            )
-            .values("voo_id")
-            .distinct()
-            .count()
-        )
+        voos = set()
+        for importacao in ImportacaoLog.objects.filter(status="concluida").only(
+            "voo_id", "bateria_serial_detectada", "baterias_detectadas"
+        ):
+            seriais = {str(item.get("serial") or "").strip() for item in importacao.baterias_detectadas or []}
+            seriais.add((importacao.bateria_serial_detectada or "").strip())
+            if self.numero_serie in seriais:
+                voos.add(importacao.voo_id)
+        return len(voos)
 
     @property
     def ciclos_totais(self):
@@ -1230,6 +1230,7 @@ class ImportacaoLog(models.Model):
     drone_serial_detectado = models.CharField(max_length=100, blank=True)
     bateria_serial_detectada = models.CharField(max_length=100, blank=True)
     bateria_ciclos_detectados = models.PositiveIntegerField(null=True, blank=True)
+    baterias_detectadas = models.JSONField(default=list, blank=True)
     componentes_detectados = models.JSONField(default=list, blank=True)
     mensagem_erro = models.TextField(blank=True)
     importado_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="logs_importados")
@@ -1365,3 +1366,195 @@ class TransmissaoAoVivo(models.Model):
 
     def __str__(self):
         return f"{self.piloto} - {self.get_status_display()}"
+
+
+# =========================================================
+# DJI DOCK / CLOUD API
+# =========================================================
+
+class DJIDock(models.Model):
+    STATUS_CHOICES = [
+        ("desconhecido", "Desconhecido"),
+        ("online", "Online"),
+        ("offline", "Offline"),
+        ("alerta", "Com alerta"),
+    ]
+
+    nome = models.CharField(max_length=150)
+    numero_serie = models.CharField(max_length=100, unique=True)
+    modelo = models.CharField(max_length=100, default="DJI Dock 2")
+    drone = models.ForeignKey(
+        Drone, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="docks_dji",
+    )
+    localizacao = models.CharField(max_length=200, blank=True)
+    latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="desconhecido")
+    online = models.BooleanField(default=False)
+    modo = models.CharField(
+        max_length=20,
+        choices=[("simulacao", "Simulação"), ("cloud_api", "Cloud API")],
+        default="simulacao",
+    )
+    ultima_telemetria = models.JSONField(default=dict, blank=True)
+    aeronave_tipo_dji = models.PositiveIntegerField(null=True, blank=True, editable=False)
+    aeronave_subtipo_dji = models.PositiveIntegerField(null=True, blank=True, editable=False)
+    payload_tipo_dji = models.PositiveIntegerField(null=True, blank=True, editable=False)
+    payload_subtipo_dji = models.PositiveIntegerField(null=True, blank=True, editable=False)
+    payload_posicao_dji = models.PositiveSmallIntegerField(null=True, blank=True, editable=False)
+    ultimo_contato_em = models.DateTimeField(null=True, blank=True)
+    ativo = models.BooleanField(default=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["nome"]
+        verbose_name = "DJI Dock"
+        verbose_name_plural = "DJI Docks"
+
+    def __str__(self):
+        return f"{self.nome} - {self.numero_serie}"
+
+
+class DJIDockEvento(models.Model):
+    NIVEL_CHOICES = [
+        ("info", "Informação"), ("atencao", "Atenção"),
+        ("critico", "Crítico"),
+    ]
+
+    dock = models.ForeignKey(DJIDock, on_delete=models.CASCADE, related_name="eventos")
+    identificador_externo = models.CharField(max_length=120, blank=True)
+    topico = models.CharField(max_length=255)
+    tipo = models.CharField(max_length=80, default="telemetria")
+    nivel = models.CharField(max_length=20, choices=NIVEL_CHOICES, default="info")
+    mensagem = models.CharField(max_length=255, blank=True)
+    dados = models.JSONField(default=dict, blank=True)
+    recebido_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-recebido_em"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["dock", "identificador_externo"],
+                condition=~models.Q(identificador_externo=""),
+                name="dock_evento_externo_unico",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.dock.nome} - {self.tipo}"
+
+
+class DJIDockComando(models.Model):
+    TIPO_CHOICES = [
+        ("atualizar_estado", "Atualizar estado"),
+        ("reiniciar", "Reiniciar Dock"),
+        ("abrir_tampa", "Abrir tampa"),
+        ("fechar_tampa", "Fechar tampa"),
+        ("iniciar_missao", "Iniciar missão"),
+        ("pausar_missao", "Pausar missão"),
+        ("cancelar_missao", "Cancelar missão"),
+    ]
+    STATUS_CHOICES = [
+        ("bloqueado", "Bloqueado"), ("pendente", "Pendente"),
+        ("enviado", "Enviado"), ("confirmado", "Confirmado"),
+        ("erro", "Erro"), ("cancelado", "Cancelado"),
+    ]
+    COMANDOS_CRITICOS = {"reiniciar", "abrir_tampa", "iniciar_missao", "cancelar_missao"}
+
+    identificador = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    dock = models.ForeignKey(DJIDock, on_delete=models.PROTECT, related_name="comandos")
+    tipo = models.CharField(max_length=30, choices=TIPO_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="bloqueado")
+    parametros = models.JSONField(default=dict, blank=True)
+    critico = models.BooleanField(default=False)
+    solicitado_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="comandos_dock_solicitados")
+    solicitado_em = models.DateTimeField(auto_now_add=True)
+    enviado_em = models.DateTimeField(null=True, blank=True)
+    concluido_em = models.DateTimeField(null=True, blank=True)
+    mensagem = models.CharField(max_length=255, blank=True)
+    expira_em = models.DateTimeField(null=True, blank=True)
+    mensagem_mqtt = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-solicitado_em"]
+        verbose_name = "Comando da DJI Dock"
+        verbose_name_plural = "Comandos das DJI Docks"
+
+    def __str__(self):
+        return f"{self.dock.nome} - {self.get_tipo_display()}"
+
+
+class DJIDockMissao(models.Model):
+    STATUS_CHOICES = [
+        ("rascunho", "Rascunho"), ("validacao", "Aguardando validação"),
+        ("pronta", "Pronta para envio"), ("enviada", "Enviada"),
+        ("executando", "Em execução"), ("pausada", "Pausada"), ("concluida", "Concluída"),
+        ("cancelada", "Cancelada"), ("erro", "Erro"),
+    ]
+
+    identificador = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    dock = models.ForeignKey(DJIDock, on_delete=models.PROTECT, related_name="missoes")
+    planejamento = models.ForeignKey(PlanejamentoVoo, on_delete=models.PROTECT, related_name="missoes_dji_dock")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="rascunho")
+    altura_m = models.PositiveIntegerField()
+    velocidade_ms = models.DecimalField(max_digits=5, decimal_places=2, default=5)
+    altura_retorno_m = models.PositiveSmallIntegerField(default=120)
+    bateria_minima_percent = models.PositiveSmallIntegerField(default=50)
+    armazenamento_minimo_mb = models.PositiveIntegerField(default=1000)
+    interromper_na_perda_sinal = models.BooleanField(default=True)
+    parametros_confirmados = models.BooleanField(default=False)
+    parametros_confirmados_por = models.ForeignKey(
+        User, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="missoes_dock_parametros_confirmados",
+    )
+    parametros_confirmados_em = models.DateTimeField(null=True, blank=True)
+    validacoes = models.JSONField(default=list, blank=True)
+    progresso_percentual = models.PositiveSmallIntegerField(default=0)
+    etapa_atual = models.PositiveIntegerField(null=True, blank=True)
+    waypoint_atual = models.PositiveIntegerField(null=True, blank=True)
+    quantidade_midias = models.PositiveIntegerField(default=0)
+    resultado_dji = models.JSONField(default=dict, blank=True)
+    iniciada_em = models.DateTimeField(null=True, blank=True)
+    concluida_em = models.DateTimeField(null=True, blank=True)
+    criada_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="missoes_dock_criadas")
+    criada_em = models.DateTimeField(auto_now_add=True)
+    atualizada_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-planejamento__data", "-planejamento__hora_inicio"]
+        constraints = [models.UniqueConstraint(fields=["dock", "planejamento"], name="dock_planejamento_missao_unica")]
+
+    def __str__(self):
+        return f"{self.planejamento.titulo} - {self.dock.nome}"
+
+
+class DJIDockArquivo(models.Model):
+    STATUS_CHOICES = [
+        ("aguardando", "Aguardando"), ("recebendo", "Recebendo"),
+        ("concluido", "Concluído"), ("erro", "Erro"),
+    ]
+    BACKEND_CHOICES = [("local", "Local"), ("s3", "Amazon S3"), ("minio", "MinIO")]
+    missao = models.ForeignKey(DJIDockMissao, on_delete=models.CASCADE, related_name="arquivos")
+    object_key = models.CharField(max_length=500)
+    nome = models.CharField(max_length=255)
+    caminho_remoto = models.CharField(max_length=500, blank=True)
+    extensao = models.CharField(max_length=30, blank=True)
+    original = models.BooleanField(default=False)
+    metadados = models.JSONField(default=dict, blank=True)
+    arquivo = models.FileField(upload_to="dji-dock/%Y/%m/", null=True, blank=True)
+    backend = models.CharField(max_length=20, choices=BACKEND_CHOICES, default="local")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="aguardando")
+    tamanho_bytes = models.PositiveBigIntegerField(null=True, blank=True)
+    checksum = models.CharField(max_length=128, blank=True)
+    mensagem_erro = models.CharField(max_length=255, blank=True)
+    armazenado_em = models.DateTimeField(null=True, blank=True)
+    informado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["nome"]
+        constraints = [models.UniqueConstraint(fields=["missao", "object_key"], name="dock_missao_arquivo_unico")]
+
+    def __str__(self):
+        return self.nome

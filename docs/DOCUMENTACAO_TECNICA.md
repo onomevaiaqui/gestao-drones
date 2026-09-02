@@ -1,6 +1,6 @@
 # Documentação técnica do SISMOD
 
-Versão documental: 1.4
+Versão documental: 1.5
 Última revisão: 31/08/2026
 
 ## 1. Finalidade
@@ -112,6 +112,7 @@ gestao_drones/
 - o próprio piloto e o administrador podem baixar ou visualizar o PDF individual, contendo identificação, experiência comprovada por telemetria, qualificações e documentos;
 - administrador pode escolher o modo Administrador, Coordenador ou Usuário no mesmo login;
 - coordenador nativo entra diretamente no modo de consulta.
+- desativar um piloto também desativa a conta Django correspondente e encerra sessões ainda abertas; reativar o cadastro reabilita o login.
 
 A identidade visual do menu autenticado reutiliza a mesma marca institucional branca apresentada na tela de login.
 
@@ -150,6 +151,8 @@ Regras comuns:
 - quando exigida, a avaliação de risco é preenchida e aceita pelo piloto;
 - calendário impede sobreposição de períodos da mesma aeronave e exibe reservas em todos os dias abrangidos;
 - checklist concluído só pode ser alterado pelo administrador.
+- criação e edição usam exclusivamente **Reservas de drones**; o calendário encaminha operações vinculadas para essa mesma origem, evitando divergência entre `SolicitacaoVoo` e `Alocacao`;
+- alocações antigas sem solicitação vinculada continuam editáveis como registros legados até sua regularização.
 
 As validações de período e conflito são únicas para formulário de reserva, calendário e liberação. A situação temporal da reserva também é a única fonte para atualizar automaticamente a disponibilidade do drone. Isso evita que telas diferentes interpretem a mesma operação de maneiras distintas.
 
@@ -251,6 +254,46 @@ Por segurança, a integração fica desativada por padrão com `DJI_CLOUD_ENABLE
 - token assinado e temporário para API e MQTT;
 - endpoint de autenticação HTTP compatível com broker EMQX 5.
 
+#### DJI Dock 2
+
+A fundação de monitoramento da Dock foi implementada em modo seguro e somente leitura. `DJIDock` guarda serial, modelo, posição, aeronave vinculada, situação, modo de origem, último contato e o último retrato de telemetria. `DJIDockEvento` mantém o histórico bruto normalizado e deduplica mensagens que possuam `tid`, `bid` ou outro identificador externo.
+
+O serviço reconhece tópicos nos padrões `sys/product/{gateway_sn}/status` e `thing/product/{gateway_sn}/...`, incluindo OSD, estado e eventos. Ele cria a Dock pelo serial, vincula a aeronave pela topologia ou número de série informado e classifica condições iniciais em informação, atenção ou crítica. Campos sensíveis como `device_secret`, `nonce`, senha, token, App Key e App License são removidos recursivamente antes da persistência. Coordenador e administrador podem consultar a lista e os detalhes; somente o administrador pode usar a entrada de simulação. Esta etapa não possui comandos físicos, criação de missão, abertura da tampa ou decolagem.
+
+Para homologação local, configure `DJI_DOCK_SIMULATOR_ENABLED=true` e execute `python manage.py simular_dji_dock`. A chave deve permanecer falsa em produção. O consumidor MQTT 5 somente leitura é executado pelo processo separado `python manage.py consumir_dji_dock`, assina os tópicos OSD/event configurados e reconecta automaticamente. Ele recusa iniciar enquanto `DJI_DOCK_ENABLED=false` ou sem broker e credenciais completos.
+
+O arquivo `infra/dji-dock/compose.yaml` sobe uma instância única do EMQX em contêiner com volumes persistentes. No perfil local, MQTT e painel ficam presos a `127.0.0.1`, e o acesso anônimo existe apenas para permitir o teste fechado na própria máquina. Essa composição não deve ser usada para uma Dock física nem em produção. Antes de expor à rede, será criada uma composição TLS com usuários, ACL por tópico e segredos externos.
+
+`DJIDockComando` fornece a trilha de auditoria para futuras ações remotas, registrando identificador, tipo, criticidade, parâmetros sanitizados, operador, horários, situação e mensagem. A intenção permanece `bloqueado` enquanto `DJI_DOCK_ENABLED` ou `DJI_DOCK_COMMANDS_ENABLED` estiver falsa. Mesmo com ambas verdadeiras, o registro apenas fica pendente: esta versão não contém publicador de comandos físicos. Docks sem contato pelo período definido em `DJI_DOCK_OFFLINE_AFTER_SECONDS` são atualizadas por `python manage.py atualizar_status_dji_docks`.
+
+`DJIDockMissao` vincula um planejamento existente a uma Dock e registra altitude, velocidade, situação e verificações. A preparação confere geometria, vínculo e serial da aeronave, altitude, meteorologia e Termos de Coordenação. A missão permanece em validação até que o modelo DJI e o payload sejam confirmados para gerar os valores enumerados exigidos pelo WPML. Nenhum KMZ executável é produzido ou enviado nesta fase, evitando uma rota aparentemente válida com configuração de aeronave incorreta.
+
+Os identificadores `type`, `sub_type` e `gimbalindex` são capturados da topologia e da telemetria reais e armazenados separadamente como metadados DJI da Dock. O SISMOD não deduz esses códigos apenas pelo nome comercial do drone. Para a Dock 2, a compatibilidade oficial é restrita ao Matrice 3D/3TD e não admite payload de terceiros; a combinação observada ainda deverá ser validada no DJI Pilot 2.
+
+Quando aeronave, payload e geometria estão disponíveis e não existem erros estruturais, o SISMOD gera localmente um KMZ com `wpmz/template.kml` e `wpmz/waylines.wpml`, namespace WPML 1.0.2, configuração de retorno, velocidade, altura e pontos derivados do polígono. O download recebe explicitamente o estado `pre-validacao`: deve ser importado e conferido no DJI Pilot 2. Geração não altera a missão para pronta e não publica nenhum tópico MQTT.
+
+A geração do ZIP é determinística para que o fingerprint MD5, formato exigido pela Cloud API DJI, permaneça igual entre a preparação e o download. O MD5 serve somente para integridade do conteúdo, enquanto o acesso é protegido por URL assinada. Para consumo futuro pela Dock, o serviço monta um descritor com UUID da missão, fingerprint e URL por tempo limitado. O endpoint público não requer sessão, mas valida uma assinatura vinculada à missão, aplica expiração por `DJI_DOCK_WPML_URL_TTL_SECONDS`, não permite cache e somente pode ser anunciado quando `DJI_CLOUD_PUBLIC_URL` usa HTTPS.
+
+Cada `DJIDockMissao` mantém parâmetros operacionais explicitamente revisados: altura de RTH entre 20 e 1500 m, percentual mínimo de bateria, armazenamento mínimo e decisão de interromper a rota na perda de sinal. A confirmação registra administrador e horário. Somente depois dela o serviço consegue montar, sem publicar, os dados de `flighttask_prepare` com missão condicional, janela do planejamento, RTH fixo, retorno como ação de contingência e verificação avançada de segurança.
+
+### Central, liberação e fila DJI
+
+A Central de missões é acessível à administração e coordenação; somente a administração confirma parâmetros e cria prévias de fila. A triagem marca como bloqueio: drone indisponível ou em manutenção, Termo de Coordenação pendente, avaliação de risco exigida ainda não aceita, documento de aeronave vencido, qualificação vencida e parâmetros não confirmados. Meteorologia não consultada/desfavorável, ausência de reserva vinculada e ausência de qualificação cadastrada são alertas, pois podem representar uma etapa ainda em elaboração. A triagem auxilia o operador e não substitui autorizações oficiais.
+
+`DJIDockComando.mensagem_mqtt` guarda a prévia sanitizada de `flighttask_prepare`, enquanto `expira_em` limita sua validade. Nesta fase ela nasce bloqueada e não existe publicador físico. `python manage.py expirar_comandos_dji` cancela registros vencidos.
+
+### Armazenamento de mídias
+
+`SISMOD_MEDIA_STORAGE` seleciona `local`, `s3` ou `minio` por instalação. Local usa `MEDIA_ROOT`; S3 e MinIO usam o backend privado `django-storages`, credenciais externas e bucket sem acesso anônimo. `DJIDockArquivo` registra origem, situação, tamanho, SHA-256, arquivo, horário e eventual falha. O SHA-256 aqui verifica o arquivo armazenado; ele é diferente do MD5 exigido pela DJI para o KMZ. O download autenticado é transmitido pelo SISMOD, evitando expor a URL interna do MinIO.
+
+A galeria aceita upload manual de JPG/JPEG, PNG, TIFF, MP4/MOV, PPK (`obs`, `rtk`, `mrk`, `nav`, `dat`), logs e ZIP até 5 GB. O limite também deve ser aplicado no proxy reverso em produção. O recebimento direto da Dock ainda depende de credenciais temporárias e HTTPS.
+
+### Homologação em contêineres
+
+O `Dockerfile` executa Python 3.12, dependências, arquivos estáticos e Gunicorn. `infra/compose.homologacao.yaml` inclui PostgreSQL, MinIO privado, inicialização do bucket, EMQX e processos separados para web e consumidor. As portas de web e consoles ficam ligadas a `127.0.0.1`; o perfil `dock-real` não deve ser iniciado sem TLS e autenticação do broker. `verificar_implantacao` testa conexão com banco, escrita no armazenamento e informa o estado das travas DJI.
+
+Os eventos DJI `flighttask_ready` e `flighttask_progress` são correlacionados pelo UUID da missão para registrar disponibilidade, execução, pausa, conclusão, falha, percentual, etapa, waypoint e total de mídias. O evento `file_upload_callback` cria ou atualiza um inventário por `object_key`, com nome, caminho remoto, tipo, indicação de original e metadados de captura saneados. Respostas recebidas em `services_reply` são correlacionadas pelo `tid` com `DJIDockComando`, fechando a auditoria como confirmada ou erro; isso não implica que o SISMOD já publique comandos. Esse inventário não contém o arquivo binário nem credenciais de armazenamento; download e armazenamento somente serão ativados após configurar serviço de objetos privado e credenciais temporárias no ambiente de servidor.
+
 #### Transmissão ao vivo
 
 A fundação de livestream DJI está implementada, mas permanece desligada até a implantação de um servidor de mídia público. O fluxo previsto é **aeronave → DJI Pilot 2 → RTMP/RTMPS → MediaMTX ou SRS → player WebRTC no SISMOD**.
@@ -283,7 +326,7 @@ O menu **Transmissões ao vivo** organiza a operação em quatro abas:
 
 No planejamento, o piloto pode marcar **Transmitir esta operação ao vivo**, informar título, público autorizado e intenção de gravação. O agendamento não liga a câmera automaticamente: no DJI Pilot 2 o piloto escolhe a operação e confirma **Iniciar transmissão**. Também existe o caminho avulso **Iniciar transmissão agora**, sem planejamento; essa sessão fica identificada como avulsa e não cria reserva ou voo fictício. Coordenadores somente acompanham, enquanto piloto e administrador podem iniciar conforme o dispositivo e as permissões.
 
-O portal somente habilita o botão de conexão quando todas as configurações estão presentes e válidas. O endereço precisa ser público e HTTPS. A integração ainda não recebe tópicos MQTT nem arquivos automaticamente; isso será habilitado depois da instalação e configuração do broker.
+O portal somente habilita o botão de conexão quando todas as configurações estão presentes e válidas. O endereço precisa ser público e HTTPS. O normalizador e o armazenamento de mensagens da Dock estão implementados, mas ainda não existe processo conectado continuamente ao broker MQTT nem recebimento automático de arquivos.
 
 Variáveis necessárias:
 
@@ -294,6 +337,17 @@ Variáveis necessárias:
 - `DJI_CLOUD_MQTT_HOST`, com protocolo `tcp`, `ssl`, `ws` ou `wss`;
 - `DJI_CLOUD_MQTT_USERNAME_PREFIX`;
 - nomes da plataforma, workspace e descrição;
+- `DJI_DOCK_ENABLED=false`, trava independente para a futura conexão física;
+- `DJI_DOCK_SIMULATOR_ENABLED=false`, habilitada somente em homologação local;
+- `DJI_DOCK_MQTT_USERNAME` e `DJI_DOCK_MQTT_PASSWORD`, conta exclusiva e sem permissão de publicação em tópicos de comando;
+- `DJI_DOCK_MQTT_CLIENT_ID`, identificador único do consumidor;
+- `DJI_DOCK_MQTT_TOPIC`, lista separada por vírgulas de tópicos de leitura, incluindo `services_reply` para fechar a auditoria;
+- `DJI_DOCK_MQTT_CA_CERT`, caminho opcional para a autoridade certificadora privada;
+- `DJI_DOCK_WPML_URL_TTL_SECONDS`, validade da URL assinada usada pela Dock para baixar o KMZ;
+- `DJI_DOCK_COMMAND_TTL_SECONDS`, validade das prévias de comandos;
+- `SISMOD_MEDIA_STORAGE`, backend `local`, `s3` ou `minio`;
+- `SISMOD_STORAGE_BUCKET`, `SISMOD_STORAGE_ACCESS_KEY`, `SISMOD_STORAGE_SECRET_KEY`, `SISMOD_STORAGE_REGION` e `SISMOD_STORAGE_ENDPOINT_URL`, configuração privada do armazenamento;
+- `SISMOD_DB_HOST`, `SISMOD_DB_PORT`, `SISMOD_DB_NAME`, `SISMOD_DB_USER` e `SISMOD_DB_PASSWORD`, PostgreSQL opcional; sem host, o desenvolvimento continua em SQLite;
 - `SISMOD_ALLOWED_HOSTS` e `SISMOD_CSRF_TRUSTED_ORIGINS` para o domínio publicado.
 
 Referências oficiais: [DJI Pilot 2 Access to Cloud](https://developer.dji.com/doc/cloud-api-tutorial/en/feature-set/pilot-feature-set/pilot-access-to-cloud.html), [DJI JSBridge](https://developer.dji.com/doc/cloud-api-tutorial/en/api-reference/pilot-to-cloud/jsbridge.html) e [DJI Live Stream](https://developer.dji.com/doc/cloud-api-tutorial/en/feature-set/pilot-feature-set/pilot-livestream.html).
@@ -319,6 +373,7 @@ Referências oficiais: [DJI Pilot 2 Access to Cloud](https://developer.dji.com/d
 - exibe rota, `hh:mm:ss`, distância, altitude, velocidade, bateria, satélites e alertas;
 - consolida dados por minuto e explica estados normal, atenção e erro;
 - alertas georreferenciados aparecem no mapa.
+- o piloto pode corrigir seus logs enquanto a operação estiver aberta; depois que o registro pós-voo for concluído, somente o administrador pode excluir telemetria, com recálculo automático do voo e do pós-voo.
 
 Modelos DJI previstos na identificação incluem Matrice 4T/4E, Matrice 300 RTK, Matrice 30T e família Mavic 3. A compatibilidade real depende do formato/firmware e deve ser validada com amostras de cada equipamento.
 
@@ -331,9 +386,9 @@ Para controladoras Pixhawk, o formato depende do firmware instalado:
 - BIN/ULG podem ter até 200 MB; o processamento continua limitado a 100.000 posições GPS para proteger memória e banco de dados;
 - Pixhawk identifica a controladora, não necessariamente o fabricante da aeronave. A associação oficial continua sendo feita ao voo/drone selecionado pelo usuário.
 
-O Wingtra usa ULog e passa pelo leitor PX4, recebendo identificação própria no resumo quando os metadados do arquivo indicam WingtraOne/WingtraRAY. Os registros ficam normalmente na pasta `FLIGHT RECORDS` do projeto.
+O Wingtra usa ULog e recebe identificação própria no resumo. Além do ULog/PX4 convencional, o leitor normaliza em arquivo temporário a variante Wingtra ULog v2, que acrescenta dois bytes de CRC após cada mensagem; o original nunca é alterado. O tópico `bms_data` é lido por `multi_id`, permitindo registrar separadamente as duas baterias físicas do Wingtra, seus números de série, contadores de ciclos, saúde e posição no conjunto. Cada serial desconhecido permanece como alerta até o cadastro. A validação real foi feita com WingtraRAY 10473: o arquivo principal continha 2.427 posições válidas, cerca de 24min46s, bateria de 100% a 55%, até 34 satélites, altitude relativa máxima aproximada de 129,4 m e duas baterias BMS distintas. O arquivo nomeado pela missão/voo, como `VooRGB Flight 01.ulg`, é a fonte indicada. `sess*_fmu.ulg` contém telemetria técnica redundante da mesma sessão e `sess*_fts.ulg` pode não conter trajetória GPS utilizável; importar os três como se fossem voos diferentes causaria duplicidade.
 
-No senseFly eBee, o formato binário `.BB3/.BBZ` é proprietário. A integração inicial usa o JSON gerado pelo eMotion pela opção **Create JSON flight log**. O leitor procura de forma segura a série de telemetria no documento, inclusive quando posição e sensores estão aninhados, e normaliza rota, tempo, altitude, velocidade, bateria, satélites, sinal e alertas. O suporte direto ao BB3/BBZ somente será declarado depois da inspeção de uma amostra real e da confirmação de um método de decodificação sustentável.
+O suporte senseFly eBee permanece fora do escopo ativo. Os arquivos reais `.BB3` e `_em.bb3` inspecionados são binários proprietários distintos e não possuem decodificador público sustentável confirmado. O SISMOD não aceita esses arquivos para evitar registros incorretos. Uma futura retomada exigirá exportação estruturada oficial do eMotion ou SDK/decodificador homologado.
 
 ### Pós-voo
 
@@ -449,10 +504,10 @@ Os testes cobrem perfis, permissões, reservas, risco, planejamento, telemetria,
 
 ## 12. Segurança e produção
 
-A configuração atual é local: `DEBUG=True`, chave fixa, SQLite, hosts locais e `runserver`. Antes de colocar em rede/internet:
+A configuração padrão continua local, mas `config/settings.py` já aceita endurecimento por ambiente. Antes de colocar em rede/internet:
 
-1. mover `SECRET_KEY`, `DEBUG` e hosts para variáveis de ambiente;
-2. usar `DEBUG=False`;
+1. definir `SISMOD_SECRET_KEY` com valor longo, aleatório e exclusivo;
+2. usar `SISMOD_DEBUG=false`;
 3. configurar `ALLOWED_HOSTS` e `CSRF_TRUSTED_ORIGINS`;
 4. usar HTTPS, cookies seguros e cabeçalhos adequados;
 5. habilitar validadores de senha;
@@ -461,6 +516,8 @@ A configuração atual é local: `DEBUG=True`, chave fixa, SQLite, hosts locais 
 8. usar servidor WSGI/ASGI de produção;
 9. executar `python manage.py check --deploy` nas configurações de produção;
 10. definir backup, retenção, auditoria e acesso a documentos/logs.
+
+Com `SISMOD_DEBUG=false`, redirecionamento HTTPS, cookies seguros e HSTS (incluindo subdomínios e diretiva de preload) são ativados por padrão. Só use esse modo depois de confirmar HTTPS em todo o domínio. Atrás de proxy HTTPS, defina `SISMOD_BEHIND_HTTPS_PROXY=true`. As variáveis `SISMOD_SECURE_SSL_REDIRECT`, `SISMOD_SESSION_COOKIE_SECURE`, `SISMOD_CSRF_COOKIE_SECURE`, `SISMOD_SECURE_HSTS_SECONDS`, `SISMOD_SECURE_HSTS_INCLUDE_SUBDOMAINS` e `SISMOD_SECURE_HSTS_PRELOAD` permitem ajuste explícito conforme a infraestrutura.
 
 Nunca publicar chaves DJI, CPF, documentos, banco ou mídia no GitHub.
 

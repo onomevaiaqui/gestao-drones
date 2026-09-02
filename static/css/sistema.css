@@ -470,6 +470,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,
 .dji-pilot-brand { color: #0875d1; letter-spacing: .18em; font-size: 1.15rem; }
 .dji-pilot-result { margin-top: 18px; padding: 14px; border-radius: 10px; background: #eef7ff; color: #0b477a; }
 .integration-checklist { display: grid; gap: 8px; }
+.modern-table td small{display:block;margin-top:3px;color:var(--muted)}.dock-json{max-height:360px;overflow:auto;padding:16px;border:1px solid var(--border);border-radius:9px;background:#f7f9fc;white-space:pre-wrap;overflow-wrap:anywhere}
 .integration-checklist .checklist-summary { padding: 10px 0; border-bottom: 1px solid #e5ebf3; }
 
 /* Dashboards por perfil */

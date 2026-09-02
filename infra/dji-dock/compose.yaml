@@ -1,0 +1,27 @@
+name: sismod-dji-dock-local
+
+services:
+  emqx:
+    image: emqx/emqx:6.2.3
+    container_name: sismod-emqx-local
+    hostname: emqx.local.sismod
+    restart: unless-stopped
+    environment:
+      EMQX_NODE_NAME: emqx@emqx.local.sismod
+      EMQX_ALLOW_ANONYMOUS: "true"
+    ports:
+      # Homologação isolada: acessível somente nesta máquina.
+      - "127.0.0.1:1883:1883"
+      - "127.0.0.1:18083:18083"
+    volumes:
+      - sismod_emqx_data:/opt/emqx/data
+      - sismod_emqx_log:/opt/emqx/log
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+volumes:
+  sismod_emqx_data:
+  sismod_emqx_log:

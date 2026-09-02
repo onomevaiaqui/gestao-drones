@@ -3,6 +3,8 @@
 import bisect
 import math
 import os
+import re
+import struct
 import tempfile
 from datetime import datetime
 from decimal import Decimal
@@ -58,6 +60,34 @@ def _arquivo_temporario(bruto, sufixo):
     arquivo = tempfile.NamedTemporaryFile(delete=False, suffix=sufixo)
     try:
         arquivo.write(bruto)
+        return arquivo.name
+    finally:
+        arquivo.close()
+
+
+def _arquivo_ulog_temporario(bruto):
+    """Converte em disco o ULog v2 da Wingtra para a estrutura v1 aceita pelo pyulog.
+
+    A variante Wingtra mantém as mensagens ULog, mas acrescenta um CRC de dois
+    bytes depois de cada quadro. Os dados originais permanecem intocados.
+    """
+    if not (bruto.startswith(b"ULog\x01\x12\x35") and len(bruto) >= 16 and bruto[7] == 2):
+        return _arquivo_temporario(bruto, ".ulg")
+    arquivo = tempfile.NamedTemporaryFile(delete=False, suffix=".ulg")
+    try:
+        cabecalho = bytearray(bruto[:16])
+        cabecalho[7] = 1
+        arquivo.write(cabecalho)
+        posicao = 16
+        while posicao + 3 <= len(bruto):
+            tamanho = struct.unpack_from("<H", bruto, posicao)[0]
+            fim = posicao + 3 + tamanho
+            if fim > len(bruto):
+                if len(bruto) - posicao <= 64:
+                    break
+                raise ValueError("O ULog v2 da Wingtra termina com uma mensagem incompleta.")
+            arquivo.write(bruto[posicao:fim])
+            posicao = fim + 2
         return arquivo.name
     finally:
         arquivo.close()
@@ -148,12 +178,36 @@ def _dataset(ulog, nome):
     return next((item for item in ulog.data_list if item.name == nome and item.multi_id == 0), None)
 
 
+def _baterias_bms(ulog):
+    """Retorna cada BMS físico registrado no ULog (Wingtra usa dois)."""
+    baterias = []
+    for dataset in sorted(
+        (item for item in ulog.data_list if item.name == "bms_data"),
+        key=lambda item: item.multi_id,
+    ):
+        dados = dataset.data
+        seriais = [int(item) for item in dados.get("serial_number", []) if int(item) > 0]
+        if not seriais:
+            continue
+        serial = str(max(set(seriais), key=seriais.count))
+        ciclos_validos = [int(item) for item in dados.get("cycle_count", []) if int(item) >= 0]
+        saudes_validas = [int(item) for item in dados.get("state_of_health", []) if 0 < int(item) <= 100]
+        baterias.append({
+            "serial": serial,
+            "ciclos": max(ciclos_validos) if ciclos_validos else None,
+            "saude_percentual": saudes_validas[-1] if saudes_validas else None,
+            "slot": int(dataset.multi_id) + 1,
+        })
+    return baterias
+
+
 def _mais_proximo(tempos, valores, instante):
     if not tempos:
         return None
     indice = bisect.bisect_left(tempos, instante)
     candidatos = [item for item in (indice - 1, indice) if 0 <= item < len(tempos)]
-    escolhido = min(candidatos, key=lambda item: abs(tempos[item] - instante))
+    instante_numero = int(instante)
+    escolhido = min(candidatos, key=lambda item: abs(int(tempos[item]) - instante_numero))
     return valores[escolhido]
 
 
@@ -163,7 +217,7 @@ def processar_px4(importacao, bruto):
     except ImportError as exc:
         raise ValueError("O leitor Pixhawk/PX4 não está instalado.") from exc
 
-    caminho = _arquivo_temporario(bruto, ".ulg")
+    caminho = _arquivo_ulog_temporario(bruto)
     try:
         ulog = ULog(caminho)
     except Exception as exc:
@@ -185,6 +239,12 @@ def processar_px4(importacao, bruto):
     local_ds = _dataset(ulog, "vehicle_local_position")
     local_tempos = list(local_ds.data.get("timestamp", [])) if local_ds else []
     local_z = list(local_ds.data.get("z", [])) if local_ds else []
+    global_ds = _dataset(ulog, "vehicle_global_position")
+    global_tempos = list(global_ds.data.get("timestamp", [])) if global_ds else []
+    global_alt = list(global_ds.data.get("alt", [])) if global_ds else []
+    global_referencia = next(
+        (float(valor) for valor in global_alt if valor is not None and math.isfinite(float(valor))), None
+    )
     alertas = sorted(getattr(ulog, "logged_messages", []) or [], key=lambda item: item.timestamp)
     alerta_indice = 0
     timestamps = list(dados.get("timestamp", []))
@@ -209,6 +269,10 @@ def processar_px4(importacao, bruto):
         z = _mais_proximo(local_tempos, local_z, timestamp)
         if z is not None and math.isfinite(float(z)):
             altitude = -float(z)
+        elif global_tempos and global_alt and global_referencia is not None:
+            altitude_global = _mais_proximo(global_tempos, global_alt, timestamp)
+            if altitude_global is not None and math.isfinite(float(altitude_global)):
+                altitude = float(altitude_global) - global_referencia
         elif "alt" in dados:
             altitude = float(dados["alt"][indice]) / 1000
         velocidade = dados.get("vel_m_s")
@@ -226,12 +290,27 @@ def processar_px4(importacao, bruto):
         raise ValueError("O log PX4 não contém posições GPS válidas.")
     versao = str(ulog.msg_info_dict.get("ver_sw", "") or "").strip()
     hardware = str(ulog.msg_info_dict.get("ver_hw", "") or "").strip()
-    identificadores = " ".join([importacao.nome_original or "", hardware, versao] + [str(valor) for valor in ulog.msg_info_dict.values()])
+    identificadores = " ".join(
+        [importacao.nome_original or "", hardware, versao]
+        + [f"{chave} {valor}" for chave, valor in ulog.msg_info_dict.items()]
+    )
     wingtra = "wingtra" in identificadores.lower()
     importacao.origem = "wingtra" if wingtra else "pixhawk_px4"
     importacao.formato = "wingtra-ulog" if wingtra else "px4-ulog"
-    importacao.drone_modelo_detectado = (("WingtraOne" if wingtra else "PX4") + (f" {hardware}" if hardware else ""))[:120]
-    importacao.drone_serial_detectado = str(ulog.msg_info_dict.get("sys_uuid", "") or "")[:100]
+    nome_veiculo = str(ulog.msg_info_dict.get("vehicle_name", "") or "").strip()
+    importacao.drone_modelo_detectado = (
+        nome_veiculo or (("Wingtra" if wingtra else "PX4") + (f" {hardware}" if hardware else ""))
+    )[:120]
+    serial = str(ulog.msg_info_dict.get("sys_uuid", "") or "").strip()
+    if not serial and wingtra and nome_veiculo:
+        identificador = re.search(r"(\d+)$", nome_veiculo)
+        serial = identificador.group(1) if identificador else nome_veiculo
+    importacao.drone_serial_detectado = serial[:100]
+    importacao.baterias_detectadas = _baterias_bms(ulog)
+    if importacao.baterias_detectadas:
+        primeira = importacao.baterias_detectadas[0]
+        importacao.bateria_serial_detectada = primeira["serial"][:100]
+        importacao.bateria_ciclos_detectados = primeira["ciclos"]
     importacao.versao_log = 0
     importacao.colunas_reconhecidas = ["tempo", "gps", "altitude", "velocidade", "bateria", "satelites", "alertas"]
     if versao:

@@ -46,6 +46,7 @@ class PilotoForm(forms.ModelForm):
             username=self.cleaned_data["username"],
             email=self.cleaned_data.get("email", ""),
             password=self.cleaned_data["senha"],
+            is_active=piloto.ativo,
         )
         piloto.user = user
         if hasattr(piloto, "primeiro_acesso"):
@@ -108,6 +109,7 @@ class PilotoEditForm(forms.ModelForm):
 
         user.username = self.cleaned_data["username"]
         user.email = self.cleaned_data.get("email", "")
+        user.is_active = piloto.ativo
 
         nova_senha = self.cleaned_data.get("nova_senha")
         if nova_senha:

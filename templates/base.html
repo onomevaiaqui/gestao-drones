@@ -48,9 +48,12 @@
             <span class="nav-section">Administração</span>
             <a href="{% url 'pilotos' %}" class="{% if 'piloto' in request.resolver_match.url_name %}active{% endif %}">♙ <span>Pilotos / Usuários</span></a>
             <a href="{% url 'dji_cloud_configuracao' %}" class="{% if 'dji_cloud' in request.resolver_match.url_name %}active{% endif %}">⌁ <span>Integração DJI</span></a>
+            <a href="{% url 'dji_docks' %}" class="{% if 'dji_dock' in request.resolver_match.url_name %}active{% endif %}">⌾ <span>DJI Docks</span></a>
             <a href="{% url 'configuracao_licenca' %}" class="{% if request.resolver_match.url_name == 'configuracao_licenca' %}active{% endif %}">◇ <span>Licença</span></a>
             {% endif %}
             {% if visao_global %}<a href="{% url 'alertas' %}" class="{% if request.resolver_match.url_name == 'alertas' %}active{% endif %}">⚠ <span>Alertas{% if alertas_resumo_global.total %}<b class="nav-count">{{ alertas_resumo_global.total }}</b>{% endif %}</span></a>{% endif %}
+            {% if visao_global %}<a href="{% url 'dji_missoes' %}" class="{% if request.resolver_match.url_name == 'dji_missoes' %}active{% endif %}">⌾ <span>Central de missões</span></a>{% endif %}
+            {% if visao_global %}<a href="{% url 'dji_midias' %}" class="{% if 'dji_midia' in request.resolver_match.url_name %}active{% endif %}">▧ <span>Mídias das Docks</span></a>{% endif %}
         </nav>
 
         <div class="sidebar-footer">

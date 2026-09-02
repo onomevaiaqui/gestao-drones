@@ -25,6 +25,41 @@ def diagnostico_open_platforms():
         "habilitado": settings.DJI_CLOUD_ENABLED,
         "pronto": settings.DJI_CLOUD_ENABLED and configurado,
         "livestream": diagnostico_livestream(),
+        "dock": diagnostico_dock(),
+    }
+
+
+def diagnostico_dock():
+    mqtt = configuracao_mqtt_dock()
+    itens = {
+        "broker": bool(mqtt),
+        "usuario": bool(settings.DJI_DOCK_MQTT_USERNAME),
+        "senha": bool(settings.DJI_DOCK_MQTT_PASSWORD),
+        "cliente": bool(settings.DJI_DOCK_MQTT_CLIENT_ID),
+        "topicos": bool(settings.DJI_DOCK_MQTT_TOPIC),
+    }
+    return {
+        "itens": itens,
+        "configurado": all(itens.values()),
+        "habilitado": settings.DJI_DOCK_ENABLED,
+        "simulador": settings.DJI_DOCK_SIMULATOR_ENABLED,
+        "comandos": settings.DJI_DOCK_COMMANDS_ENABLED,
+        "pronto": settings.DJI_DOCK_ENABLED and all(itens.values()),
+    }
+
+
+def configuracao_mqtt_dock():
+    """Normaliza o endereço do broker sem expor credenciais."""
+    parsed = urlparse(settings.DJI_CLOUD_MQTT_HOST)
+    if parsed.scheme not in ("tcp", "ssl", "ws", "wss") or not parsed.hostname:
+        return None
+    seguro = parsed.scheme in ("ssl", "wss")
+    return {
+        "host": parsed.hostname,
+        "port": parsed.port or (8883 if seguro else 1883),
+        "tls": seguro,
+        "websockets": parsed.scheme in ("ws", "wss"),
+        "topics": [item.strip() for item in settings.DJI_DOCK_MQTT_TOPIC.split(",") if item.strip()],
     }
 
 

@@ -101,17 +101,19 @@ def _resumir_pontos_por_minuto(pontos):
 @login_required
 def telemetria_lista(request):
     qs = _importacoes_permitidas(request.user)
-    seriais_detectados = set(
-        qs.filter(status="concluida").exclude(bateria_serial_detectada="")
-        .values_list("bateria_serial_detectada", flat=True)
-    )
+    from .telemetria_bateria_service import baterias_detectadas_da_importacao
+    origens_bateria = {}
+    for importacao in qs.filter(status="concluida").select_related("voo__drone"):
+        for detectada in baterias_detectadas_da_importacao(importacao):
+            origens_bateria.setdefault(detectada["serial"], importacao)
+    seriais_detectados = set(origens_bateria)
     seriais_cadastrados = set(
         Bateria.objects.filter(numero_serie__in=seriais_detectados)
         .values_list("numero_serie", flat=True)
     )
     baterias_novas = []
     for serial in sorted(seriais_detectados - seriais_cadastrados):
-        origem = qs.filter(bateria_serial_detectada=serial).select_related("voo__drone").first()
+        origem = origens_bateria.get(serial)
         if origem:
             baterias_novas.append({"serial": serial, "importacao": origem, "drone": origem.voo.drone})
     resumo = {
@@ -193,11 +195,13 @@ def telemetria_detalhe(request, pk):
         minutos, segundos = divmod(restante, 60)
         duracao = f"{horas:02d}h {minutos:02d}min {segundos:02d}s"
     data_voo = timezone.localtime(importacao.inicio_registro).date() if importacao.inicio_registro else importacao.voo.data
-    bateria_detectada = None
-    if importacao.bateria_serial_detectada:
-        bateria_detectada = Bateria.objects.filter(
-            numero_serie=importacao.bateria_serial_detectada
-        ).first()
+    from .telemetria_bateria_service import baterias_detectadas_da_importacao
+    baterias_log = []
+    for detectada in baterias_detectadas_da_importacao(importacao):
+        baterias_log.append({
+            **detectada,
+            "cadastrada": Bateria.objects.filter(numero_serie=detectada["serial"]).first(),
+        })
     from .compatibilidade_componentes import componente_exige_cadastro
     componentes_detectados = []
     for detectado in importacao.componentes_detectados or []:
@@ -214,8 +218,7 @@ def telemetria_detalhe(request, pk):
         "importacao": importacao, "amostra_minutos": _resumir_pontos_por_minuto(pontos), "rota": rota,
         "alertas_mapa": alertas_mapa, "duracao_formatada": duracao,
         "data_voo": data_voo,
-        "bateria_detectada": bateria_detectada,
-        "bateria_serial_nova": bool(importacao.bateria_serial_detectada and not bateria_detectada),
+        "baterias_log": baterias_log,
         "componentes_log": componentes_detectados,
         "componentes_novos": [
             item for item in componentes_detectados
@@ -233,9 +236,21 @@ def telemetria_excluir(request, pk):
         messages.info(request, "No perfil de coordenador, a telemetria fica disponível somente para consulta.")
         return redirect("telemetria_lista")
     importacao = get_object_or_404(_importacoes_permitidas(request.user), pk=pk)
+    registro_pos_voo = getattr(importacao.voo, "registro_pos_voo", None)
+    if registro_pos_voo and registro_pos_voo.concluido and not usuario_e_admin(request.user):
+        messages.error(
+            request,
+            "A telemetria de uma operação concluída só pode ser excluída por um administrador.",
+        )
+        return redirect("telemetria_detalhe", pk=importacao.pk)
+    voo = importacao.voo
     if importacao.arquivo:
         importacao.arquivo.delete(save=False)
     importacao.delete()
+    from .telemetria_service import _recalcular_voo_pelos_logs
+    from .telemetria_bateria_service import sincronizar_registro_pos_voo
+    _recalcular_voo_pelos_logs(voo)
+    sincronizar_registro_pos_voo(voo)
     messages.success(request, "Importação excluída.")
     return redirect("telemetria_lista")
 

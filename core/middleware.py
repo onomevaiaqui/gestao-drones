@@ -10,6 +10,10 @@ class ModoAcessoMiddleware:
 
     def __call__(self, request):
         if request.user.is_authenticated:
+            piloto = getattr(request.user, "piloto", None)
+            if piloto is not None and not piloto.ativo:
+                request.session.flush()
+                return redirect("login")
             modo = request.session.get("modo_acesso")
             request.user._modo_acesso = modo
             if modo == "pendente" and request.path not in ("/selecionar-perfil/", "/logout/"):

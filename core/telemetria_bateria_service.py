@@ -3,29 +3,56 @@
 from .models import Bateria
 
 
+def baterias_detectadas_da_importacao(importacao):
+    """Normaliza logs novos (várias baterias) e antigos (uma bateria)."""
+    itens = []
+    vistos = set()
+    for detectada in importacao.baterias_detectadas or []:
+        serial = str(detectada.get("serial") or "").strip()
+        if not serial or serial in vistos:
+            continue
+        vistos.add(serial)
+        itens.append({
+            "serial": serial,
+            "ciclos": detectada.get("ciclos"),
+            "saude_percentual": detectada.get("saude_percentual"),
+            "slot": detectada.get("slot"),
+        })
+    serial_legado = (importacao.bateria_serial_detectada or "").strip()
+    if serial_legado and serial_legado not in vistos:
+        itens.append({"serial": serial_legado, "ciclos": importacao.bateria_ciclos_detectados})
+    return itens
+
+
 def sincronizar_ciclos_bateria(importacao):
-    """Atualiza o contador real somente quando serial e cycleCount vierem do log."""
-    serial = (importacao.bateria_serial_detectada or "").strip()
-    ciclos = importacao.bateria_ciclos_detectados
-    if not serial or ciclos is None:
-        return None
-    bateria = Bateria.objects.filter(numero_serie=serial).first()
-    if bateria is None:
-        return None
-    if bateria.ciclos_detectados_log is None or ciclos > bateria.ciclos_detectados_log:
-        bateria.ciclos_detectados_log = ciclos
-        bateria.save(update_fields=["ciclos_detectados_log", "atualizado_em"])
-    return bateria
+    """Atualiza ciclos e saúde de todas as baterias identificadas no log."""
+    atualizadas = []
+    for detectada in baterias_detectadas_da_importacao(importacao):
+        bateria = Bateria.objects.filter(numero_serie=detectada["serial"]).first()
+        if bateria is None:
+            continue
+        campos = []
+        ciclos = detectada.get("ciclos")
+        if ciclos is not None and (bateria.ciclos_detectados_log is None or ciclos > bateria.ciclos_detectados_log):
+            bateria.ciclos_detectados_log = ciclos
+            campos.append("ciclos_detectados_log")
+        saude = detectada.get("saude_percentual")
+        if saude is not None and bateria.saude_percentual != saude:
+            bateria.saude_percentual = saude
+            campos.append("saude_percentual")
+        if campos:
+            bateria.save(update_fields=campos + ["atualizado_em"])
+        atualizadas.append(bateria)
+    return atualizadas[0] if atualizadas else None
 
 
 def seriais_bateria_do_voo(voo):
-    return list(
-        voo.importacoes_log.filter(status="concluida")
-        .exclude(bateria_serial_detectada="")
-        .order_by("bateria_serial_detectada")
-        .values_list("bateria_serial_detectada", flat=True)
-        .distinct()
-    )
+    seriais = {
+        item["serial"]
+        for importacao in voo.importacoes_log.filter(status="concluida")
+        for item in baterias_detectadas_da_importacao(importacao)
+    }
+    return sorted(seriais)
 
 
 def baterias_e_seriais_novos(voo):

@@ -6,7 +6,7 @@ Cada cliente recebe uma instalação própria do SISMOD em seu servidor e uma li
 
 ## Instalação inicial
 
-1. Instale as dependências e configure o `.env` sem segredos no Git.
+1. Instale as dependências e configure o `.env`, mantendo-o fora do Git.
 2. Execute `python manage.py migrate`.
 3. Execute `python manage.py criar_admin_inicial` e informe usuário, e-mail, nome e senha no terminal protegido.
 4. Entre como administrador e abra **Administração > Licença**.
@@ -16,6 +16,20 @@ Cada cliente recebe uma instalação própria do SISMOD em seu servidor e uma li
 O arquivo de licença pode ser guardado no cofre documental da empresa para auditoria, mas não deve ser colocado no repositório Git. O SISMOD conserva no banco os dados assinados e o histórico de ativações.
 
 Para provisionamento não interativo, o comando aceita `--noinput` e lê temporariamente `SISMOD_INITIAL_ADMIN_USERNAME`, `SISMOD_INITIAL_ADMIN_EMAIL`, `SISMOD_INITIAL_ADMIN_NAME` e `SISMOD_INITIAL_ADMIN_PASSWORD`. Remova essas variáveis imediatamente depois da criação.
+
+## Ambiente de produção
+
+Configuração mínima recomendada:
+
+```dotenv
+SISMOD_DEBUG=false
+SISMOD_SECRET_KEY=VALOR_LONGO_ALEATORIO_E_EXCLUSIVO
+SISMOD_ALLOWED_HOSTS=sismod.empresa.com.br
+SISMOD_CSRF_TRUSTED_ORIGINS=https://sismod.empresa.com.br
+SISMOD_BEHIND_HTTPS_PROXY=true
+```
+
+Quando `SISMOD_DEBUG=false`, o SISMOD ativa por padrão redirecionamento HTTPS, cookies seguros e HSTS, incluindo subdomínios e a diretiva de preload. Confirme primeiro que todo o domínio e seus subdomínios usam HTTPS, e que certificado e proxy estão corretos. Execute `python manage.py check --deploy` com o mesmo ambiente usado pelo serviço antes de liberar o acesso externo.
 
 ## Configuração comercial
 
@@ -68,3 +82,5 @@ A assinatura impede falsificação comum e detecta adulteração dos dados. Como
 ## Backup
 
 Inclua banco, mídia e configuração segura no backup empresarial. O código da instalação reside no banco; restaurar somente arquivos sem o banco gera outro código e exigirá nova emissão.
+
+Para instalações com grande volume de mídia, prefira MinIO privado ou S3 em vez do disco do contêiner. Banco PostgreSQL, bucket e `.env` devem ter rotinas de backup independentes. O arquivo `infra/compose.homologacao.yaml` é uma base local de validação, não uma configuração pronta para Internet: antes da produção, adicione proxy HTTPS, autenticação MQTT, firewall, monitoramento, política de retenção e segredos gerenciados.

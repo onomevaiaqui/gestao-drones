@@ -5,7 +5,7 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView
 from django.http import JsonResponse
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.utils import timezone
 from django.db.models import Q
 from django.views.decorators.http import require_POST
@@ -15,8 +15,12 @@ from .dji_cloud_service import (
     diagnostico_open_platforms, endereco_ingestao, token_pilot,
     usuario_mqtt, validar_token_pilot,
 )
-from .models import Alocacao, Drone, Piloto, PlanejamentoVoo, TransmissaoAoVivo
-from .permissoes import admin_required
+from .dji_dock_service import preparar_missao, processar_mensagem_dock
+from .dji_wpml_service import gerar_kmz_wpml, validar_token_download_wpml
+from .dji_operacao_service import avaliar_liberacao_missao, enfileirar_preparacao
+from .dji_storage_service import armazenar_upload_missao, diagnostico_armazenamento
+from .models import Alocacao, DJIDock, DJIDockArquivo, DJIDockMissao, Drone, Piloto, PlanejamentoVoo, TransmissaoAoVivo
+from .permissoes import admin_required, visao_global_required
 from .views import _base_context
 
 
@@ -49,9 +53,190 @@ def dji_cloud_configuracao(request):
             if settings.DJI_CLOUD_PUBLIC_URL else ""
         ),
         "drones_sem_serial": Drone.objects.filter(numero_serie="").order_by("nome"),
+        "docks": DJIDock.objects.filter(ativo=True),
     }
     ctx.update(_base_context(request))
     return render(request, "dji_cloud/configuracao.html", ctx)
+
+
+@visao_global_required
+def dji_docks(request):
+    ctx = {"docks": DJIDock.objects.filter(ativo=True).select_related("drone")}
+    ctx.update(_base_context(request))
+    return render(request, "dji_cloud/docks.html", ctx)
+
+
+@visao_global_required
+def dji_missoes(request):
+    missoes = DJIDockMissao.objects.select_related("dock", "dock__drone", "planejamento", "planejamento__piloto")
+    status = request.GET.get("status", "")
+    dock_id = request.GET.get("dock", "")
+    if status:
+        missoes = missoes.filter(status=status)
+    if dock_id.isdigit():
+        missoes = missoes.filter(dock_id=dock_id)
+    linhas = [{"missao": item, "liberacao": avaliar_liberacao_missao(item)} for item in missoes[:200]]
+    ctx = {"linhas": linhas, "docks": DJIDock.objects.filter(ativo=True), "status_atual": status, "dock_atual": dock_id}
+    ctx.update(_base_context(request))
+    return render(request, "dji_cloud/missoes.html", ctx)
+
+
+@visao_global_required
+def dji_midias(request):
+    itens = DJIDockArquivo.objects.select_related("missao__dock", "missao__planejamento")
+    missao_id = request.GET.get("missao", "")
+    if missao_id.isdigit():
+        itens = itens.filter(missao_id=missao_id)
+    ctx = {
+        "itens": itens[:300], "missoes": DJIDockMissao.objects.select_related("planejamento")[:200],
+        "missao_atual": missao_id, "armazenamento": diagnostico_armazenamento(),
+    }
+    ctx.update(_base_context(request))
+    return render(request, "dji_cloud/midias.html", ctx)
+
+
+@admin_required
+@require_POST
+def dji_midia_upload(request):
+    from django.contrib import messages
+    from django.shortcuts import get_object_or_404
+    missao = get_object_or_404(DJIDockMissao, pk=request.POST.get("missao"))
+    upload = request.FILES.get("arquivo")
+    if not upload:
+        messages.error(request, "Selecione um arquivo.")
+    else:
+        try:
+            armazenar_upload_missao(missao, upload)
+            messages.success(request, "Mídia armazenada e vinculada à missão.")
+        except (ValueError, OSError) as erro:
+            messages.error(request, str(erro))
+    return redirect("dji_midias")
+
+
+@visao_global_required
+def dji_midia_download(request, pk):
+    from django.http import FileResponse, Http404
+    from django.shortcuts import get_object_or_404
+    item = get_object_or_404(DJIDockArquivo, pk=pk, status="concluido")
+    if not item.arquivo:
+        raise Http404
+    return FileResponse(item.arquivo.open("rb"), as_attachment=True, filename=item.nome)
+
+
+@admin_required
+@require_POST
+def dji_missao_enfileirar(request, pk):
+    from django.contrib import messages
+    from django.shortcuts import get_object_or_404
+    missao = get_object_or_404(DJIDockMissao, pk=pk)
+    try:
+        enfileirar_preparacao(missao, request.user)
+        messages.success(request, "Prévia adicionada à fila bloqueada. Nada foi publicado.")
+    except ValueError as erro:
+        messages.error(request, str(erro))
+    return redirect("dji_missoes")
+
+
+@visao_global_required
+def dji_dock_detalhe(request, pk):
+    from django.shortcuts import get_object_or_404
+    dock = get_object_or_404(DJIDock.objects.select_related("drone"), pk=pk, ativo=True)
+    ctx = {
+        "dock": dock, "eventos": dock.eventos.all()[:100], "comandos": dock.comandos.all()[:50],
+        "missoes": dock.missoes.select_related("planejamento", "criada_por").prefetch_related("arquivos")[:50],
+        "planejamentos": PlanejamentoVoo.objects.exclude(missoes_dji_dock__dock=dock).order_by("-data", "-hora_inicio")[:100],
+    }
+    ctx.update(_base_context(request))
+    return render(request, "dji_cloud/dock_detalhe.html", ctx)
+
+
+@admin_required
+@require_POST
+def dji_dock_preparar_missao(request, pk):
+    from django.contrib import messages
+    from django.shortcuts import get_object_or_404, redirect
+    dock = get_object_or_404(DJIDock, pk=pk, ativo=True)
+    planejamento = get_object_or_404(PlanejamentoVoo, pk=request.POST.get("planejamento"))
+    preparar_missao(dock, planejamento, request.user)
+    messages.success(request, "Missão preparada para validação. Nenhum comando foi enviado à Dock.")
+    return redirect("dji_dock_detalhe", pk=dock.pk)
+
+
+@visao_global_required
+def dji_dock_missao_wpml(request, pk):
+    from django.http import HttpResponse
+    from django.shortcuts import get_object_or_404
+    from django.utils.text import slugify
+    missao = get_object_or_404(DJIDockMissao.objects.select_related("dock", "planejamento"), pk=pk)
+    try:
+        conteudo = gerar_kmz_wpml(missao)
+    except ValueError as erro:
+        return JsonResponse({"ok": False, "erro": str(erro)}, status=409)
+    nome = slugify(missao.planejamento.titulo) or f"missao-{missao.pk}"
+    resposta = HttpResponse(conteudo, content_type="application/vnd.google-earth.kmz")
+    resposta["Content-Disposition"] = f'attachment; filename="{nome}-pre-validacao.kmz"'
+    resposta["X-SISMOD-WPML-STATUS"] = "pre-validacao"
+    return resposta
+
+
+def dji_dock_missao_wpml_publico(request, identificador, token):
+    """Download sem sessão, protegido por assinatura curta para consumo da Dock."""
+    from django.http import Http404, HttpResponse
+    from django.shortcuts import get_object_or_404
+    missao = get_object_or_404(DJIDockMissao.objects.select_related("dock", "planejamento"), identificador=identificador)
+    if not validar_token_download_wpml(token, missao.identificador):
+        raise Http404
+    try:
+        conteudo = gerar_kmz_wpml(missao)
+    except ValueError as erro:
+        return JsonResponse({"ok": False, "erro": str(erro)}, status=409)
+    resposta = HttpResponse(conteudo, content_type="application/vnd.google-earth.kmz")
+    resposta["Content-Disposition"] = 'attachment; filename="sismod-mission.kmz"'
+    resposta["Cache-Control"] = "private, no-store"
+    resposta["X-Content-Type-Options"] = "nosniff"
+    return resposta
+
+
+@admin_required
+@require_POST
+def dji_dock_missao_parametros(request, pk):
+    from django.contrib import messages
+    from django.shortcuts import get_object_or_404, redirect
+    missao = get_object_or_404(DJIDockMissao, pk=pk)
+    try:
+        altura = int(request.POST.get("altura_retorno_m", ""))
+        bateria = int(request.POST.get("bateria_minima_percent", ""))
+        armazenamento = int(request.POST.get("armazenamento_minimo_mb", ""))
+    except (TypeError, ValueError):
+        messages.error(request, "Informe valores numéricos válidos para os parâmetros operacionais.")
+        return redirect("dji_dock_detalhe", pk=missao.dock_id)
+    if not 20 <= altura <= 1500 or not 10 <= bateria <= 100 or armazenamento < 0:
+        messages.error(request, "Revise os limites de retorno, bateria e armazenamento.")
+        return redirect("dji_dock_detalhe", pk=missao.dock_id)
+    missao.altura_retorno_m = altura
+    missao.bateria_minima_percent = bateria
+    missao.armazenamento_minimo_mb = armazenamento
+    missao.interromper_na_perda_sinal = request.POST.get("interromper_na_perda_sinal") == "on"
+    missao.parametros_confirmados = True
+    missao.parametros_confirmados_por = request.user
+    missao.parametros_confirmados_em = timezone.now()
+    missao.save()
+    messages.success(request, "Parâmetros operacionais confirmados. Nenhum comando foi enviado à Dock.")
+    return redirect("dji_dock_detalhe", pk=missao.dock_id)
+
+
+@admin_required
+@require_POST
+def dji_dock_simular(request):
+    if not settings.DJI_DOCK_SIMULATOR_ENABLED:
+        return JsonResponse({"ok": False, "erro": "O simulador da Dock está desativado."}, status=403)
+    try:
+        payload = json.loads(request.body or "{}")
+        topico = str(payload.pop("topico", "thing/product/DOCK-SIM-001/osd"))
+        dock, evento, criado = processar_mensagem_dock(topico, payload, origem="simulacao")
+    except (json.JSONDecodeError, ValueError) as erro:
+        return JsonResponse({"ok": False, "erro": str(erro)}, status=400)
+    return JsonResponse({"ok": True, "dock_id": dock.pk, "evento_id": evento.pk, "criado": criado})
 
 
 @login_required(login_url="dji_pilot_login")
