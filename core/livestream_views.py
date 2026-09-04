@@ -35,7 +35,7 @@ def transmissoes_ao_vivo(request):
     ativas = []
     if settings.DJI_LIVESTREAM_ENABLED:
         ativas = [
-            {"sessao": item, "playback_url": endereco_reproducao(item)}
+            {"sessao": item, "playback_url": endereco_reproducao(item, request.user)}
             for item in sessoes.filter(status="ao_vivo").order_by("-iniciada_em")
             if item.planejamento_id is None or item.planejamento.livestream_acesso == "coordenacao" or usuario_e_admin(request.user)
         ]

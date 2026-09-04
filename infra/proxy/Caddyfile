@@ -10,11 +10,40 @@
     X-Content-Type-Options nosniff
     Referrer-Policy strict-origin-when-cross-origin
   }
-  log
+  log {
+    format filter {
+      wrap json
+      fields {
+        request>uri delete
+        request>headers delete
+      }
+    }
+  }
 }
 
 {$SISMOD_MEDIA_DOMAIN} {
   encode zstd gzip
   reverse_proxy mediamtx:8889
-  log
+  log {
+    format filter {
+      wrap json
+      fields {
+        request>uri delete
+        request>headers delete
+      }
+    }
+  }
+}
+
+{$SISMOD_STORAGE_DOMAIN} {
+  reverse_proxy minio:9000
+  log {
+    format filter {
+      wrap json
+      fields {
+        request>uri delete
+        request>headers delete
+      }
+    }
+  }
 }

@@ -17,6 +17,9 @@ from .mfa_service import (
     gerar_codigos_recuperacao,
     gerar_segredo,
     qr_data_uri,
+    sessao_mfa_valida,
+    marcar_sessao_mfa,
+    limpar_verificacao_mfa,
 )
 from .models import ConfiguracaoSegurancaUsuario, EventoAuditoria
 from .permissoes import admin_required, usuario_tem_perfil_admin
@@ -53,7 +56,7 @@ def mfa_configurar(request):
             configuracao.mfa_ativado_em = timezone.now()
             configuracao.save()
             request.session.pop("mfa_segredo_pendente", None)
-            request.session["mfa_verificado"] = True
+            marcar_sessao_mfa(request.session, configuracao)
             request.session["mfa_codigos_novos"] = codigos
             messages.success(request, "Autenticação em duas etapas ativada.")
             return redirect("seguranca_conta")
@@ -77,7 +80,7 @@ def mfa_verificar(request):
         valido = valido or consumir_codigo_recuperacao(configuracao, codigo)
         if valido:
             limpar_falhas(request, f"desafio:mfa:{request.user.pk}")
-            request.session["mfa_verificado"] = True
+            marcar_sessao_mfa(request.session, configuracao)
             destino = request.session.pop("destino_apos_mfa", None) or "dashboard"
             return redirect(destino)
         registrar_falha(request, f"desafio:mfa:{request.user.pk}")
@@ -146,9 +149,10 @@ def sessao_revogar(request, chave):
 @login_required
 @require_POST
 def mfa_desativar(request):
-    if not request.session.get("mfa_verificado"):
-        return redirect("mfa_verificar")
     configuracao = get_object_or_404(ConfiguracaoSegurancaUsuario, usuario=request.user, mfa_ativo=True)
+    if not sessao_mfa_valida(request.session, configuracao):
+        limpar_verificacao_mfa(request.session)
+        return redirect("mfa_verificar")
     if not request.user.check_password(request.POST.get("senha", "")):
         messages.error(request, "Senha atual inválida.")
     elif usuario_tem_perfil_admin(request.user) and settings.SISMOD_MFA_ADMIN_REQUIRED:
@@ -159,7 +163,7 @@ def mfa_desativar(request):
         configuracao.codigos_recuperacao = []
         configuracao.mfa_ativado_em = None
         configuracao.save()
-        request.session.pop("mfa_verificado", None)
+        limpar_verificacao_mfa(request.session)
         messages.success(request, "Autenticação em duas etapas desativada.")
     return redirect("seguranca_conta")
 

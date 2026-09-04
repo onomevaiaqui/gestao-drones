@@ -6,6 +6,7 @@ from django.shortcuts import redirect, render
 
 from .views import usuario_e_coordenador, usuario_tem_perfil_admin
 from .login_security import esta_bloqueado, limpar_falhas, registrar_falha
+from .mfa_service import limpar_verificacao_mfa
 
 
 class LoginSistemaView(LoginView):
@@ -26,6 +27,7 @@ class LoginSistemaView(LoginView):
     def form_valid(self, form):
         limpar_falhas(self.request, form.get_user().get_username())
         resposta = super().form_valid(form)
+        limpar_verificacao_mfa(self.request.session)
         if usuario_tem_perfil_admin(self.request.user):
             self.request.session["modo_acesso"] = "pendente"
         elif usuario_e_coordenador(self.request.user):

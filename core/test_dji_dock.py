@@ -509,7 +509,7 @@ class DJIDockViewsTests(TestCase):
     @override_settings(SISMOD_MEDIAMTX_AUTH_SECRET="segredo-teste", SISMOD_MEDIAMTX_TOKEN_TTL_SECONDS=900)
     def test_mediamtx_aceita_token_da_sessao_e_recusa_outro_caminho(self):
         piloto = Piloto.objects.create(user=self.admin, nome="Administrador Vídeo")
-        transmissao = TransmissaoAoVivo.objects.create(piloto=piloto, origem="avulsa")
+        transmissao = TransmissaoAoVivo.objects.create(piloto=piloto, origem="avulsa", status="ao_vivo")
         token = token_mediamtx(transmissao, "read")
         resposta = self.client.post(
             reverse("mediamtx_auth"),

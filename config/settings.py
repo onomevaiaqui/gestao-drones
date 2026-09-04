@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+load_dotenv(Path(os.getenv("SISMOD_ENV_FILE", str(BASE_DIR / ".env"))))
 
 
 def env_bool(nome, padrao=False):
@@ -49,6 +49,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "core.security_middleware.ProxyConfiavelMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -56,8 +57,8 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "core.security_middleware.SegurancaContaMiddleware",
-    "core.security_middleware.UploadSecurityMiddleware",
     "core.security_middleware.AuditoriaMiddleware",
+    "core.security_middleware.UploadSecurityMiddleware",
     "core.middleware.ModoAcessoMiddleware",
     "core.middleware.LicencaSISMODMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -108,6 +109,12 @@ SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("SISMOD_MAX_REQUEST_BYTES", str(100 * 1024 * 1024)))
 FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("SISMOD_FILE_MEMORY_BYTES", str(5 * 1024 * 1024)))
 SISMOD_LOGIN_MAX_FAILURES = int(os.getenv("SISMOD_LOGIN_MAX_FAILURES", "5"))
+SISMOD_LOGIN_IP_MAX_FAILURES = int(os.getenv("SISMOD_LOGIN_IP_MAX_FAILURES", "50"))
+SISMOD_TRUSTED_PROXY_CIDRS = [item.strip() for item in os.getenv("SISMOD_TRUSTED_PROXY_CIDRS", "").split(",") if item.strip()]
+SISMOD_MFA_ENCRYPTION_KEYS = [item.strip() for item in os.getenv("SISMOD_MFA_ENCRYPTION_KEYS", "").split(",") if item.strip()]
+SISMOD_MFA_LEGACY_KEY_ENABLED = env_bool("SISMOD_MFA_LEGACY_KEY_ENABLED", True)
+# Somente callbacks internos autenticados; o proxy público continua exigindo HTTPS.
+SECURE_REDIRECT_EXEMPT = [r"^infra/health/$", r"^infra/mediamtx/auth/$"]
 SISMOD_LOGIN_WINDOW_SECONDS = int(os.getenv("SISMOD_LOGIN_WINDOW_SECONDS", "900"))
 SISMOD_LOGIN_BLOCK_SECONDS = int(os.getenv("SISMOD_LOGIN_BLOCK_SECONDS", "900"))
 SISMOD_MFA_ADMIN_REQUIRED = env_bool("SISMOD_MFA_ADMIN_REQUIRED", False)
@@ -117,6 +124,7 @@ SISMOD_REAUTH_SECONDS = int(os.getenv("SISMOD_REAUTH_SECONDS", "300"))
 SISMOD_CLAMAV_HOST = os.getenv("SISMOD_CLAMAV_HOST", "").strip()
 SISMOD_CLAMAV_PORT = int(os.getenv("SISMOD_CLAMAV_PORT", "3310"))
 SISMOD_CLAMAV_REQUIRED = env_bool("SISMOD_CLAMAV_REQUIRED", False)
+SISMOD_CLAMAV_MAX_BYTES = int(os.getenv("SISMOD_CLAMAV_MAX_BYTES", str(256 * 1024 * 1024)))
 
 LANGUAGE_CODE = "pt-br"
 TIME_ZONE = "America/Sao_Paulo"
@@ -134,7 +142,7 @@ if SISMOD_MEDIA_STORAGE not in ("local", "s3", "minio"):
     raise RuntimeError("SISMOD_MEDIA_STORAGE deve ser local, s3 ou minio.")
 if SISMOD_MEDIA_STORAGE == "local":
     STORAGES = {
-        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "default": {"BACKEND": "core.secure_storage.ArquivosLocaisSeguros"},
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     }
 else:
@@ -151,7 +159,7 @@ else:
     if endpoint:
         opcoes_s3["endpoint_url"] = endpoint
     STORAGES = {
-        "default": {"BACKEND": "storages.backends.s3.S3Storage", "OPTIONS": opcoes_s3},
+        "default": {"BACKEND": "core.secure_storage.ArquivosS3Seguros", "OPTIONS": opcoes_s3},
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     }
 

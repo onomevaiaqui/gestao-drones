@@ -2,6 +2,8 @@
 
 Este documento registra funções opcionais ou externas que não operam integralmente no ambiente local. Nunca coloque chaves, senhas ou tokens neste arquivo: valores reais pertencem exclusivamente ao `.env` do servidor.
 
+Revisão para implantação em 04/09/2026: consultar [ENTREGA_DEVOPS.md](ENTREGA_DEVOPS.md). O publicador MQTT de comandos já existe, condicionado às travas e à homologação física; não é correto tratá-lo como totalmente ausente. O relay DRC/autoridade continua pendente. A rede TURN/STUN do modelo requer ajustes e teste externo antes de uso; a existência do Compose não significa vídeo externo homologado.
+
 ## 1. DJI Open Platforms / Cloud API
 
 **Situação:** implementada e desativada por padrão.

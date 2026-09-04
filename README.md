@@ -2,6 +2,10 @@
 
 Aplicação web para planejar operações, reservar aeronaves, avaliar riscos, importar telemetria, controlar pilotos, frota, documentos, inspeções, manutenção e produzir relatórios.
 
+Implantação corporativa: [guia de entrega para DevOps](docs/ENTREGA_DEVOPS.md), com tecnologias, serviços, rede, segredos, ativação e pendências de homologação.
+
+Segurança e manutenção: [controles e configuração](docs/SEGURANCA_OPERACIONAL.md), [backup e restauração](docs/BACKUP_E_RESTAURACAO.md). A validação automática está definida em `.github/workflows/validacao.yml`; não depende de credenciais DJI.
+
 ## Início rápido no Windows
 
 Requisitos: Python 3.12 e Git.
@@ -48,11 +52,11 @@ Antes de uma futura entrada na fila, o administrador deve confirmar em cada miss
 
 As telas **Central de missões** e **Mídias das Docks** reúnem situação, progresso, impeditivos, prévias da fila e arquivos. Uploads manuais podem usar disco local, Amazon S3 ou MinIO por `SISMOD_MEDIA_STORAGE`. Arquivos permanecem privados e o download passa pelas permissões do SISMOD.
 
-Para homologação completa em uma única máquina, `infra/compose.homologacao.yaml` prepara Django/Gunicorn, PostgreSQL, EMQX e MinIO. Copie e revise o `.env`, mantenha as travas DJI falsas e execute `docker compose -f infra/compose.homologacao.yaml up -d --build`. Depois, valide com `docker compose -f infra/compose.homologacao.yaml exec web python manage.py verificar_implantacao`.
+Para homologação completa em uma única máquina, `infra/compose.homologacao.yaml` prepara Django/Gunicorn, PostgreSQL, Mosquitto e MinIO. Copie e revise o `.env`, mantenha as travas DJI falsas e execute `docker compose -f infra/compose.homologacao.yaml up -d --build`. Depois, valide com `docker compose -f infra/compose.homologacao.yaml exec web python manage.py verificar_implantacao`.
 
 A infraestrutura definitiva pode ser preparada com `infra/compose.producao.yaml`. Ela inclui HTTPS, MediaMTX autenticado, STUN/TURN, healthchecks e processos da Dock, mantendo a integração física fechada. Consulte [Implantação DJI Dock](docs/IMPLANTACAO_DJI_DOCK.md).
 
-Para iniciar o broker isolado de homologação, abra o Docker Desktop e execute `docker compose -f infra/dji-dock/compose.yaml up -d`. As portas MQTT `1883` e do painel `18083` ficam vinculadas somente a `127.0.0.1`; portanto, a Dock física ainda não consegue acessá-las. Essa exposição será alterada somente junto com TLS, autenticação e firewall.
+Para iniciar o broker isolado de homologação, configure as duas senhas MQTT, abra o Docker Desktop e execute `docker compose -f infra/dji-dock/compose.yaml up -d`. A porta MQTT `1883` fica vinculada somente a `127.0.0.1`; não há painel EMQX na porta 18083. A Dock física ainda não consegue acessar esse broker local. A exposição será alterada somente junto com TLS, autenticação e firewall.
 
 ## Validação
 
@@ -89,5 +93,7 @@ Quando a estação anuncia `live_capacity`, o SISMOD cataloga automaticamente os
 
 O projeto usa Python 3.12, Django 5.2 e SQLite para desenvolvimento local. A configuração atual não deve ser usada diretamente em produção; consulte a seção de implantação e segurança da documentação técnica.
 # Antivírus opcional dos uploads
+
+Atualização de segurança das sessões: usuários com MFA podem receber uma nova solicitação do segundo fator após atualizar o software. É esperado para sessões antigas; nenhum recadastro do autenticador é necessário.
 
 Instalação local, teste e ativação do ClamAV: [guia de antivírus](docs/ANTIVIRUS_UPLOADS.md). A instalação não altera automaticamente o `.env`.

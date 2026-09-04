@@ -12,7 +12,9 @@ from .dji_cloud_service import validar_token_mediamtx
 
 def _token_da_consulta(dados):
     if dados.get("token"):
-        return dados["token"]
+        return dados["token"] if isinstance(dados["token"], str) else ""
+    if not isinstance(dados.get("query", ""), str):
+        return ""
     consulta = (dados.get("query") or "").lstrip("?")
     return (parse_qs(consulta).get("token") or [""])[0]
 
@@ -23,6 +25,8 @@ def mediamtx_auth(request):
     try:
         dados = json.loads(request.body or b"{}")
     except (TypeError, ValueError, json.JSONDecodeError):
+        return HttpResponse(status=400)
+    if not isinstance(dados, dict):
         return HttpResponse(status=400)
     permitido = validar_token_mediamtx(
         _token_da_consulta(dados), dados.get("path", ""), dados.get("action", "")

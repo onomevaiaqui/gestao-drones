@@ -104,7 +104,7 @@ def endereco_ingestao(transmissao):
     return f"{base}?{urlencode({'token': token})}" if token else base
 
 
-def endereco_reproducao(transmissao):
+def endereco_reproducao(transmissao, usuario=None):
     """Página WebRTC do MediaMTX/SRS; nunca expõe a URL privada de ingestão."""
     parsed = urlparse(settings.DJI_LIVESTREAM_PLAYBACK_BASE_URL)
     local_inseguro = (
@@ -118,22 +118,50 @@ def endereco_reproducao(transmissao):
     if transmissao.status != "ao_vivo":
         return ""
     base = f"{settings.DJI_LIVESTREAM_PLAYBACK_BASE_URL}/{transmissao.chave_stream}"
-    token = token_mediamtx(transmissao, "read")
+    token = token_mediamtx(transmissao, "read", usuario)
+    if settings.SISMOD_MEDIAMTX_AUTH_SECRET and not token:
+        return ""
     return f"{base}?{urlencode({'token': token})}" if token else base
 
 
-def token_mediamtx(transmissao, acao):
+def pode_acessar_video(usuario, transmissao, acao):
+    from .permissoes import usuario_e_admin, usuario_tem_visao_global
+    from .dji_dock_permissions import pode_visualizar_dock
+    if not usuario or not usuario.is_active or not transmissao.piloto.ativo:
+        return False
+    piloto = getattr(usuario, "piloto", None)
+    if piloto is not None and not piloto.ativo:
+        return False
+    if acao == "publish":
+        return transmissao.status in {"preparada", "ao_vivo"} and transmissao.piloto.user_id == usuario.pk
+    if acao != "read" or transmissao.status != "ao_vivo":
+        return False
+    canais = list(transmissao.canais_dock.select_related("dock"))
+    if canais and not any(c.disponivel and pode_visualizar_dock(usuario, c.dock) for c in canais):
+        return False
+    if usuario_e_admin(usuario) or transmissao.piloto.user_id == usuario.pk:
+        return True
+    return usuario_tem_visao_global(usuario) and (
+        not transmissao.planejamento_id or transmissao.planejamento.livestream_acesso == "coordenacao"
+    )
+
+
+def token_mediamtx(transmissao, acao, usuario=None):
     if not settings.SISMOD_MEDIAMTX_AUTH_SECRET:
         return ""
+    usuario = usuario or transmissao.piloto.user
+    if not pode_acessar_video(usuario, transmissao, acao):
+        return ""
     return signing.dumps(
-        {"stream": str(transmissao.chave_stream), "action": acao},
+        {"stream": str(transmissao.chave_stream), "action": acao, "uid": usuario.pk,
+         "auth": usuario.get_session_auth_hash(), "mode": getattr(usuario, "_modo_acesso", None)},
         key=settings.SISMOD_MEDIAMTX_AUTH_SECRET,
         salt="sismod.mediamtx",
         compress=True,
     )
 
 
-def validar_token_mediamtx(token, caminho, acao):
+def validar_token_mediamtx(token, caminho, acao, *, conexao_ativa=False):
     if not settings.SISMOD_MEDIAMTX_AUTH_SECRET or not token:
         return False
     try:
@@ -141,12 +169,27 @@ def validar_token_mediamtx(token, caminho, acao):
             token,
             key=settings.SISMOD_MEDIAMTX_AUTH_SECRET,
             salt="sismod.mediamtx",
-            max_age=settings.SISMOD_MEDIAMTX_TOKEN_TTL_SECONDS,
+            max_age=None if conexao_ativa else settings.SISMOD_MEDIAMTX_TOKEN_TTL_SECONDS,
         )
-    except signing.BadSignature:
+    except (signing.BadSignature, TypeError, ValueError):
+        return False
+    if not isinstance(dados, dict) or not isinstance(caminho, str) or not isinstance(acao, str):
         return False
     acao_esperada = "read" if acao in {"read", "playback"} else acao
-    return dados.get("stream") == caminho.strip("/") and dados.get("action") == acao_esperada
+    if dados.get("stream") != caminho.strip("/") or dados.get("action") != acao_esperada:
+        return False
+    from django.contrib.auth import get_user_model
+    from django.utils.crypto import constant_time_compare
+    from .models import TransmissaoAoVivo
+    try:
+        usuario = get_user_model().objects.filter(pk=dados.get("uid"), is_active=True).first()
+        transmissao = TransmissaoAoVivo.objects.select_related("piloto__user", "planejamento").filter(chave_stream=caminho.strip("/")).first()
+    except (ValueError, TypeError):
+        return False
+    if not usuario or not transmissao or not constant_time_compare(dados.get("auth", ""), usuario.get_session_auth_hash()):
+        return False
+    usuario._modo_acesso = dados.get("mode")
+    return pode_acessar_video(usuario, transmissao, acao_esperada)
 
 
 def token_pilot(user):

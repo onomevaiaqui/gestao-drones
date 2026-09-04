@@ -1,6 +1,6 @@
 # Preparação de produção — DJI Dock e livestream
 
-**Estado: modelo de implantação ainda não homologado em servidor.** Os testes locais e validação sintática do Compose não certificam a integração completa. Antes de usar o roteiro abaixo, validar: cabeçalhos/hosts dos healthchecks e callback HTTP interno do MediaMTX diante do redirecionamento HTTPS do Django; disponibilidade do executável do healthcheck na imagem MediaMTX; montagem da CA MQTT; endereço público de objetos MinIO; proteção de tokens nos logs do proxy; autenticação dinâmica DJI com Mosquitto e renovação/revogação dos tokens de vídeo. Não ativar comandos físicos sem resolver esses pontos e realizar homologação em campo.
+**Estado: modelo de implantação ainda não homologado em servidor.** Foram implementadas correções de hosts/callbacks internos, healthcheck Python do MediaMTX, montagem de CA, domínio de objetos, remoção de tokens dos logs e reconciliação das permissões de vídeo. Compose e Caddy foram validados localmente. Ainda é necessário testar DNS, certificados, firewall, acesso ao bucket, broker corporativo e autenticação dinâmica DJI com Mosquitto no servidor real. Não ativar comandos físicos sem homologação em campo. Consulte [segurança operacional](SEGURANCA_OPERACIONAL.md).
 
 O arquivo `infra/compose.producao.yaml` reúne Django/Gunicorn, PostgreSQL, MinIO, MediaMTX, Coturn, Caddy, consumidor MQTT, watchdog e publicador. Nenhuma integração física é ativada automaticamente.
 
@@ -17,7 +17,7 @@ O arquivo `infra/compose.producao.yaml` reúne Django/Gunicorn, PostgreSQL, MinI
 
 ## Ativação no servidor
 
-1. Aponte `SISMOD_DOMAIN` e `SISMOD_MEDIA_DOMAIN` para o servidor.
+1. Aponte `SISMOD_DOMAIN`, `SISMOD_MEDIA_DOMAIN` e `SISMOD_STORAGE_DOMAIN` para o servidor.
 2. Copie `infra/.env.production.example` para `.env.production` na raiz e substitua todos os valores de exemplo.
 3. Disponibilize o certificado e a chave da ingestão RTMPS nos caminhos indicados.
 4. Abra 80/443 TCP/UDP, 1936 TCP, 8189 UDP, 3478 TCP e 49160–49200 TCP. Restrinja a ingestão às origens DJI quando possível.

@@ -8,9 +8,38 @@ from io import BytesIO
 from urllib.parse import quote
 
 import qrcode
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, MultiFernet, InvalidToken
+import logging
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
+from django.utils.crypto import salted_hmac
+
+
+def versao_mfa(configuracao):
+    """Vincula a sessão à configuração, não ao contador de códigos utilizados."""
+    if not configuracao or not configuracao.mfa_ativo:
+        return ""
+    valor = f"{configuracao.pk}:{configuracao.mfa_ativado_em}:{configuracao.segredo_mfa_criptografado}"
+    return salted_hmac("sismod.mfa.sessao", valor, algorithm="sha256").hexdigest()
+
+
+def sessao_mfa_valida(sessao, configuracao):
+    esperada = versao_mfa(configuracao)
+    atual = sessao.get("mfa_versao", "")
+    return bool(esperada and sessao.get("mfa_verificado") and isinstance(atual, str)
+                and hmac.compare_digest(atual, esperada))
+
+
+def limpar_verificacao_mfa(sessao):
+    for chave in ("mfa_verificado", "mfa_versao", "mfa_codigos_novos", "reauth_em", "acao_critica_pendente"):
+        sessao.pop(chave, None)
+
+
+def marcar_sessao_mfa(sessao, configuracao):
+    limpar_verificacao_mfa(sessao)
+    sessao.cycle_key()
+    sessao["mfa_verificado"] = True
+    sessao["mfa_versao"] = versao_mfa(configuracao)
 
 
 def gerar_segredo():
@@ -18,8 +47,13 @@ def gerar_segredo():
 
 
 def _fernet():
-    chave = base64.urlsafe_b64encode(hashlib.sha256(settings.SECRET_KEY.encode("utf-8")).digest())
-    return Fernet(chave)
+    chaves = [Fernet(chave.encode("ascii")) for chave in settings.SISMOD_MFA_ENCRYPTION_KEYS]
+    if settings.SISMOD_MFA_LEGACY_KEY_ENABLED:
+        chave = base64.urlsafe_b64encode(hashlib.sha256(settings.SECRET_KEY.encode("utf-8")).digest())
+        chaves.append(Fernet(chave))
+    if not chaves:
+        raise ValueError("Configure uma chave de criptografia MFA antes de desativar a compatibilidade legada.")
+    return MultiFernet(chaves)
 
 
 def criptografar_segredo(segredo):
@@ -58,9 +92,12 @@ def contador_totp_valido(segredo, codigo, instante=None):
 
 
 def consumir_totp(configuracao, codigo, instante=None):
-    contador = contador_totp_valido(
-        descriptografar_segredo(configuracao.segredo_mfa_criptografado), codigo, instante
-    )
+    try:
+        segredo = descriptografar_segredo(configuracao.segredo_mfa_criptografado)
+    except (InvalidToken, ValueError):
+        logging.getLogger("sismod.security").error("MFA_DECRYPT_FAILED: confira as chaves de criptografia")
+        return False
+    contador = contador_totp_valido(segredo, codigo, instante)
     if contador is None:
         return False
     # A atualização condicional impede dois pedidos de consumirem o mesmo código.

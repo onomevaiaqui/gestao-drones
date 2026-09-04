@@ -68,8 +68,8 @@ def cockpit_sessao(request, identificador):
         "real_habilitado": drc_real_habilitado(),
         "canal_aeronave": canal_aeronave,
         "canal_dock": canal_dock,
-        "video_aeronave_url": endereco_reproducao(canal_aeronave.transmissao_atual) if canal_aeronave and canal_aeronave.transmissao_atual else "",
-        "video_dock_url": endereco_reproducao(canal_dock.transmissao_atual) if canal_dock and canal_dock.transmissao_atual else "",
+        "video_aeronave_url": endereco_reproducao(canal_aeronave.transmissao_atual, request.user) if canal_aeronave and canal_aeronave.transmissao_atual else "",
+        "video_dock_url": endereco_reproducao(canal_dock.transmissao_atual, request.user) if canal_dock and canal_dock.transmissao_atual else "",
     }
     ctx.update(_base_context(request))
     return render(request, "dji_cloud/cockpit.html", ctx)

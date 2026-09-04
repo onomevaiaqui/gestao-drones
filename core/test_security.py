@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from .models import TentativaLogin
 from .mfa_service import (codigo_totp, gerar_segredo, validar_totp,
     consumir_totp, criptografar_segredo, consumir_codigo_recuperacao,
-    gerar_codigos_recuperacao)
+    gerar_codigos_recuperacao, marcar_sessao_mfa, sessao_mfa_valida)
 from .models import AlertaSeguranca, ConfiguracaoSegurancaUsuario, EventoAuditoria
 
 
@@ -69,6 +69,58 @@ class LoginSecurityTests(TestCase):
         configuracao.refresh_from_db()
         self.assertEqual(len(configuracao.codigos_recuperacao), 1)
         self.assertTrue(consumir_codigo_recuperacao(configuracao, codigos[1]))
+
+    def configurar_sessao_verificada(self):
+        configuracao = ConfiguracaoSegurancaUsuario.objects.create(
+            usuario=self.usuario, mfa_ativo=True,
+            segredo_mfa_criptografado=criptografar_segredo(gerar_segredo()),
+        )
+        self.client.force_login(self.usuario)
+        sessao = self.client.session
+        # O helper troca a chave; atualizar o cookie como o middleware faria.
+        from django.conf import settings
+        marcar_sessao_mfa(sessao, configuracao)
+        sessao.save()
+        self.client.cookies[settings.SESSION_COOKIE_NAME] = sessao.session_key
+        return configuracao
+
+    def test_alteracao_mfa_bloqueia_sessao_anterior_e_limpa_acao_critica(self):
+        configuracao = self.configurar_sessao_verificada()
+        self.assertEqual(self.client.get(reverse("seguranca_conta")).status_code, 200)
+        sessao = self.client.session
+        sessao["reauth_em"] = 123
+        sessao["acao_critica_pendente"] = {"tipo": "teste"}
+        sessao.save()
+        configuracao.segredo_mfa_criptografado = criptografar_segredo(gerar_segredo())
+        configuracao.save()
+        resposta = self.client.get(reverse("seguranca_conta"))
+        self.assertEqual(resposta.url, reverse("mfa_verificar"))
+        self.assertNotIn("reauth_em", self.client.session)
+        self.assertNotIn("acao_critica_pendente", self.client.session)
+
+    def test_sessao_antiga_nao_pode_desativar_novo_mfa(self):
+        configuracao = self.configurar_sessao_verificada()
+        configuracao.segredo_mfa_criptografado = criptografar_segredo(gerar_segredo())
+        configuracao.save()
+        resposta = self.client.post(reverse("mfa_desativar"), {"senha": "Senha-Segura-2026"})
+        self.assertEqual(resposta.url, reverse("mfa_verificar"))
+        configuracao.refresh_from_db()
+        self.assertTrue(configuracao.mfa_ativo)
+
+    def test_contador_de_codigo_nao_invalida_sessao(self):
+        configuracao = self.configurar_sessao_verificada()
+        configuracao.ultimo_contador_mfa += 1
+        configuracao.save()
+        self.assertTrue(sessao_mfa_valida(self.client.session, configuracao))
+
+    def test_sessao_legada_exige_verificacao_novamente(self):
+        configuracao = self.configurar_sessao_verificada()
+        sessao = self.client.session
+        sessao.pop("mfa_versao")
+        sessao.save()
+        self.assertFalse(sessao_mfa_valida(sessao, configuracao))
+        resposta = self.client.get(reverse("seguranca_conta"))
+        self.assertEqual(resposta.url, reverse("mfa_verificar"))
 
     @override_settings(SISMOD_MFA_ADMIN_REQUIRED=True)
     def test_admin_configura_mfa_antes_de_acessar_sistema(self):

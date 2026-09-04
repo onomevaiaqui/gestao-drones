@@ -1,0 +1,32 @@
+name: Validacao SISMOD
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SISMOD_DEBUG: "true"
+      SISMOD_SECRET_KEY: ci-only-not-a-production-secret
+      SISMOD_CLAMAV_REQUIRED: "false"
+      SISMOD_CLAMAV_HOST: ""
+      DJI_CLOUD_ENABLED: "false"
+      DJI_DOCK_ENABLED: "false"
+      DJI_DOCK_PUBLISHER_ENABLED: "false"
+      DJI_DOCK_EMERGENCY_STOP: "true"
+      SISMOD_LICENSE_ENFORCEMENT: "false"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pip check
+      - run: python manage.py check
+      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py test core --verbosity 1
+      - run: git diff --check

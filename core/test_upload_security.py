@@ -35,6 +35,13 @@ class AntivirusTests(SimpleTestCase):
             with self.assertRaises(ArquivoInseguro):
                 verificar_clamav(SimpleUploadedFile("log.txt", b"dados"))
 
+    @override_settings(SISMOD_CLAMAV_MAX_BYTES=3)
+    def test_arquivo_acima_do_limite_nao_e_enviado_ao_daemon(self):
+        with patch("core.upload_security.socket.create_connection") as conectar:
+            with self.assertRaises(ArquivoInseguro):
+                verificar_clamav(SimpleUploadedFile("log.txt", b"dados"))
+            conectar.assert_not_called()
+
     @override_settings(SISMOD_CLAMAV_REQUIRED=False)
     def test_indisponibilidade_opcional_nao_bloqueia(self):
         with patch("core.upload_security.socket.create_connection", side_effect=OSError):

@@ -7,13 +7,28 @@ x-app: &app
   environment:
     SISMOD_DB_HOST: db
     SISMOD_MEDIA_STORAGE: minio
-    SISMOD_STORAGE_ENDPOINT_URL: http://minio:9000
+    SISMOD_STORAGE_ENDPOINT_URL: https://${SISMOD_STORAGE_DOMAIN:?Defina SISMOD_STORAGE_DOMAIN}
     SISMOD_MEDIAMTX_API_URL: http://mediamtx:9997
+    SISMOD_CLAMAV_HOST: clamav
+    SISMOD_CLAMAV_REQUIRED: "true"
+  volumes:
+    - ${SISMOD_MQTT_CA_DIR:-./mosquitto/certs}:/certificados:ro
   depends_on:
     db: {condition: service_healthy}
     minio-init: {condition: service_completed_successfully}
 
 services:
+  clamav:
+    image: clamav/clamav@sha256:f0954d679017eb6d48221e2b2be3ac5457bf278a844f39b672376f55a085f591
+    restart: unless-stopped
+    environment:
+      CLAMD_CONF_StreamMaxLength: 256M
+      CLAMD_CONF_MaxFileSize: 256M
+      CLAMD_CONF_MaxScanSize: 512M
+      CLAMD_CONF_AlertExceedsMax: "yes"
+    volumes: [clamav_prod:/var/lib/clamav]
+    mem_limit: 3g
+
   db:
     image: postgres:17-alpine
     restart: unless-stopped
@@ -88,8 +103,12 @@ services:
       - "1936:1936"
       - "8189:8189/udp"
     depends_on: [web]
+
+  media-guard:
+    <<: *app
+    command: ["/bin/sh", "-c", "while true; do python manage.py reconciliar_acessos_video --aplicar; sleep 15; done"]
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:9997/v3/paths/list"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://mediamtx:9997/v3/info',timeout=5)"]
       interval: 30s
       timeout: 8s
       retries: 5
@@ -109,6 +128,10 @@ services:
       SISMOD_DOMAIN: ${SISMOD_DOMAIN:?Defina SISMOD_DOMAIN}
       SISMOD_MEDIA_DOMAIN: ${SISMOD_MEDIA_DOMAIN:?Defina SISMOD_MEDIA_DOMAIN}
       SISMOD_TLS_EMAIL: ${SISMOD_TLS_EMAIL:?Defina SISMOD_TLS_EMAIL}
+      SISMOD_STORAGE_DOMAIN: ${SISMOD_STORAGE_DOMAIN:?Defina SISMOD_STORAGE_DOMAIN}
+    networks:
+      default:
+        ipv4_address: ${SISMOD_PROXY_IP:-172.30.50.10}
     volumes:
       - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -117,7 +140,14 @@ services:
     depends_on: [web, mediamtx]
 
 volumes:
+  clamav_prod:
   postgres_prod:
   minio_prod:
   caddy_data:
   caddy_config:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${SISMOD_DOCKER_SUBNET:-172.30.50.0/24}

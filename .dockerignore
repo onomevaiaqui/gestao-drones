@@ -1,5 +1,12 @@
 .git
 .env
+.env.*
+*.pem
+*.key
+*.sismod-license
+.venv
+backup_*
+restore_*
 venv
 db.sqlite3
 media

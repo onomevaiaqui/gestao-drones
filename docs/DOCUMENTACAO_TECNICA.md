@@ -1,7 +1,7 @@
 # Documentação técnica do SISMOD
 
-Versão documental: 1.5
-Última revisão: 31/08/2026
+Versão documental: 1.6
+Última revisão: 04/09/2026
 
 ## 1. Finalidade
 
@@ -642,6 +642,12 @@ Esta camada não substitui SIEM, backup/restauração, plano de incidentes e pen
 Toda mudança funcional deve seguir `docs/MANUTENCAO_DOCUMENTACAO.md`. Código, testes e documentação afetada devem estar no mesmo commit.
 # Pendências de segurança e MQTT
 
+Os reforços de login/proxy, falha de auditoria, chaves MFA, revogação de vídeo, armazenamento inspecionado, infraestrutura e CI estão detalhados em [SEGURANCA_OPERACIONAL.md](SEGURANCA_OPERACIONAL.md). Os comandos de backup/restauração locais estão em [BACKUP_E_RESTAURACAO.md](BACKUP_E_RESTAURACAO.md). Nenhuma integração física foi ativada nesta revisão.
+
+### Vínculo entre MFA e sessão
+
+A sessão verificada armazena um identificador HMAC da configuração MFA (conta, ativação e segredo criptografado), nunca o segredo TOTP. Alterar a configuração exige nova verificação nas sessões anteriores; sessões legadas sem identificador também precisam verificar novamente. O consumo de um código não invalida outras sessões já verificadas. Ao concluir MFA, o identificador da sessão Django é renovado. Verificações inválidas e novos logins descartam confirmações antigas de ações críticas. A rota de desativação aplica a mesma validação de versão.
+
 ## Verificação local de 04/09/2026
 
 - Suíte completa: 181 testes aprovados. Após o ajuste final de autenticação com licença expirada, 19 testes de segurança/licenciamento aprovados (incluindo a nova regressão).
@@ -656,3 +662,6 @@ Antivírus: [instalação, diagnóstico e limites de cobertura](ANTIVIRUS_UPLOAD
 MFA: desde a migração 0071, códigos TOTP aceitos não podem ser reutilizados; o contador é validado e atualizado condicionalmente no banco. Códigos de recuperação também são consumidos com comparação atômica da lista persistida. O código da ativação conta como utilizado.
 
 Consultar [estado de preparação e pendências](PENDENCIAS_SEGURANCA_MQTT.md) antes de ativar o broker corporativo, MFA obrigatório ou antivírus de uploads.
+# Entrega para infraestrutura — 04/09/2026
+
+O inventário atual de tecnologias, serviços, portas, variáveis, sequência de implantação e limitações está em [ENTREGA_DEVOPS.md](ENTREGA_DEVOPS.md). Esse guia distingue implementação local de homologação em produção e registra a divergência de versão cryptography, as pendências TURN/STUN e os controles que não devem ser ativados automaticamente.

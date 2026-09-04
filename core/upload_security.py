@@ -35,13 +35,19 @@ def verificar_clamav(arquivo):
         return
     posicao = arquivo.tell()
     try:
+        if arquivo.size > settings.SISMOD_CLAMAV_MAX_BYTES:
+            raise ArquivoInseguro("O arquivo excede o limite de inspeção antivírus; não foi aceito.")
         arquivo.seek(0)
         with socket.create_connection((settings.SISMOD_CLAMAV_HOST, settings.SISMOD_CLAMAV_PORT), timeout=8) as conexao:
             conexao.sendall(b"zINSTREAM\0")
+            total = 0
             while True:
                 bloco = arquivo.read(1024 * 64)
                 if not bloco:
                     break
+                total += len(bloco)
+                if total > settings.SISMOD_CLAMAV_MAX_BYTES:
+                    raise ArquivoInseguro("O arquivo excede o limite de inspeção antivírus; não foi aceito.")
                 conexao.sendall(struct.pack(">I", len(bloco)) + bloco)
             conexao.sendall(struct.pack(">I", 0))
             resposta = b""

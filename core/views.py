@@ -686,7 +686,7 @@ def dashboard(request):
                 if not item.planejamento_id or item.planejamento.livestream_acesso == "coordenacao"
             ]
         ctx["transmissoes_ao_vivo"] = [
-            {"sessao": item, "playback_url": endereco_reproducao(item)}
+            {"sessao": item, "playback_url": endereco_reproducao(item, request.user)}
             for item in transmissoes
         ] if settings.DJI_LIVESTREAM_ENABLED else []
         ctx["livestream_habilitada"] = settings.DJI_LIVESTREAM_ENABLED

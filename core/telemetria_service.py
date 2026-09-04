@@ -382,8 +382,12 @@ def processar_importacao(importacao, atualizar_voo=False):
     limite_bytes = (200 if extensao in (".bin", ".ulg") or not extensao else 20) * 1024 * 1024
     arquivo = importacao.arquivo
     arquivo.open("rb")
-    bruto = arquivo.read(limite_bytes + 1)
-    arquivo.close()
+    try:
+        from .upload_security import verificar_uploads
+        verificar_uploads([arquivo])
+        bruto = arquivo.read(limite_bytes + 1)
+    finally:
+        arquivo.close()
     if len(bruto) > limite_bytes:
         raise ValueError(f"O arquivo excede o limite de {limite_bytes // 1024 // 1024} MB.")
     if extensao == ".bin":

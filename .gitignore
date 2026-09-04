@@ -1,4 +1,7 @@
 venv/
+backups/
+restores/
+*.sismod-backup.zip
 .venv/
 
 __pycache__/

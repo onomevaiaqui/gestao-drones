@@ -12,11 +12,15 @@ A autenticação dinâmica usada pelo provisionamento DJI não é automaticament
 
 ## Segurança
 
+- Sessões MFA vinculadas à versão da configuração: alteração do autenticador/ativação exige nova verificação, inclusive antes de desativar MFA. Sessões existentes sem esse vínculo precisam verificar uma vez após a atualização. Não há migration nem mudança de `.env` para esta melhoria.
+
 - MFA disponível; obrigatoriedade administrativa depende de SISMOD_MFA_ADMIN_REQUIRED e cadastro dos administradores.
 - A seleção de perfil permite concluir as telas MFA. Desativar MFA exige sessão verificada e senha atual.
 - ClamAV local instalado e validado em 04/09/2026: conteúdo limpo aceito, EICAR bloqueado, container saudável. Por solicitação do usuário, o `.env` local foi configurado com SISMOD_CLAMAV_HOST=127.0.0.1, porta 3310 e SISMOD_CLAMAV_REQUIRED=true. Novos processos Django usam essa configuração; processos já abertos precisam ser reiniciados. O arquivo local permanece fora do Git. Ver [guia](ANTIVIRUS_UPLOADS.md), incluindo limites de cobertura.
-- Configuração/verificação MFA e confirmação de comandos críticos limitam tentativas por conta e IP no banco, usando os limites SISMOD_LOGIN_*. Trocar de sessão não elimina o bloqueio. Permanecem necessárias revisão de recuperação de conta e rotação de chaves.
+- Configuração/verificação MFA e confirmação de comandos críticos limitam tentativas por conta e por IP, de forma independente, usando SISMOD_LOGIN_*. Trocar de sessão/IP não elimina o bloqueio da conta. Rotação de chaves MFA independente implementada; ainda é necessário estabelecer o processo corporativo de recuperação de conta/cofre de segredos.
 - A migração 0071 registra o último intervalo TOTP aceito. O código usado na ativação também é consumido; aguarde o próximo código para outro login. A atualização condicional no banco rejeita reutilização e intervalos anteriores, inclusive com objetos desatualizados. Códigos de recuperação são removidos por atualização condicional, impedindo consumo duplicado.
 - Produção exige validação HTTPS, credenciais de mídia, rede, backups com restauração testada, retenção, monitoramento e auditoria independente. Os controles implementados não constituem certificação de segurança corporativa.
+
+Reforços adicionais, testes automáticos e procedimento de backup: [segurança operacional](SEGURANCA_OPERACIONAL.md) e [backup/restauração](BACKUP_E_RESTAURACAO.md). A restauração SQLite foi testada com dados sintéticos, sem substituir o banco real. CI preparado, ainda sem envio ao GitHub.
 
 Na continuação de 04/09/2026, o Docker estava disponível e o container sismod-mosquitto-local estava saudável, publicado somente em 127.0.0.1:1883. Uma conexão sem credenciais foi recusada. Não foram enviados comandos à Dock, alteradas credenciais nem homologada a integração corporativa.
