@@ -1417,6 +1417,70 @@ class DJIDock(models.Model):
         return f"{self.nome} - {self.numero_serie}"
 
 
+class DJIDockAcesso(models.Model):
+    dock = models.ForeignKey(DJIDock, on_delete=models.CASCADE, related_name="acessos")
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name="acessos_dock")
+    pode_operar = models.BooleanField(default=False)
+    ativo = models.BooleanField(default=True)
+    concedido_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="acessos_dock_concedidos",
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["dock__nome", "usuario__username"]
+        constraints = [
+            models.UniqueConstraint(fields=["dock", "usuario"], name="dock_usuario_acesso_unico")
+        ]
+        verbose_name = "Acesso à estação remota"
+        verbose_name_plural = "Acessos às estações remotas"
+
+    def __str__(self):
+        nivel = "operação" if self.pode_operar else "monitoramento"
+        return f"{self.usuario.username} — {self.dock.nome} ({nivel})"
+
+
+class DJIDockCanalVideo(models.Model):
+    ORIGEM_CHOICES = [("aeronave", "Aeronave"), ("dock", "Estação remota")]
+    STATUS_CHOICES = [
+        ("parado", "Parado"), ("simulado", "Ativo em simulação"),
+        ("solicitado", "Solicitado"), ("transmitindo", "Transmitindo"), ("erro", "Erro"),
+    ]
+    QUALIDADE_CHOICES = [("adaptive", "Adaptativa"), ("smooth", "Fluida"), ("standard", "Padrão"), ("high", "Alta")]
+
+    dock = models.ForeignKey(DJIDock, on_delete=models.CASCADE, related_name="canais_video")
+    origem = models.CharField(max_length=20, choices=ORIGEM_CHOICES)
+    dispositivo_serial = models.CharField(max_length=100)
+    camera_indice = models.CharField(max_length=50)
+    video_indice = models.CharField(max_length=50)
+    video_id = models.CharField(max_length=255)
+    lente = models.CharField(max_length=30, blank=True)
+    lentes_alternativas = models.JSONField(default=list, blank=True)
+    disponivel = models.BooleanField(default=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="parado")
+    qualidade = models.CharField(max_length=20, choices=QUALIDADE_CHOICES, default="adaptive")
+    solicitado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="streams_dock_solicitados")
+    solicitado_em = models.DateTimeField(null=True, blank=True)
+    transmissao_atual = models.ForeignKey(
+        TransmissaoAoVivo, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="canais_dock",
+    )
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["origem", "camera_indice", "video_indice"]
+        constraints = [
+            models.UniqueConstraint(fields=["dock", "video_id"], name="dock_video_id_unico")
+        ]
+        verbose_name = "Canal de vídeo da estação"
+        verbose_name_plural = "Canais de vídeo das estações"
+
+    def __str__(self):
+        return f"{self.dock.nome} — {self.get_origem_display()} — {self.video_id}"
+
+
 class DJIDockEvento(models.Model):
     NIVEL_CHOICES = [
         ("info", "Informação"), ("atencao", "Atenção"),
@@ -1455,13 +1519,18 @@ class DJIDockComando(models.Model):
         ("iniciar_missao", "Iniciar missão"),
         ("pausar_missao", "Pausar missão"),
         ("cancelar_missao", "Cancelar missão"),
+        ("iniciar_stream", "Iniciar transmissão"),
+        ("parar_stream", "Parar transmissão"),
+        ("trocar_lente", "Trocar lente"),
+        ("qualidade_stream", "Alterar qualidade da transmissão"),
     ]
     STATUS_CHOICES = [
         ("bloqueado", "Bloqueado"), ("pendente", "Pendente"),
+        ("processando", "Em processamento"),
         ("enviado", "Enviado"), ("confirmado", "Confirmado"),
         ("erro", "Erro"), ("cancelado", "Cancelado"),
     ]
-    COMANDOS_CRITICOS = {"reiniciar", "abrir_tampa", "iniciar_missao", "cancelar_missao"}
+    COMANDOS_CRITICOS = {"reiniciar", "abrir_tampa", "iniciar_missao", "cancelar_missao", "iniciar_stream"}
 
     identificador = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     dock = models.ForeignKey(DJIDock, on_delete=models.PROTECT, related_name="comandos")
@@ -1471,6 +1540,11 @@ class DJIDockComando(models.Model):
     critico = models.BooleanField(default=False)
     solicitado_por = models.ForeignKey(User, on_delete=models.PROTECT, related_name="comandos_dock_solicitados")
     solicitado_em = models.DateTimeField(auto_now_add=True)
+    autorizado_por = models.ForeignKey(
+        User, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="comandos_dock_autorizados",
+    )
+    autorizado_em = models.DateTimeField(null=True, blank=True)
     enviado_em = models.DateTimeField(null=True, blank=True)
     concluido_em = models.DateTimeField(null=True, blank=True)
     mensagem = models.CharField(max_length=255, blank=True)
@@ -1615,3 +1689,77 @@ class DJIDRCComando(models.Model):
 
     def __str__(self):
         return f"DRC {self.sessao_id} #{self.sequencia}"
+
+
+class TentativaLogin(models.Model):
+    """Registro mínimo de falhas para bloqueio compartilhado entre processos."""
+
+    identificador_hash = models.CharField(max_length=64, db_index=True)
+    endereco_ip = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    ocorrida_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-ocorrida_em"]
+        indexes = [
+            models.Index(
+                fields=["identificador_hash", "endereco_ip", "ocorrida_em"],
+                name="core_tentat_identif_255a4b_idx",
+            )
+        ]
+
+    def __str__(self):
+        return f"Falha de autenticação em {self.ocorrida_em:%d/%m/%Y %H:%M:%S}"
+
+
+class ConfiguracaoSegurancaUsuario(models.Model):
+    ultimo_contador_mfa = models.BigIntegerField(default=-1)
+    usuario = models.OneToOneField(User, on_delete=models.CASCADE, related_name="configuracao_seguranca")
+    mfa_ativo = models.BooleanField(default=False)
+    segredo_mfa_criptografado = models.TextField(blank=True)
+    codigos_recuperacao = models.JSONField(default=list, blank=True)
+    mfa_ativado_em = models.DateTimeField(null=True, blank=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Configuração de segurança do usuário"
+        verbose_name_plural = "Configurações de segurança dos usuários"
+
+    def __str__(self):
+        return f"Segurança de {self.usuario.username}"
+
+
+class EventoAuditoria(models.Model):
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="eventos_auditoria")
+    acao = models.CharField(max_length=80, db_index=True)
+    metodo = models.CharField(max_length=10)
+    caminho = models.CharField(max_length=500)
+    status_http = models.PositiveSmallIntegerField()
+    endereco_ip = models.GenericIPAddressField(null=True, blank=True)
+    detalhes = models.JSONField(default=dict, blank=True)
+    ocorrido_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-ocorrido_em"]
+        indexes = [models.Index(fields=["usuario", "ocorrido_em"], name="core_audit_usuario_data_idx")]
+
+    def __str__(self):
+        return f"{self.ocorrido_em:%d/%m/%Y %H:%M:%S} - {self.acao}"
+
+
+class AlertaSeguranca(models.Model):
+    NIVEL_CHOICES = [("atencao", "Atenção"), ("alto", "Alto"), ("critico", "Crítico")]
+    tipo = models.CharField(max_length=50, db_index=True)
+    nivel = models.CharField(max_length=10, choices=NIVEL_CHOICES, default="atencao")
+    mensagem = models.CharField(max_length=255)
+    endereco_ip = models.GenericIPAddressField(null=True, blank=True)
+    detalhes = models.JSONField(default=dict, blank=True)
+    resolvido = models.BooleanField(default=False, db_index=True)
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    resolvido_em = models.DateTimeField(null=True, blank=True)
+    resolvido_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="alertas_seguranca_resolvidos")
+
+    class Meta:
+        ordering = ["resolvido", "-criado_em"]
+
+    def __str__(self):
+        return self.mensagem

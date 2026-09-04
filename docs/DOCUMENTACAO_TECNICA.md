@@ -264,7 +264,9 @@ Para homologação local, configure `DJI_DOCK_SIMULATOR_ENABLED=true` e execute 
 
 O arquivo `infra/dji-dock/compose.yaml` sobe uma instância única do EMQX em contêiner com volumes persistentes. No perfil local, MQTT e painel ficam presos a `127.0.0.1`, e o acesso anônimo existe apenas para permitir o teste fechado na própria máquina. Essa composição não deve ser usada para uma Dock física nem em produção. Antes de expor à rede, será criada uma composição TLS com usuários, ACL por tópico e segredos externos.
 
-`DJIDockComando` fornece a trilha de auditoria para futuras ações remotas, registrando identificador, tipo, criticidade, parâmetros sanitizados, operador, horários, situação e mensagem. A intenção permanece `bloqueado` enquanto `DJI_DOCK_ENABLED` ou `DJI_DOCK_COMMANDS_ENABLED` estiver falsa. Mesmo com ambas verdadeiras, o registro apenas fica pendente: esta versão não contém publicador de comandos físicos. Docks sem contato pelo período definido em `DJI_DOCK_OFFLINE_AFTER_SECONDS` são atualizadas por `python manage.py atualizar_status_dji_docks`.
+`DJIDockComando` fornece a trilha de auditoria para futuras ações remotas, registrando identificador, tipo, criticidade, parâmetros sanitizados, operador, horários, situação, confirmação humana e mensagem. A intenção permanece `bloqueado` enquanto `DJI_DOCK_ENABLED` ou `DJI_DOCK_COMMANDS_ENABLED` estiver falsa. `DJI_DOCK_PUBLISHER_ENABLED` é uma terceira trava independente, e `DJI_DOCK_EMERGENCY_STOP=true` bloqueia o publicador mesmo quando as demais estiverem abertas. Intenções recebem validade curta, e comandos críticos precisam ser confirmados pelo administrador; essa confirmação não muda o status para enviado. Docks sem contato pelo período definido em `DJI_DOCK_OFFLINE_AFTER_SECONDS` são atualizadas por `python manage.py atualizar_status_dji_docks`.
+
+`publicar_comandos_dji` é um executor físico de lote limitado, não um daemon automático. Ele exige as três travas, parada de emergência liberada, broker autenticado, a opção textual `--confirm-real-publication`, estação ativa/online, intenção pendente/não vencida, confirmação humana quando crítica e envelope completo. A reserva transacional muda o item para `processando`, impedindo dois publicadores de enviarem o mesmo registro simultaneamente; a aceitação MQTT QoS 1 muda para `enviado`, e o `services_reply` posterior conclui como confirmado ou erro. O `tid` estável permite correlacionar retornos e tolerar a possível reentrega inerente ao QoS 1. O início de livestream ainda é recusado porque sua URL segura de runtime não foi implementada.
 
 `DJIDockMissao` vincula um planejamento existente a uma Dock e registra altitude, velocidade, situação e verificações. A preparação confere geometria, vínculo e serial da aeronave, altitude, meteorologia e Termos de Coordenação. A missão permanece em validação até que o modelo DJI e o payload sejam confirmados para gerar os valores enumerados exigidos pelo WPML. Nenhum KMZ executável é produzido ou enviado nesta fase, evitando uma rota aparentemente válida com configuração de aeronave incorreta.
 
@@ -296,7 +298,23 @@ O `Dockerfile` executa Python 3.12, dependências, arquivos estáticos e Gunicor
 
 O Cockpit Virtual fica na seção própria **Estações Remotas**, disponível para administradores, coordenadores e pilotos, e nesta versão opera apenas em simulação. Pilotos veem suas próprias missões, mídias e sessões, enquanto os dados globais de auditoria e configuração permanecem restritos. A interface em tela cheia reserva a área principal ao vídeo da aeronave, mantém mapa, saúde do enlace e um segundo monitor para a câmera fixa da Dock no painel lateral e sobrepõe os dados essenciais de voo; as abas secundárias apresentam missão e estado da Dock. O mapa usa a mesma fonte OpenStreetMap validada pela telemetria, aplica política de referência e exibe uma mensagem controlada se o provedor estiver indisponível. `DJIDRCSessao` garante uma sessão ativa por Dock por meio do serviço transacional e de uma restrição no banco, registrando operador, limites, heartbeat, sequência e telemetria simulada. `DJIDRCComando` audita os cinco canais no intervalo DJI de 364 a 1684, com 1024 neutro. Teclado e sliders retornam ao neutro quando liberados; encerramento e watchdog também gravam uma neutralização.
 
-O heartbeat do navegador é enviado a cada segundo. `encerrar_sessoes_drc` encerra sessões que ultrapassem `DJI_DRC_HEARTBEAT_TIMEOUT_SECONDS` ou `DJI_DRC_SESSION_TTL_SECONDS`. O controle real permanece inexistente mesmo que uma variável isolada seja alterada: as três travas `DJI_DRC_ENABLED`, `DJI_DRC_COMMANDS_ENABLED` e `DJI_DOCK_ENABLED` precisam estar ativas, e ainda será necessário implementar o relay DRC autenticado, autoridade de voo/payload, livestream de baixa latência e publicação contínua de `stick_control` a 5–10 Hz.
+`DJIDockAcesso` formaliza a autorização por estação. Cada combinação de estação e usuário é única e concede somente monitoramento ou monitoramento com operação. Administradores e coordenadores mantêm visão global; pilotos sem vínculo não recebem a estação nas consultas, e somente vínculos com `pode_operar=True` aparecem no cockpit. As verificações são repetidas no servidor ao abrir a sessão, enviar comandos, renovar heartbeat e encerrar, não dependendo apenas da ocultação de botões.
+
+`DJIDockCanalVideo` é atualizado a partir de `live_capacity.device_list`. O catálogo distingue o serial da estação dos demais dispositivos para classificar a origem como Dock ou aeronave, compõe o `video_id` quando necessário e registra câmera, índice do vídeo, lente atual, alternativas e disponibilidade. Canais que deixam de ser anunciados são preservados para auditoria com `disponivel=False`. O catálogo segue o formato `{sn}/{camera_index}/{video_index}` da Cloud API e não contém endereço de ingestão nem credencial.
+
+`dji_video_service.controlar_canal_video` valida disponibilidade, qualidade e lentes anunciadas antes de registrar a intenção em `DJIDockComando`. Início, parada, alteração de qualidade e troca de lente atualizam somente o estado local simulado e o operador solicitante. O endpoint repete a autorização `pode_operar_dock`; acesso de monitoramento não é suficiente.
+
+`dji_mqtt_commands.construir_previa_video` converte cada intenção em tópico `thing/product/{gateway_sn}/services` e envelope auditável com `bid`, `tid`, timestamp, método e dados conforme a Cloud API. As qualidades internas são convertidas para os inteiros DJI de 0 a 3. No comando `live_start_push`, a prévia omite `url_type` e `url` e declara esses campos como dependências de runtime, pois a URL de ingestão pode conter token ou senha. O futuro publicador deverá resolver esses valores somente em memória, imediatamente antes do envio. Parada, qualidade e lente geram estruturas completas, mas continuam sem publicação física nesta fase.
+
+O canal mantém uma referência opcional à sessão `TransmissaoAoVivo`. Ao iniciar, `dji_video_service` cria ou reutiliza uma sessão preparada do piloto e inclui apenas seu identificador nos parâmetros sanitizados. `dji_video_runtime` exige livestream habilitado e uma base RTMPS válida, monta uma cópia profunda da prévia, injeta `url_type=1` e a URL completa nessa cópia e a entrega ao publicador. A URL completa não volta ao modelo `DJIDockComando`. Após aceitação pelo broker, início e parada atualizam respectivamente a sessão para `ao_vivo` e `finalizada`.
+
+No cockpit, os canais de aeronave e Dock são resolvidos separadamente. `endereco_reproducao` só retorna valor com livestream habilitado, base HTTPS válida e sessão em estado `ao_vivo`. O servidor renderiza então um iframe público por canal com política de referência restrita; sessão preparada, finalizada ou com erro permanece como placeholder informativo. A URL de ingestão nunca é enviada ao navegador.
+
+`infra/mediamtx/mediamtx.local.yml` e o perfil Compose `livestream-demo` fornecem somente uma bancada local. As portas RTMP 1935, WebRTC 8889, ICE/UDP 8189 e API 9997 são vinculadas a `127.0.0.1`; o gerador FFmpeg em contêiner publica um padrão de teste no UUID reservado `00000000-0000-4000-8000-000000000001`. `preparar_demo_livestream` pode vincular esse UUID a um canal existente somente quando `DEBUG=True` e `DJI_LIVESTREAM_ALLOW_INSECURE_LOCAL=true`. A API `/v3/paths/list` alimenta o diagnóstico administrativo com disponibilidade e quantidade de caminhos prontos, sem retornar URLs privadas ou conteúdo do stream.
+
+A configuração local aceita HTTP/RTMP apenas com a flag explícita e hosts `127.0.0.1`, `localhost` ou, para ingestão interna, `mediamtx`. Produção continua exigindo HTTPS/RTMPS, autenticação do servidor de mídia e reverse proxy. O arquivo local permite usuário anônimo porque todas as portas estão presas ao loopback e nunca deve ser copiado para um servidor.
+
+O heartbeat do navegador é enviado a cada segundo. `encerrar_sessoes_drc` encerra sessões que ultrapassem `DJI_DRC_HEARTBEAT_TIMEOUT_SECONDS` ou `DJI_DRC_SESSION_TTL_SECONDS`; no Docker de homologação, o serviço independente `drc-watchdog` executa essa verificação continuamente. O controle real permanece inexistente mesmo que uma variável isolada seja alterada: as três travas `DJI_DRC_ENABLED`, `DJI_DRC_COMMANDS_ENABLED` e `DJI_DOCK_ENABLED` precisam estar ativas, e ainda será necessário implementar o relay DRC autenticado, autoridade de voo/payload, livestream de baixa latência e publicação contínua de `stick_control` a 5–10 Hz.
 
 Os eventos DJI `flighttask_ready` e `flighttask_progress` são correlacionados pelo UUID da missão para registrar disponibilidade, execução, pausa, conclusão, falha, percentual, etapa, waypoint e total de mídias. O evento `file_upload_callback` cria ou atualiza um inventário por `object_key`, com nome, caminho remoto, tipo, indicação de original e metadados de captura saneados. Respostas recebidas em `services_reply` são correlacionadas pelo `tid` com `DJIDockComando`, fechando a auditoria como confirmada ou erro; isso não implica que o SISMOD já publique comandos. Esse inventário não contém o arquivo binário nem credenciais de armazenamento; download e armazenamento somente serão ativados após configurar serviço de objetos privado e credenciais temporárias no ambiente de servidor.
 
@@ -597,6 +615,44 @@ Estados operacionais:
 
 O primeiro administrador é criado por `python manage.py criar_admin_inicial`. Depois disso, o comando recusa uma segunda execução e os usuários passam a ser gerenciados pela interface. O procedimento operacional completo está em [`LICENCIAMENTO_E_IMPLANTACAO.md`](LICENCIAMENTO_E_IMPLANTACAO.md).
 
-## 16. Atualização obrigatória
+## 16. Infraestrutura preparada para produção
+
+`infra/compose.producao.yaml` descreve a implantação com PostgreSQL, armazenamento privado MinIO, Caddy HTTPS, MediaMTX com autenticação HTTP, Coturn, healthchecks e processos independentes da Dock. URLs de ingestão e reprodução recebem tokens assinados de curta duração; o endpoint interno do SISMOD valida ação e caminho antes de autorizar o MediaMTX. As intenções de comando continuam sujeitas a quatro travas, expiração, autorização humana, estação online e intervalo mínimo por estação. A configuração e a sequência de homologação estão em `docs/IMPLANTACAO_DJI_DOCK.md`.
+
+## 17. Segurança corporativa — primeira camada
+
+O SISMOD aplica os validadores oficiais do Django, com senha mínima de dez caracteres, bloqueio de senhas comuns, exclusivamente numéricas ou semelhantes aos dados da conta. Falhas de autenticação são registradas por hash do identificador e IP; cinco falhas no intervalo padrão de quinze minutos bloqueiam temporariamente aquela combinação. Um login válido limpa as falhas relacionadas. Os registros antigos são removidos automaticamente.
+
+As sessões expiram após oito horas de inatividade por padrão e são renovadas somente durante uso. Cookies HTTP-only, proteção contra detecção de conteúdo e política de referência restrita estão habilitados. Limites de requisição e memória de upload podem ser parametrizados. Em produção, cookies seguros, redirecionamento HTTPS e HSTS permanecem controlados pelas variáveis já documentadas.
+
+O MQTT de homologação passou a usar Eclipse Mosquitto 2 com acesso anônimo desativado. Consumidor e publicador possuem identidades e ACLs distintas. A produção deve utilizar o broker Mosquitto corporativo por TLS e conservar a negação por padrão.
+
+O MFA TOTP pode ser ativado por usuário na tela **Segurança da conta**, com oito códigos de recuperação exibidos uma única vez. Quando `SISMOD_MFA_ADMIN_REQUIRED=true`, administradores sem cadastro são direcionados à configuração e contas já protegidas precisam concluir o segundo fator após o login. A mesma tela lista sessões vigentes e permite encerrar outros dispositivos.
+
+A auditoria registra operações de alteração, autenticação e downloads usando o nome abstrato da rota, sem corpo da requisição, senha, token de URL ou conteúdo de arquivo. Administradores consultam as últimas 500 ocorrências em **Auditoria**. `python manage.py limpar_auditoria --confirmar` aplica o prazo `SISMOD_AUDIT_RETENTION_DAYS`; a empresa deve aprovar esse prazo antes de agendar o comando.
+
+A autorização de um comando crítico da Dock exige confirmação recente da senha. O prazo padrão é cinco minutos (`SISMOD_REAUTH_SECONDS`); a confirmação autoriza apenas a intenção e não remove as travas do publicador. Bloqueios de login e uploads recusados geram alertas administrativos resolvíveis. A auditoria pode ser exportada em CSV com neutralização contra fórmulas de planilha.
+
+Todo upload passa por bloqueio de extensões executáveis e assinaturas binárias básicas. Quando `SISMOD_CLAMAV_HOST` estiver configurado, o conteúdo também passa pelo protocolo INSTREAM do ClamAV. `SISMOD_CLAMAV_REQUIRED=true` aplica falha fechada: se o antivírus estiver indisponível, nenhum arquivo é aceito. A flag deve permanecer falsa enquanto o serviço não existir.
+
+Esta camada não substitui SIEM, backup/restauração, plano de incidentes e pentest, que permanecem nas próximas etapas de adequação.
+
+## 18. Atualização obrigatória
 
 Toda mudança funcional deve seguir `docs/MANUTENCAO_DOCUMENTACAO.md`. Código, testes e documentação afetada devem estar no mesmo commit.
+# Pendências de segurança e MQTT
+
+## Verificação local de 04/09/2026
+
+- Suíte completa: 181 testes aprovados. Após o ajuste final de autenticação com licença expirada, 19 testes de segurança/licenciamento aprovados (incluindo a nova regressão).
+- `manage.py check`, verificação de migrations e `pip check` sem inconsistências.
+- SQLite: `quick_check=ok`, nenhuma violação em `foreign_key_check`.
+- ClamAV: conteúdo limpo aceito e EICAR rejeitado; Mosquitto e ClamAV saudáveis no Docker local.
+- Inspeção obrigatória ativada no `.env` local, que continua ignorado pelo Git. Reiniciar processos Django abertos para aplicar a configuração.
+- Sem validação com Dock física ou implantação de produção; não interpretar estes resultados como certificação de segurança corporativa.
+
+Antivírus: [instalação, diagnóstico e limites de cobertura](ANTIVIRUS_UPLOADS.md). O comando `verificar_antivirus` testa conteúdo limpo e EICAR em memória. O cliente INSTREAM inspeciona desde o início do arquivo e só aceita a resposta completa `stream: OK`, preservando a posição de leitura para o importador.
+
+MFA: desde a migração 0071, códigos TOTP aceitos não podem ser reutilizados; o contador é validado e atualizado condicionalmente no banco. Códigos de recuperação também são consumidos com comparação atômica da lista persistida. O código da ativação conta como utilizado.
+
+Consultar [estado de preparação e pendências](PENDENCIAS_SEGURANCA_MQTT.md) antes de ativar o broker corporativo, MFA obrigatório ou antivírus de uploads.

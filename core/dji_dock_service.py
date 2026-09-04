@@ -1,12 +1,13 @@
 """Ingestão segura e normalização inicial de mensagens da DJI Dock."""
 
 from decimal import Decimal, InvalidOperation
+from datetime import timedelta
 
 from django.db import transaction
 from django.conf import settings
 from django.utils import timezone
 
-from .models import DJIDock, DJIDockArquivo, DJIDockComando, DJIDockEvento, DJIDockMissao, Drone
+from .models import DJIDock, DJIDockArquivo, DJIDockCanalVideo, DJIDockComando, DJIDockEvento, DJIDockMissao, Drone
 
 
 CHAVES_SENSIVEIS = {"device_secret", "secret", "nonce", "password", "token", "app_key", "app_license"}
@@ -69,6 +70,60 @@ def _detectar_payload(dados):
     }
 
 
+def _sincronizar_canais_video(dock, dados):
+    """Cataloga os streams anunciados em live_capacity sem iniciar transmissão."""
+    capacidade = dados.get("live_capacity")
+    if not isinstance(capacidade, dict):
+        return
+    dispositivos = capacidade.get("device_list")
+    if not isinstance(dispositivos, list):
+        return
+
+    encontrados = []
+    for dispositivo in dispositivos:
+        if not isinstance(dispositivo, dict):
+            continue
+        serial = str(dispositivo.get("sn") or "").strip()[:100]
+        if not serial:
+            continue
+        origem = "dock" if serial.casefold() == dock.numero_serie.casefold() else "aeronave"
+        cameras = dispositivo.get("camera_list")
+        if not isinstance(cameras, list):
+            continue
+        for camera in cameras:
+            if not isinstance(camera, dict):
+                continue
+            camera_indice = str(camera.get("camera_index") or "").strip()[:50]
+            videos = camera.get("video_list")
+            if not camera_indice or not isinstance(videos, list):
+                continue
+            for video in videos:
+                if not isinstance(video, dict):
+                    continue
+                video_indice = str(video.get("video_index") or "").strip()[:50]
+                if not video_indice:
+                    continue
+                video_id = str(video.get("video_id") or f"{serial}/{camera_indice}/{video_indice}").strip()[:255]
+                alternativas = video.get("switchable_video_types")
+                if not isinstance(alternativas, list):
+                    alternativas = []
+                canal, _ = DJIDockCanalVideo.objects.update_or_create(
+                    dock=dock,
+                    video_id=video_id,
+                    defaults={
+                        "origem": origem,
+                        "dispositivo_serial": serial,
+                        "camera_indice": camera_indice,
+                        "video_indice": video_indice,
+                        "lente": str(video.get("video_type") or "")[:30],
+                        "lentes_alternativas": [str(item)[:30] for item in alternativas],
+                        "disponivel": True,
+                    },
+                )
+                encontrados.append(canal.pk)
+    dock.canais_video.exclude(pk__in=encontrados).update(disponivel=False)
+
+
 @transaction.atomic
 def processar_mensagem_dock(topico, payload, *, origem="cloud_api"):
     """Persiste uma mensagem OSD/event e devolve (dock, evento, criado)."""
@@ -114,6 +169,7 @@ def processar_mensagem_dock(topico, payload, *, origem="cloud_api"):
     dock.ultima_telemetria = dados
     dock.ultimo_contato_em = timezone.now()
     dock.save()
+    _sincronizar_canais_video(dock, dados)
 
     identificador = str(payload.get("tid") or payload.get("bid") or payload.get("id") or "")[:120]
     tipo = str(payload.get("method") or topico.rsplit("/", 1)[-1] or "telemetria")[:80]
@@ -251,6 +307,7 @@ def registrar_intencao_comando(dock, tipo, usuario, parametros=None):
         parametros=remover_segredos(parametros or {}),
         critico=tipo in DJIDockComando.COMANDOS_CRITICOS,
         solicitado_por=usuario,
+        expira_em=timezone.now() + timedelta(seconds=settings.DJI_DOCK_COMMAND_TTL_SECONDS),
         status="pendente" if habilitado else "bloqueado",
         mensagem=(
             "Aguardando publicador MQTT e confirmação operacional."

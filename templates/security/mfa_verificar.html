@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header"><div><h1>Confirme sua identidade</h1><p>Informe o código do aplicativo autenticador ou um código de recuperação.</p></div></div>
+<section class="panel" style="max-width:560px;margin:auto"><form method="post">{% csrf_token %}<div class="form-group"><label>Código de autenticação</label><input class="form-control" name="codigo" autocomplete="one-time-code" autofocus required></div><button class="btn btn-primary" type="submit">Continuar</button></form></section>
+{% endblock %}

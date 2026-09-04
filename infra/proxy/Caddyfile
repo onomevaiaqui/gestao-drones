@@ -1,0 +1,20 @@
+{
+  email {$SISMOD_TLS_EMAIL}
+}
+
+{$SISMOD_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy web:8000
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options nosniff
+    Referrer-Policy strict-origin-when-cross-origin
+  }
+  log
+}
+
+{$SISMOD_MEDIA_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy mediamtx:8889
+  log
+}

@@ -1,0 +1,41 @@
+# Homologação exclusivamente local. As portas também ficam presas a 127.0.0.1
+# no Compose; não reutilize este arquivo em servidor público.
+logLevel: info
+logDestinations: [stdout]
+
+rtsp: false
+hls: false
+
+rtmp: true
+rtmpEncryption: "no"
+rtmpAddress: :1935
+
+webrtc: true
+webrtcAddress: :8889
+webrtcEncryption: false
+webrtcAllowOrigins:
+  - http://127.0.0.1:8000
+  - http://localhost:8000
+webrtcLocalUDPAddress: :8189
+webrtcAdditionalHosts: [127.0.0.1, localhost]
+
+api: true
+apiAddress: :9997
+
+# O acesso sem senha só é aceitável porque as portas são publicadas no loopback.
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+        path:
+      - action: read
+        path:
+      - action: playback
+        path:
+      - action: api
+
+paths:
+  all_others:

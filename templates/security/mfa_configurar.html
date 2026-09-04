@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header"><div><h1>Ativar autenticação em duas etapas</h1><p>Use um aplicativo autenticador para proteger sua conta.</p></div></div>
+<section class="panel" style="max-width:720px;margin:auto">
+  <ol><li>Abra Microsoft Authenticator, Google Authenticator ou aplicativo compatível.</li><li>Leia o QR Code.</li><li>Informe o código de seis dígitos para confirmar.</li></ol>
+  <div style="text-align:center"><img src="{{ qr_data_uri }}" alt="QR Code para configurar autenticação" style="width:240px;height:240px"><p>Chave manual: <code>{{ segredo }}</code></p></div>
+  <form method="post" class="period-filter">{% csrf_token %}<label>Código do aplicativo<input class="form-control" name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label><button class="btn btn-primary" type="submit">Ativar proteção</button></form>
+</section>
+{% endblock %}

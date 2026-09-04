@@ -35,12 +35,56 @@ services:
       MINIO_ROOT_PASSWORD: ${SISMOD_STORAGE_SECRET_KEY}
 
   mqtt:
-    image: emqx/emqx:6.2.3
+    image: eclipse-mosquitto:2.0.22
     restart: unless-stopped
     environment:
-      EMQX_ALLOW_ANONYMOUS: "true"
-    ports: ["127.0.0.1:18083:18083"]
-    volumes: [emqx_data:/opt/emqx/data]
+      SISMOD_MQTT_CONSUMER_PASSWORD: ${SISMOD_MQTT_CONSUMER_PASSWORD:?Defina SISMOD_MQTT_CONSUMER_PASSWORD}
+      SISMOD_MQTT_PUBLISHER_PASSWORD: ${SISMOD_MQTT_PUBLISHER_PASSWORD:?Defina SISMOD_MQTT_PUBLISHER_PASSWORD}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["cp /mosquitto/source/acl.conf /mosquitto/data/acl.conf && mosquitto_passwd -b -c /mosquitto/data/passwords sismod-consumer $$SISMOD_MQTT_CONSUMER_PASSWORD && mosquitto_passwd -b /mosquitto/data/passwords sismod-publisher $$SISMOD_MQTT_PUBLISHER_PASSWORD && chown mosquitto:mosquitto /mosquitto/data/acl.conf /mosquitto/data/passwords && chmod 600 /mosquitto/data/acl.conf /mosquitto/data/passwords && exec mosquitto -c /mosquitto/source/mosquitto.conf"]
+    ports: ["127.0.0.1:1883:1883"]
+    volumes:
+      - mosquitto_data:/mosquitto/data
+      - ./mosquitto/mosquitto.conf:/mosquitto/source/mosquitto.conf:ro
+      - ./mosquitto/acl.conf:/mosquitto/source/acl.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -u sismod-consumer -P $$SISMOD_MQTT_CONSUMER_PASSWORD -t '$$SYS/broker/version' -C 1 -W 5 >/dev/null"]
+      interval: 10s
+      timeout: 8s
+      retries: 10
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.20.1
+    restart: unless-stopped
+    profiles: ["livestream-local", "livestream-demo"]
+    volumes:
+      - ./mediamtx/mediamtx.local.yml:/mediamtx.yml:ro
+    ports:
+      - "127.0.0.1:1935:1935"
+      - "127.0.0.1:8889:8889"
+      - "127.0.0.1:8189:8189/udp"
+      - "127.0.0.1:9997:9997"
+
+  livestream-demo:
+    image: jrottenberg/ffmpeg:7.1-alpine
+    restart: unless-stopped
+    profiles: ["livestream-demo"]
+    command:
+      - -re
+      - -f
+      - lavfi
+      - -i
+      - testsrc2=size=1280x720:rate=30
+      - -c:v
+      - libx264
+      - -preset
+      - ultrafast
+      - -tune
+      - zerolatency
+      - -f
+      - flv
+      - rtmp://mediamtx/00000000-0000-4000-8000-000000000001
+    depends_on: [mediamtx]
 
   web:
     build: ..
@@ -51,6 +95,7 @@ services:
       SISMOD_MEDIA_STORAGE: minio
       SISMOD_STORAGE_ENDPOINT_URL: http://minio:9000
       DJI_CLOUD_MQTT_HOST: tcp://mqtt:1883
+      SISMOD_MEDIAMTX_API_URL: http://mediamtx:9997
     command: ["/bin/sh", "-c", "python manage.py migrate && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120"]
     ports: ["127.0.0.1:8000:8000"]
     depends_on:
@@ -66,11 +111,26 @@ services:
       SISMOD_MEDIA_STORAGE: minio
       SISMOD_STORAGE_ENDPOINT_URL: http://minio:9000
       DJI_CLOUD_MQTT_HOST: tcp://mqtt:1883
+      DJI_DOCK_MQTT_USERNAME: sismod-consumer
+      DJI_DOCK_MQTT_PASSWORD: ${SISMOD_MQTT_CONSUMER_PASSWORD}
     command: ["python", "manage.py", "consumir_dji_dock"]
     profiles: ["dock-real"]
     depends_on: [web, mqtt]
 
+  drc-watchdog:
+    build: ..
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      SISMOD_DB_HOST: db
+      SISMOD_MEDIA_STORAGE: minio
+      SISMOD_STORAGE_ENDPOINT_URL: http://minio:9000
+    command: ["/bin/sh", "-c", "while true; do python manage.py encerrar_sessoes_drc; sleep 1; done"]
+    depends_on:
+      db: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+
 volumes:
   postgres_data:
   minio_data:
-  emqx_data:
+  mosquitto_data:

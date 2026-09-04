@@ -3,6 +3,7 @@ from datetime import datetime
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.contrib.auth.views import LoginView
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
@@ -16,10 +17,11 @@ from .dji_cloud_service import (
     usuario_mqtt, validar_token_pilot,
 )
 from .dji_dock_service import preparar_missao, processar_mensagem_dock
+from .dji_dock_permissions import docks_visiveis, pode_operar_dock
 from .dji_wpml_service import gerar_kmz_wpml, validar_token_download_wpml
 from .dji_operacao_service import avaliar_liberacao_missao, enfileirar_preparacao
 from .dji_storage_service import armazenar_upload_missao, diagnostico_armazenamento
-from .models import Alocacao, DJIDock, DJIDockArquivo, DJIDockMissao, Drone, Piloto, PlanejamentoVoo, TransmissaoAoVivo
+from .models import Alocacao, DJIDock, DJIDockAcesso, DJIDockArquivo, DJIDockCanalVideo, DJIDockComando, DJIDockMissao, Drone, Piloto, PlanejamentoVoo, TransmissaoAoVivo
 from .permissoes import admin_required, usuario_e_admin, usuario_tem_visao_global
 from .views import _base_context
 
@@ -61,14 +63,14 @@ def dji_cloud_configuracao(request):
 
 @login_required
 def dji_docks(request):
-    ctx = {"docks": DJIDock.objects.filter(ativo=True).select_related("drone")}
+    ctx = {"docks": docks_visiveis(request.user).select_related("drone")}
     ctx.update(_base_context(request))
     return render(request, "dji_cloud/docks.html", ctx)
 
 
 @login_required
 def dji_missoes(request):
-    missoes = DJIDockMissao.objects.select_related("dock", "dock__drone", "planejamento", "planejamento__piloto")
+    missoes = DJIDockMissao.objects.filter(dock__in=docks_visiveis(request.user)).select_related("dock", "dock__drone", "planejamento", "planejamento__piloto")
     if not usuario_tem_visao_global(request.user):
         missoes = missoes.filter(planejamento__piloto__user=request.user)
     status = request.GET.get("status", "")
@@ -85,8 +87,9 @@ def dji_missoes(request):
 
 @login_required
 def dji_midias(request):
-    itens = DJIDockArquivo.objects.select_related("missao__dock", "missao__planejamento")
-    missoes_disponiveis = DJIDockMissao.objects.select_related("planejamento")
+    escopo_docks = docks_visiveis(request.user)
+    itens = DJIDockArquivo.objects.filter(missao__dock__in=escopo_docks).select_related("missao__dock", "missao__planejamento")
+    missoes_disponiveis = DJIDockMissao.objects.filter(dock__in=escopo_docks).select_related("planejamento")
     if not usuario_tem_visao_global(request.user):
         itens = itens.filter(missao__planejamento__piloto__user=request.user)
         missoes_disponiveis = missoes_disponiveis.filter(planejamento__piloto__user=request.user)
@@ -123,7 +126,7 @@ def dji_midia_upload(request):
 def dji_midia_download(request, pk):
     from django.http import FileResponse, Http404
     from django.shortcuts import get_object_or_404
-    item = get_object_or_404(DJIDockArquivo, pk=pk, status="concluido")
+    item = get_object_or_404(DJIDockArquivo, pk=pk, status="concluido", missao__dock__in=docks_visiveis(request.user))
     if not usuario_tem_visao_global(request.user) and item.missao.planejamento.piloto.user_id != request.user.id:
         raise Http404
     if not item.arquivo:
@@ -148,7 +151,7 @@ def dji_missao_enfileirar(request, pk):
 @login_required
 def dji_dock_detalhe(request, pk):
     from django.shortcuts import get_object_or_404
-    dock = get_object_or_404(DJIDock.objects.select_related("drone"), pk=pk, ativo=True)
+    dock = get_object_or_404(docks_visiveis(request.user).select_related("drone"), pk=pk)
     acesso_global = usuario_tem_visao_global(request.user)
     missoes = dock.missoes.select_related("planejamento", "criada_por").prefetch_related("arquivos")
     if not acesso_global:
@@ -162,9 +165,93 @@ def dji_dock_detalhe(request, pk):
             PlanejamentoVoo.objects.exclude(missoes_dji_dock__dock=dock).order_by("-data", "-hora_inicio")[:100]
             if usuario_e_admin(request.user) else ()
         ),
+        "acessos": dock.acessos.select_related("usuario", "usuario__piloto").all() if usuario_e_admin(request.user) else (),
+        "canais_video": dock.canais_video.select_related("transmissao_atual"),
+        "usuarios_disponiveis": User.objects.filter(is_active=True, piloto__ativo=True).order_by("piloto__nome") if usuario_e_admin(request.user) else (),
+        "pode_operar_estacao": pode_operar_dock(request.user, dock),
     }
     ctx.update(_base_context(request))
     return render(request, "dji_cloud/dock_detalhe.html", ctx)
+
+
+@login_required
+@require_POST
+def dji_canal_video_acao(request, pk, canal_pk):
+    from django.contrib import messages
+    from django.shortcuts import get_object_or_404
+    from .dji_video_service import controlar_canal_video
+
+    dock = get_object_or_404(docks_visiveis(request.user), pk=pk)
+    canal = get_object_or_404(DJIDockCanalVideo, pk=canal_pk, dock=dock)
+    if not pode_operar_dock(request.user, dock):
+        messages.error(request, "Você possui acesso somente para monitoramento desta estação.")
+        return redirect("dji_dock_detalhe", pk=dock.pk)
+    try:
+        controlar_canal_video(
+            canal, request.POST.get("acao", ""), request.user,
+            qualidade=request.POST.get("qualidade", ""), lente=request.POST.get("lente", ""),
+        )
+        messages.success(request, "Ação de vídeo registrada em modo seguro de simulação.")
+    except ValueError as erro:
+        messages.error(request, str(erro))
+    return redirect("dji_dock_detalhe", pk=dock.pk)
+
+
+@admin_required
+@require_POST
+def dji_comando_autorizar(request, pk, comando_pk):
+    from django.contrib import messages
+    from django.shortcuts import get_object_or_404
+    from .dji_command_safety import autorizar_intencao
+
+    dock = get_object_or_404(DJIDock, pk=pk, ativo=True)
+    comando = get_object_or_404(DJIDockComando, pk=comando_pk, dock=dock)
+    confirmado_em = request.session.get("reauth_em", 0)
+    if timezone.now().timestamp() - confirmado_em > settings.SISMOD_REAUTH_SECONDS:
+        request.session["acao_critica_pendente"] = {"tipo": "autorizar_comando_dock", "dock": dock.pk, "comando": comando.pk}
+        return redirect("confirmar_acao_critica")
+    try:
+        autorizar_intencao(comando, request.user)
+        messages.success(request, "Confirmação registrada. Nenhum comando foi publicado.")
+    except (PermissionError, ValueError) as erro:
+        messages.error(request, str(erro))
+    return redirect("dji_dock_detalhe", pk=dock.pk)
+
+
+@admin_required
+@require_POST
+def dji_dock_acesso_salvar(request, pk):
+    from django.contrib import messages
+    from django.shortcuts import get_object_or_404
+
+    dock = get_object_or_404(DJIDock, pk=pk, ativo=True)
+    usuario = get_object_or_404(User, pk=request.POST.get("usuario"), is_active=True, piloto__ativo=True)
+    acesso, criado = DJIDockAcesso.objects.update_or_create(
+        dock=dock,
+        usuario=usuario,
+        defaults={
+            "ativo": True,
+            "pode_operar": request.POST.get("pode_operar") == "on",
+            "concedido_por": request.user,
+        },
+    )
+    nivel = "operação e monitoramento" if acesso.pode_operar else "somente monitoramento"
+    messages.success(request, f"Acesso de {usuario.get_full_name() or usuario.username} salvo: {nivel}.")
+    return redirect("dji_dock_detalhe", pk=dock.pk)
+
+
+@admin_required
+@require_POST
+def dji_dock_acesso_revogar(request, pk, acesso_pk):
+    from django.contrib import messages
+    from django.shortcuts import get_object_or_404
+
+    dock = get_object_or_404(DJIDock, pk=pk, ativo=True)
+    acesso = get_object_or_404(DJIDockAcesso, pk=acesso_pk, dock=dock)
+    nome = acesso.usuario.get_full_name() or acesso.usuario.username
+    acesso.delete()
+    messages.success(request, f"Acesso de {nome} removido desta estação.")
+    return redirect("dji_dock_detalhe", pk=dock.pk)
 
 
 @admin_required
@@ -184,7 +271,7 @@ def dji_dock_missao_wpml(request, pk):
     from django.http import HttpResponse
     from django.shortcuts import get_object_or_404
     from django.utils.text import slugify
-    missao = get_object_or_404(DJIDockMissao.objects.select_related("dock", "planejamento"), pk=pk)
+    missao = get_object_or_404(DJIDockMissao.objects.select_related("dock", "planejamento"), pk=pk, dock__in=docks_visiveis(request.user))
     if not usuario_tem_visao_global(request.user) and missao.planejamento.piloto.user_id != request.user.id:
         return JsonResponse({"ok": False, "erro": "Esta missão pertence a outro piloto."}, status=403)
     try:

@@ -16,7 +16,7 @@ class ModoAcessoMiddleware:
                 return redirect("login")
             modo = request.session.get("modo_acesso")
             request.user._modo_acesso = modo
-            if modo == "pendente" and request.path not in ("/selecionar-perfil/", "/logout/"):
+            if modo == "pendente" and request.path not in ("/selecionar-perfil/", "/logout/") and not request.path.startswith("/seguranca/mfa/"):
                 return redirect("selecionar_modo_acesso")
             if modo in ("usuario", "coordenador") and request.path.startswith("/admin/"):
                 return redirect("dashboard")
@@ -32,7 +32,8 @@ class LicencaSISMODMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        if request.method not in ("GET", "HEAD", "OPTIONS") and not any(request.path.startswith(item) for item in self.ROTAS_LIVRES):
+        autenticacao_mfa = request.path in ("/seguranca/mfa/configurar/", "/seguranca/mfa/verificar/")
+        if request.method not in ("GET", "HEAD", "OPTIONS") and not autenticacao_mfa and not any(request.path.startswith(item) for item in self.ROTAS_LIVRES):
             estado = estado_licenca()
             if not estado.permite_alteracoes:
                 return HttpResponseForbidden(

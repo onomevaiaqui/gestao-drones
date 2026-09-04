@@ -1,27 +1,27 @@
 name: sismod-dji-dock-local
 
 services:
-  emqx:
-    image: emqx/emqx:6.2.3
-    container_name: sismod-emqx-local
-    hostname: emqx.local.sismod
+  mosquitto:
+    image: eclipse-mosquitto:2.0.22
+    container_name: sismod-mosquitto-local
+    hostname: mosquitto.local.sismod
     restart: unless-stopped
     environment:
-      EMQX_NODE_NAME: emqx@emqx.local.sismod
-      EMQX_ALLOW_ANONYMOUS: "true"
+      SISMOD_MQTT_CONSUMER_PASSWORD: ${SISMOD_MQTT_CONSUMER_PASSWORD:?Defina SISMOD_MQTT_CONSUMER_PASSWORD}
+      SISMOD_MQTT_PUBLISHER_PASSWORD: ${SISMOD_MQTT_PUBLISHER_PASSWORD:?Defina SISMOD_MQTT_PUBLISHER_PASSWORD}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["cp /mosquitto/source/acl.conf /mosquitto/data/acl.conf && mosquitto_passwd -b -c /mosquitto/data/passwords sismod-consumer $$SISMOD_MQTT_CONSUMER_PASSWORD && mosquitto_passwd -b /mosquitto/data/passwords sismod-publisher $$SISMOD_MQTT_PUBLISHER_PASSWORD && chown mosquitto:mosquitto /mosquitto/data/acl.conf /mosquitto/data/passwords && chmod 600 /mosquitto/data/acl.conf /mosquitto/data/passwords && exec mosquitto -c /mosquitto/source/mosquitto.conf"]
     ports:
-      # Homologação isolada: acessível somente nesta máquina.
       - "127.0.0.1:1883:1883"
-      - "127.0.0.1:18083:18083"
     volumes:
-      - sismod_emqx_data:/opt/emqx/data
-      - sismod_emqx_log:/opt/emqx/log
+      - sismod_mosquitto_data:/mosquitto/data
+      - ../mosquitto/mosquitto.conf:/mosquitto/source/mosquitto.conf:ro
+      - ../mosquitto/acl.conf:/mosquitto/source/acl.conf:ro
     healthcheck:
-      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -u sismod-consumer -P $$SISMOD_MQTT_CONSUMER_PASSWORD -t '$$SYS/broker/version' -C 1 -W 5 >/dev/null"]
       interval: 10s
-      timeout: 10s
-      retries: 12
+      timeout: 8s
+      retries: 10
 
 volumes:
-  sismod_emqx_data:
-  sismod_emqx_log:
+  sismod_mosquitto_data:

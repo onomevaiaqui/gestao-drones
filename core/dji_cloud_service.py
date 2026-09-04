@@ -1,7 +1,10 @@
 """Configuração e tokens da integração DJI Open Platforms."""
 
 import uuid
-from urllib.parse import urlparse
+import json
+from urllib.request import urlopen
+from urllib.error import URLError
+from urllib.parse import urlencode, urlparse
 
 from django.conf import settings
 from django.core import signing
@@ -44,6 +47,8 @@ def diagnostico_dock():
         "habilitado": settings.DJI_DOCK_ENABLED,
         "simulador": settings.DJI_DOCK_SIMULATOR_ENABLED,
         "comandos": settings.DJI_DOCK_COMMANDS_ENABLED,
+        "publicador": settings.DJI_DOCK_PUBLISHER_ENABLED,
+        "parada_emergencia": settings.DJI_DOCK_EMERGENCY_STOP,
         "pronto": settings.DJI_DOCK_ENABLED and all(itens.values()),
     }
 
@@ -72,16 +77,76 @@ def diagnostico_livestream():
         "configurado": configurado,
         "habilitado": settings.DJI_LIVESTREAM_ENABLED,
         "pronto": settings.DJI_CLOUD_ENABLED and settings.DJI_LIVESTREAM_ENABLED and configurado,
+        "servidor": diagnostico_mediamtx(),
     }
 
 
+def diagnostico_mediamtx():
+    url = settings.SISMOD_MEDIAMTX_API_URL
+    if not url:
+        return {"configurado": False, "online": False, "caminhos_ativos": 0, "erro": "API não configurada."}
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return {"configurado": False, "online": False, "caminhos_ativos": 0, "erro": "URL da API inválida."}
+    try:
+        with urlopen(f"{url}/v3/paths/list", timeout=2) as resposta:
+            dados = json.loads(resposta.read(1_000_000).decode("utf-8"))
+        itens = dados.get("items", []) if isinstance(dados, dict) else []
+        ativos = sum(1 for item in itens if isinstance(item, dict) and item.get("ready"))
+        return {"configurado": True, "online": True, "caminhos_ativos": ativos, "erro": ""}
+    except (OSError, URLError, ValueError, json.JSONDecodeError) as erro:
+        return {"configurado": True, "online": False, "caminhos_ativos": 0, "erro": str(erro)[:160]}
+
+
 def endereco_ingestao(transmissao):
-    return f"{settings.DJI_LIVESTREAM_RTMP_BASE_URL}/{transmissao.chave_stream}"
+    base = f"{settings.DJI_LIVESTREAM_RTMP_BASE_URL}/{transmissao.chave_stream}"
+    token = token_mediamtx(transmissao, "publish")
+    return f"{base}?{urlencode({'token': token})}" if token else base
 
 
 def endereco_reproducao(transmissao):
     """Página WebRTC do MediaMTX/SRS; nunca expõe a URL privada de ingestão."""
-    return f"{settings.DJI_LIVESTREAM_PLAYBACK_BASE_URL}/{transmissao.chave_stream}"
+    parsed = urlparse(settings.DJI_LIVESTREAM_PLAYBACK_BASE_URL)
+    local_inseguro = (
+        settings.DEBUG
+        and settings.DJI_LIVESTREAM_ALLOW_INSECURE_LOCAL
+        and parsed.scheme == "http"
+        and parsed.hostname in {"127.0.0.1", "localhost"}
+    )
+    if not settings.DJI_LIVESTREAM_ENABLED or (not _https_valido(settings.DJI_LIVESTREAM_PLAYBACK_BASE_URL) and not local_inseguro):
+        return ""
+    if transmissao.status != "ao_vivo":
+        return ""
+    base = f"{settings.DJI_LIVESTREAM_PLAYBACK_BASE_URL}/{transmissao.chave_stream}"
+    token = token_mediamtx(transmissao, "read")
+    return f"{base}?{urlencode({'token': token})}" if token else base
+
+
+def token_mediamtx(transmissao, acao):
+    if not settings.SISMOD_MEDIAMTX_AUTH_SECRET:
+        return ""
+    return signing.dumps(
+        {"stream": str(transmissao.chave_stream), "action": acao},
+        key=settings.SISMOD_MEDIAMTX_AUTH_SECRET,
+        salt="sismod.mediamtx",
+        compress=True,
+    )
+
+
+def validar_token_mediamtx(token, caminho, acao):
+    if not settings.SISMOD_MEDIAMTX_AUTH_SECRET or not token:
+        return False
+    try:
+        dados = signing.loads(
+            token,
+            key=settings.SISMOD_MEDIAMTX_AUTH_SECRET,
+            salt="sismod.mediamtx",
+            max_age=settings.SISMOD_MEDIAMTX_TOKEN_TTL_SECONDS,
+        )
+    except signing.BadSignature:
+        return False
+    acao_esperada = "read" if acao in {"read", "playback"} else acao
+    return dados.get("stream") == caminho.strip("/") and dados.get("action") == acao_esperada
 
 
 def token_pilot(user):

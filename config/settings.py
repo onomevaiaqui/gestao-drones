@@ -55,6 +55,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "core.security_middleware.SegurancaContaMiddleware",
+    "core.security_middleware.UploadSecurityMiddleware",
+    "core.security_middleware.AuditoriaMiddleware",
     "core.middleware.ModoAcessoMiddleware",
     "core.middleware.LicencaSISMODMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -90,7 +93,30 @@ if os.getenv("SISMOD_DB_HOST"):
 else:
     DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
 
-AUTH_PASSWORD_VALIDATORS = []
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 10}},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+
+SESSION_COOKIE_AGE = int(os.getenv("SISMOD_SESSION_IDLE_SECONDS", "28800"))
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_COOKIE_HTTPONLY = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("SISMOD_MAX_REQUEST_BYTES", str(100 * 1024 * 1024)))
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("SISMOD_FILE_MEMORY_BYTES", str(5 * 1024 * 1024)))
+SISMOD_LOGIN_MAX_FAILURES = int(os.getenv("SISMOD_LOGIN_MAX_FAILURES", "5"))
+SISMOD_LOGIN_WINDOW_SECONDS = int(os.getenv("SISMOD_LOGIN_WINDOW_SECONDS", "900"))
+SISMOD_LOGIN_BLOCK_SECONDS = int(os.getenv("SISMOD_LOGIN_BLOCK_SECONDS", "900"))
+SISMOD_MFA_ADMIN_REQUIRED = env_bool("SISMOD_MFA_ADMIN_REQUIRED", False)
+SISMOD_MFA_ISSUER = os.getenv("SISMOD_MFA_ISSUER", "SISMOD").strip()
+SISMOD_AUDIT_RETENTION_DAYS = int(os.getenv("SISMOD_AUDIT_RETENTION_DAYS", "730"))
+SISMOD_REAUTH_SECONDS = int(os.getenv("SISMOD_REAUTH_SECONDS", "300"))
+SISMOD_CLAMAV_HOST = os.getenv("SISMOD_CLAMAV_HOST", "").strip()
+SISMOD_CLAMAV_PORT = int(os.getenv("SISMOD_CLAMAV_PORT", "3310"))
+SISMOD_CLAMAV_REQUIRED = env_bool("SISMOD_CLAMAV_REQUIRED", False)
 
 LANGUAGE_CODE = "pt-br"
 TIME_ZONE = "America/Sao_Paulo"
@@ -155,11 +181,16 @@ DJI_CLOUD_WORKSPACE_DESCRIPTION = os.getenv(
 ).strip()
 DJI_DOCK_ENABLED = os.getenv("DJI_DOCK_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 DJI_DOCK_COMMANDS_ENABLED = os.getenv("DJI_DOCK_COMMANDS_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+DJI_DOCK_PUBLISHER_ENABLED = os.getenv("DJI_DOCK_PUBLISHER_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+DJI_DOCK_EMERGENCY_STOP = os.getenv("DJI_DOCK_EMERGENCY_STOP", "true").strip().lower() in ("1", "true", "yes", "on")
 DJI_DOCK_OFFLINE_AFTER_SECONDS = int(os.getenv("DJI_DOCK_OFFLINE_AFTER_SECONDS", "120"))
 DJI_DOCK_SIMULATOR_ENABLED = os.getenv("DJI_DOCK_SIMULATOR_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 DJI_DOCK_MQTT_USERNAME = os.getenv("DJI_DOCK_MQTT_USERNAME", "").strip()
 DJI_DOCK_MQTT_PASSWORD = os.getenv("DJI_DOCK_MQTT_PASSWORD", "").strip()
 DJI_DOCK_MQTT_CLIENT_ID = os.getenv("DJI_DOCK_MQTT_CLIENT_ID", "sismod-dock-consumer").strip()
+DJI_DOCK_MQTT_PUBLISHER_CLIENT_ID = os.getenv("DJI_DOCK_MQTT_PUBLISHER_CLIENT_ID", "sismod-dock-publisher").strip()
+DJI_DOCK_MQTT_PUBLISHER_USERNAME = os.getenv("DJI_DOCK_MQTT_PUBLISHER_USERNAME", DJI_DOCK_MQTT_USERNAME).strip()
+DJI_DOCK_MQTT_PUBLISHER_PASSWORD = os.getenv("DJI_DOCK_MQTT_PUBLISHER_PASSWORD", DJI_DOCK_MQTT_PASSWORD).strip()
 DJI_DOCK_MQTT_TOPIC = os.getenv(
     "DJI_DOCK_MQTT_TOPIC",
     "sys/product/+/status,thing/product/+/osd,thing/product/+/state,thing/product/+/events,thing/product/+/services_reply",
@@ -177,6 +208,12 @@ DJI_DRC_HEARTBEAT_TIMEOUT_SECONDS = int(os.getenv("DJI_DRC_HEARTBEAT_TIMEOUT_SEC
 DJI_LIVESTREAM_ENABLED = os.getenv("DJI_LIVESTREAM_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 DJI_LIVESTREAM_RTMP_BASE_URL = os.getenv("DJI_LIVESTREAM_RTMP_BASE_URL", "").strip().rstrip("/")
 DJI_LIVESTREAM_PLAYBACK_BASE_URL = os.getenv("DJI_LIVESTREAM_PLAYBACK_BASE_URL", "").strip().rstrip("/")
+DJI_LIVESTREAM_ALLOW_INSECURE_LOCAL = env_bool("DJI_LIVESTREAM_ALLOW_INSECURE_LOCAL", False)
+SISMOD_MEDIAMTX_API_URL = os.getenv("SISMOD_MEDIAMTX_API_URL", "").strip().rstrip("/")
+SISMOD_MEDIAMTX_AUTH_SECRET = os.getenv("SISMOD_MEDIAMTX_AUTH_SECRET", "").strip()
+SISMOD_MEDIAMTX_TOKEN_TTL_SECONDS = int(os.getenv("SISMOD_MEDIAMTX_TOKEN_TTL_SECONDS", "900"))
+SISMOD_HEALTHCHECK_TOKEN = os.getenv("SISMOD_HEALTHCHECK_TOKEN", "").strip()
+DJI_DOCK_COMMAND_RATE_LIMIT_SECONDS = int(os.getenv("DJI_DOCK_COMMAND_RATE_LIMIT_SECONDS", "5"))
 
 # Licenciamento offline. Em desenvolvimento permanece desligado; nas instalações
 # comerciais deve ser ativado e receber somente a chave pública do fornecedor.

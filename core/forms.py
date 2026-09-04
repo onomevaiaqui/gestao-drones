@@ -3,6 +3,7 @@ from datetime import datetime
 from django import forms
 from django.contrib.auth.forms import SetPasswordForm
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
 from django.db.models import Q
 
 from .models import Piloto, Drone, Voo, Alocacao, Manutencao
@@ -39,6 +40,12 @@ class PilotoForm(forms.ModelForm):
         if User.objects.filter(username=username).exists():
             raise forms.ValidationError("Este usuário já existe.")
         return username
+
+    def clean_senha(self):
+        senha = self.cleaned_data["senha"]
+        candidato = User(username=self.cleaned_data.get("username", ""), email=self.cleaned_data.get("email", ""))
+        validate_password(senha, candidato)
+        return senha
 
     def save(self, commit=True):
         piloto = super().save(commit=False)
@@ -98,6 +105,12 @@ class PilotoEditForm(forms.ModelForm):
         if qs.exists():
             raise forms.ValidationError("Este usuário já existe.")
         return username
+
+    def clean_nova_senha(self):
+        senha = self.cleaned_data.get("nova_senha")
+        if senha:
+            validate_password(senha, self.instance.user if self.instance and self.instance.user_id else None)
+        return senha
 
     def save(self, commit=True):
         piloto = super().save(commit=False)

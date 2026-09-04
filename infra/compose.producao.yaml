@@ -1,0 +1,123 @@
+name: sismod-producao
+
+x-app: &app
+  build: ..
+  restart: unless-stopped
+  env_file: ${SISMOD_ENV_FILE:-../.env.production}
+  environment:
+    SISMOD_DB_HOST: db
+    SISMOD_MEDIA_STORAGE: minio
+    SISMOD_STORAGE_ENDPOINT_URL: http://minio:9000
+    SISMOD_MEDIAMTX_API_URL: http://mediamtx:9997
+  depends_on:
+    db: {condition: service_healthy}
+    minio-init: {condition: service_completed_successfully}
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sismod
+      POSTGRES_USER: sismod
+      POSTGRES_PASSWORD: ${SISMOD_DB_PASSWORD:?Defina SISMOD_DB_PASSWORD}
+    volumes: [postgres_prod:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sismod"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    command: server /data --console-address :9001
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${SISMOD_STORAGE_ACCESS_KEY:?Defina SISMOD_STORAGE_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${SISMOD_STORAGE_SECRET_KEY:?Defina SISMOD_STORAGE_SECRET_KEY}
+    volumes: [minio_prod:/data]
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-07-21T05-28-08Z
+    depends_on: [minio]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["until mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do sleep 2; done; mc mb --ignore-existing local/sismod-media; mc anonymous set none local/sismod-media"]
+    environment:
+      MINIO_ROOT_USER: ${SISMOD_STORAGE_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${SISMOD_STORAGE_SECRET_KEY}
+
+  web:
+    <<: *app
+    command: ["/bin/sh", "-c", "python manage.py migrate && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os,urllib.request; r=urllib.request.Request('http://localhost:8000/infra/health/',headers={'X-SISMOD-Health':os.getenv('SISMOD_HEALTHCHECK_TOKEN','')}); urllib.request.urlopen(r,timeout=5)\""]
+      interval: 30s
+      timeout: 8s
+      retries: 5
+
+  dock-consumer:
+    <<: *app
+    command: ["python", "manage.py", "consumir_dji_dock"]
+    profiles: ["dock-real"]
+
+  command-publisher:
+    <<: *app
+    command: ["/bin/sh", "-c", "while true; do python manage.py publicar_comandos_dji --limit 5 --confirm-real-publication; sleep 2; done"]
+    profiles: ["dock-real"]
+
+  drc-watchdog:
+    <<: *app
+    command: ["/bin/sh", "-c", "while true; do python manage.py encerrar_sessoes_drc; sleep 1; done"]
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.20.1
+    restart: unless-stopped
+    volumes:
+      - ./mediamtx/mediamtx.production.yml:/mediamtx.yml:ro
+      - ${SISMOD_TLS_CERT_FILE:?Defina SISMOD_TLS_CERT_FILE}:/certs/fullchain.pem:ro
+      - ${SISMOD_TLS_KEY_FILE:?Defina SISMOD_TLS_KEY_FILE}:/certs/privkey.pem:ro
+    environment:
+      MTX_AUTHMETHOD: http
+      MTX_AUTHHTTPADDRESS: http://web:8000/infra/mediamtx/auth/
+      MTX_WEBRTCADDITIONALHOSTS: ${SISMOD_MEDIA_DOMAIN:?Defina SISMOD_MEDIA_DOMAIN}
+      MTX_WEBRTCICESERVERS2_0_URL: stun:${SISMOD_MEDIA_DOMAIN}:3478
+      MTX_WEBRTCICESERVERS2_1_URL: turn:${SISMOD_MEDIA_DOMAIN}:3478?transport=tcp
+      MTX_WEBRTCICESERVERS2_1_USERNAME: AUTH_SECRET
+      MTX_WEBRTCICESERVERS2_1_PASSWORD: ${SISMOD_TURN_SECRET:?Defina SISMOD_TURN_SECRET}
+    ports:
+      - "1936:1936"
+      - "8189:8189/udp"
+    depends_on: [web]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:9997/v3/paths/list"]
+      interval: 30s
+      timeout: 8s
+      retries: 5
+
+  coturn:
+    image: coturn/coturn:4.6.3-r3-alpine
+    restart: unless-stopped
+    command: ["-n", "--log-file=stdout", "--fingerprint", "--no-cli", "--no-tls", "--no-dtls", "--no-udp", "--min-port=49160", "--max-port=49200", "--use-auth-secret", "--static-auth-secret=${SISMOD_TURN_SECRET}", "--realm=${SISMOD_MEDIA_DOMAIN}"]
+    ports:
+      - "3478:3478/tcp"
+      - "49160-49200:49160-49200/tcp"
+
+  proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      SISMOD_DOMAIN: ${SISMOD_DOMAIN:?Defina SISMOD_DOMAIN}
+      SISMOD_MEDIA_DOMAIN: ${SISMOD_MEDIA_DOMAIN:?Defina SISMOD_MEDIA_DOMAIN}
+      SISMOD_TLS_EMAIL: ${SISMOD_TLS_EMAIL:?Defina SISMOD_TLS_EMAIL}
+    volumes:
+      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports: ["80:80", "443:443", "443:443/udp"]
+    depends_on: [web, mediamtx]
+
+volumes:
+  postgres_prod:
+  minio_prod:
+  caddy_data:
+  caddy_config:

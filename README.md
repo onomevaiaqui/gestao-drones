@@ -32,9 +32,9 @@ A conexão DJI Open Platforms é configurada por variáveis `DJI_CLOUD_*` descri
 
 A base da DJI Dock 2 também pode ser validada localmente sem comandar equipamento. Defina `DJI_DOCK_SIMULATOR_ENABLED=true`, execute `python manage.py simular_dji_dock` e consulte **Estações Remotas > Monitoramento**. A conexão real permanece independente e desligada por `DJI_DOCK_ENABLED=false`.
 
-O consumidor MQTT somente leitura é iniciado separadamente com `python manage.py consumir_dji_dock`. Ele exige `paho-mqtt`, broker, credenciais e tópicos configurados, e recusa iniciar enquanto `DJI_DOCK_ENABLED=false`.
+O consumidor MQTT somente leitura é iniciado separadamente com `python manage.py consumir_dji_dock`. O ambiente de homologação usa Eclipse Mosquitto com acesso anônimo desativado e ACLs distintas para consumidor e publicador. Em produção, configure o endereço TLS do Mosquitto corporativo em `DJI_CLOUD_MQTT_HOST`; o SISMOD continua recusando iniciar enquanto `DJI_DOCK_ENABLED=false`.
 
-Comandos físicos possuem uma segunda trava, `DJI_DOCK_COMMANDS_ENABLED=false`, e não têm publicador nesta versão. O processo `python manage.py atualizar_status_dji_docks` marca como offline equipamentos sem contato recente.
+Comandos físicos possuem as travas independentes `DJI_DOCK_COMMANDS_ENABLED=false` e `DJI_DOCK_PUBLISHER_ENABLED=false`, além da parada geral `DJI_DOCK_EMERGENCY_STOP=true`. Intenções críticas também exigem confirmação humana auditada. O publicador de lote existe, porém recusa operar com qualquer trava fechada, estação offline, comando vencido/incompleto ou sem a opção explícita `--confirm-real-publication`. Não o utilize fora de uma homologação física controlada. O processo `python manage.py atualizar_status_dji_docks` marca como offline equipamentos sem contato recente.
 
 Planejamentos podem ser associados a uma Dock pela tela de detalhes e passam por validações preliminares. A geração de WPML executável permanece bloqueada até a confirmação do modelo de aeronave e payload exigidos pela especificação DJI.
 
@@ -50,6 +50,8 @@ As telas **Central de missões** e **Mídias das Docks** reúnem situação, pro
 
 Para homologação completa em uma única máquina, `infra/compose.homologacao.yaml` prepara Django/Gunicorn, PostgreSQL, EMQX e MinIO. Copie e revise o `.env`, mantenha as travas DJI falsas e execute `docker compose -f infra/compose.homologacao.yaml up -d --build`. Depois, valide com `docker compose -f infra/compose.homologacao.yaml exec web python manage.py verificar_implantacao`.
 
+A infraestrutura definitiva pode ser preparada com `infra/compose.producao.yaml`. Ela inclui HTTPS, MediaMTX autenticado, STUN/TURN, healthchecks e processos da Dock, mantendo a integração física fechada. Consulte [Implantação DJI Dock](docs/IMPLANTACAO_DJI_DOCK.md).
+
 Para iniciar o broker isolado de homologação, abra o Docker Desktop e execute `docker compose -f infra/dji-dock/compose.yaml up -d`. As portas MQTT `1883` e do painel `18083` ficam vinculadas somente a `127.0.0.1`; portanto, a Dock física ainda não consegue acessá-las. Essa exposição será alterada somente junto com TLS, autenticação e firewall.
 
 ## Validação
@@ -59,9 +61,21 @@ python manage.py check
 python manage.py test core
 ```
 
+Cada usuário pode ativar MFA e revisar sessões em **Segurança da conta**. Em produção, depois que todos os administradores cadastrarem o autenticador, defina `SISMOD_MFA_ADMIN_REQUIRED=true`. A tela administrativa **Auditoria** registra alterações e downloads sem armazenar senhas ou conteúdos enviados.
+
+Comandos críticos exigem nova confirmação de senha, e uploads executáveis são recusados. A inspeção ClamAV pode ser habilitada por `SISMOD_CLAMAV_HOST`; use `SISMOD_CLAMAV_REQUIRED=true` somente depois de validar o serviço antivírus no servidor.
+
 O simulador aceita `--cenario normal`, `chuva`, `falha`, `offline`, `missao` ou `midia`; os dois últimos exigem `--missao ID`. A rotina `python manage.py expirar_comandos_dji` encerra prévias de fila vencidas.
 
-O menu **Estações Remotas** concentra Monitoramento, Central de missões, Cockpit Virtual e Mídias. Ele está disponível também para pilotos, que visualizam suas próprias missões, mídias e sessões; auditoria global e configuração permanecem administrativas. O cockpit prioriza o vídeo, apresenta mapa, telemetria sobreposta, painéis de missão/Dock e controles manuais compactos. Atualmente funciona exclusivamente em simulação, audita os canais DJI, mantém um único operador por Dock, neutraliza os manches ao encerrar e usa heartbeat. Execute `python manage.py encerrar_sessoes_drc` periodicamente como watchdog. Controle físico exige ativação conjunta e consciente de `DJI_DRC_ENABLED`, `DJI_DRC_COMMANDS_ENABLED` e `DJI_DOCK_ENABLED`, além da infraestrutura DRC real que ainda não está implementada.
+O menu **Estações Remotas** concentra Monitoramento, Central de missões, Cockpit Virtual e Mídias. Ele está disponível também para pilotos autorizados pelo administrador em cada estação. O acesso pode ser somente de monitoramento ou incluir operação do cockpit; pilotos visualizam apenas suas próprias missões, mídias e sessões, enquanto auditoria global e configuração permanecem administrativas. O cockpit prioriza o vídeo, apresenta mapa, telemetria sobreposta, painéis de missão/Dock e controles manuais compactos. Atualmente funciona exclusivamente em simulação, audita os canais DJI, mantém um único operador por Dock, neutraliza os manches ao encerrar e usa heartbeat. Os controles de vídeo geram prévias MQTT sanitizadas e correlacionáveis, sem publicar comandos e sem persistir URL, token ou senha de ingestão. Em execução manual, use `python manage.py encerrar_sessoes_drc` como watchdog; o ambiente Docker de homologação já inclui o processo contínuo `drc-watchdog`. Controle físico exige ativação conjunta e consciente de `DJI_DRC_ENABLED`, `DJI_DRC_COMMANDS_ENABLED` e `DJI_DOCK_ENABLED`, além da infraestrutura DRC real que ainda não está implementada.
+
+Cada início de vídeo da estação cria ou reutiliza uma `TransmissaoAoVivo` vinculada ao piloto, aeronave e canal. Quando todas as travas forem habilitadas em servidor, o publicador monta a URL RTMPS apenas em memória, publica o envelope e conserva no banco somente a referência da sessão e a prévia sem URL. A confirmação do broker altera a sessão para ao vivo; o comando de parada a finaliza.
+
+O cockpit possui dois players independentes: vídeo principal da aeronave e câmera fixa da estação. Eles recebem somente endereços públicos HTTPS e apenas quando a sessão correspondente está `ao_vivo`; nos demais estados, a interface mostra o canal e a situação sem criar o iframe externo.
+
+Para uma demonstração exclusivamente local, abra o Docker Desktop e use `docker compose --profile livestream-demo -f infra/compose.homologacao.yaml up -d mediamtx livestream-demo`. No `.env` local, mantenha todas as travas de comando físico desligadas e configure `DJI_LIVESTREAM_ENABLED=true`, `DJI_LIVESTREAM_ALLOW_INSECURE_LOCAL=true`, `DJI_LIVESTREAM_RTMP_BASE_URL=rtmp://127.0.0.1:1935`, `DJI_LIVESTREAM_PLAYBACK_BASE_URL=http://127.0.0.1:8889` e `SISMOD_MEDIAMTX_API_URL=http://127.0.0.1:9997`. Depois, execute `python manage.py preparar_demo_livestream --canal ID --usuario USUARIO`. A exceção HTTP/RTMP só funciona com `DEBUG=True`, flag local explícita e host loopback; não é aceita em produção.
+
+Quando a estação anuncia `live_capacity`, o SISMOD cataloga automaticamente os canais de vídeo da aeronave e da própria Dock, incluindo identificador DJI, câmera, lente atual e lentes alternativas. Usuários com autorização de operação podem simular início, parada, qualidade e troca de lente; cada ação fica na auditoria de comandos. O catálogo e esses controles apenas preparam os players: streams reais permanecem bloqueados até a implantação do servidor de mídia e do publicador MQTT.
 
 ## Documentação
 
@@ -69,7 +83,11 @@ O menu **Estações Remotas** concentra Monitoramento, Central de missões, Cock
 - [Política obrigatória de atualização](docs/MANUTENCAO_DOCUMENTACAO.md)
 - [Inventário de arquivos legados](docs/ARQUIVOS_LEGADOS.md)
 - [Licenciamento anual e implantação por empresa](docs/LICENCIAMENTO_E_IMPLANTACAO.md)
+- [Implantação DJI Dock e livestream](docs/IMPLANTACAO_DJI_DOCK.md)
 
 ## Situação atual
 
 O projeto usa Python 3.12, Django 5.2 e SQLite para desenvolvimento local. A configuração atual não deve ser usada diretamente em produção; consulte a seção de implantação e segurança da documentação técnica.
+# Antivírus opcional dos uploads
+
+Instalação local, teste e ativação do ClamAV: [guia de antivírus](docs/ANTIVIRUS_UPLOADS.md). A instalação não altera automaticamente o `.env`.

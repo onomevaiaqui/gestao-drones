@@ -84,3 +84,6 @@ A assinatura impede falsificação comum e detecta adulteração dos dados. Como
 Inclua banco, mídia e configuração segura no backup empresarial. O código da instalação reside no banco; restaurar somente arquivos sem o banco gera outro código e exigirá nova emissão.
 
 Para instalações com grande volume de mídia, prefira MinIO privado ou S3 em vez do disco do contêiner. Banco PostgreSQL, bucket e `.env` devem ter rotinas de backup independentes. O arquivo `infra/compose.homologacao.yaml` é uma base local de validação, não uma configuração pronta para Internet: antes da produção, adicione proxy HTTPS, autenticação MQTT, firewall, monitoramento, política de retenção e segredos gerenciados.
+## Autenticação com licença expirada
+
+As etapas de configurar/verificar MFA permanecem acessíveis mesmo com a licença expirada, para permitir ao administrador autenticar-se e regularizar a licença. Isso não libera alterações operacionais nem a desativação do MFA.

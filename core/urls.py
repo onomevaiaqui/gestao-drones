@@ -16,8 +16,21 @@ from . import dji_cloud_views
 from . import dji_drc_views
 from . import livestream_views
 from . import licenca_views
+from . import infra_views
+from . import security_views
 
 urlpatterns = [
+    path("infra/health/", infra_views.healthcheck, name="healthcheck"),
+    path("infra/mediamtx/auth/", infra_views.mediamtx_auth, name="mediamtx_auth"),
+    path("seguranca/", security_views.seguranca_conta, name="seguranca_conta"),
+    path("seguranca/mfa/configurar/", security_views.mfa_configurar, name="mfa_configurar"),
+    path("seguranca/mfa/verificar/", security_views.mfa_verificar, name="mfa_verificar"),
+    path("seguranca/mfa/desativar/", security_views.mfa_desativar, name="mfa_desativar"),
+    path("seguranca/sessoes/<str:chave>/revogar/", security_views.sessao_revogar, name="sessao_revogar"),
+    path("seguranca/confirmar-acao/", security_views.confirmar_acao_critica, name="confirmar_acao_critica"),
+    path("seguranca/auditoria/", security_views.auditoria, name="auditoria"),
+    path("seguranca/auditoria/exportar/", security_views.auditoria_exportar, name="auditoria_exportar"),
+    path("seguranca/alertas/<int:pk>/resolver/", security_views.alerta_seguranca_resolver, name="alerta_seguranca_resolver"),
     path("", views.dashboard, name="dashboard"),
     path("configuracao/licenca/", licenca_views.configuracao_licenca, name="configuracao_licenca"),
 
@@ -136,6 +149,10 @@ urlpatterns = [
     path("integracoes/dji/cockpit/<uuid:identificador>/finalizar/", dji_drc_views.cockpit_finalizar, name="dji_cockpit_finalizar"),
     path("integracoes/dji/docks/simular/", dji_cloud_views.dji_dock_simular, name="dji_dock_simular"),
     path("integracoes/dji/docks/<int:pk>/", dji_cloud_views.dji_dock_detalhe, name="dji_dock_detalhe"),
+    path("integracoes/dji/docks/<int:pk>/video/<int:canal_pk>/acao/", dji_cloud_views.dji_canal_video_acao, name="dji_canal_video_acao"),
+    path("integracoes/dji/docks/<int:pk>/comandos/<int:comando_pk>/autorizar/", dji_cloud_views.dji_comando_autorizar, name="dji_comando_autorizar"),
+    path("integracoes/dji/docks/<int:pk>/acessos/salvar/", dji_cloud_views.dji_dock_acesso_salvar, name="dji_dock_acesso_salvar"),
+    path("integracoes/dji/docks/<int:pk>/acessos/<int:acesso_pk>/revogar/", dji_cloud_views.dji_dock_acesso_revogar, name="dji_dock_acesso_revogar"),
     path("integracoes/dji/docks/<int:pk>/preparar-missao/", dji_cloud_views.dji_dock_preparar_missao, name="dji_dock_preparar_missao"),
     path("integracoes/dji/docks/missoes/<int:pk>/wpml/", dji_cloud_views.dji_dock_missao_wpml, name="dji_dock_missao_wpml"),
     path("integracoes/dji/docks/missoes/<uuid:identificador>/arquivo/<str:token>/", dji_cloud_views.dji_dock_missao_wpml_publico, name="dji_dock_missao_wpml_publico"),

@@ -52,7 +52,7 @@ O endereço de ingestão é entregue somente ao DJI Pilot 2. Coordenadores receb
 
 O ambiente local pode testar o fluxo com `DJI_DOCK_SIMULATOR_ENABLED=true` e `python manage.py simular_dji_dock`. Para a conexão real, mantenha o simulador desligado, instale um broker MQTT 5 com TLS, publique o SISMOD em HTTPS, valide certificados e regras de rede, configure a Dock pelo DJI Pilot 2 e somente então altere `DJI_DOCK_ENABLED=true` e execute `python manage.py consumir_dji_dock` como serviço separado. A conta do consumidor deve ter acesso somente aos tópicos OSD/eventos. Comandos físicos serão implementados em uma fase posterior, com auditoria, confirmação e bloqueios operacionais.
 
-A trava adicional `DJI_DOCK_COMMANDS_ENABLED=false` deve permanecer desligada. A estrutura de auditoria existe, mas não há publicador MQTT para comandos nesta versão; alterar a variável isoladamente não aciona a Dock.
+As travas adicionais `DJI_DOCK_COMMANDS_ENABLED=false` e `DJI_DOCK_PUBLISHER_ENABLED=false` devem permanecer desligadas, e `DJI_DOCK_EMERGENCY_STOP=true` deve permanecer ativa. Existe um executor MQTT de lote para futura homologação, mas ele exige todas as travas, confirmação explícita na linha de comando, estação online, intenção válida e, nos comandos críticos, confirmação administrativa. O início do stream possui resolvedor de URL em memória, mas continua bloqueado enquanto livestream, publicador ou parada de emergência não estiverem configurados corretamente. A fila persiste apenas o identificador da sessão, nunca a URL RTMPS completa. Não execute o publicador sem Dock física em área controlada, procedimento de contingência e acompanhamento local.
 
 Os retornos de progresso e o catálogo de mídias já podem ser simulados. O download das fotos, vídeos e arquivos PPK permanece desativado: a implantação deverá fornecer armazenamento de objetos privado, HTTPS, credenciais temporárias limitadas e política de retenção antes de habilitar a transferência real.
 
@@ -60,9 +60,13 @@ A entrega do KMZ já possui fingerprint e URL assinada de curta duração, mas n
 
 A central, triagem, revisão operacional e prévia da fila funcionam localmente. Toda prévia permanece com situação `bloqueado`, expira automaticamente e não é publicada. O catálogo e upload manual funcionam em armazenamento local, S3 ou MinIO; a emissão de credenciais temporárias para upload direto da Dock continua desativada.
 
-O Cockpit Virtual está disponível somente como simulador. A interface, auditoria, limites dos canais, operador exclusivo, neutralização e watchdog funcionam localmente. O relay DRC real, aquisição de autoridade e publicação em `drc/down` permanecem desativados até domínio, MQTT TLS, livestream de baixa latência e homologação física controlada. A área principal de vídeo e o monitor do entorno da Dock são espaços preparados para os streams futuros; eles não simulam imagens reais.
+O Cockpit Virtual está disponível somente como simulador. A interface, auditoria, limites dos canais, operador exclusivo, neutralização e watchdog funcionam localmente. O relay DRC real, aquisição de autoridade e publicação em `drc/down` permanecem desativados até domínio, MQTT TLS, livestream de baixa latência e homologação física controlada. A área principal de vídeo e o monitor do entorno da Dock são espaços preparados para os streams futuros; eles não simulam imagens reais. O catálogo de canais anunciado em `live_capacity` e os controles locais de início, parada, qualidade e lente já funcionam. Eles geram prévias MQTT sanitizadas dos métodos oficiais, mas não as publicam. A URL e o protocolo de ingestão do início do stream não são persistidos e deverão ser fornecidos em memória pelo futuro publicador.
 
-Pendências para o controle físico: implementar o relay DRC autenticado; adquirir e renovar autoridade de voo e payload; receber os dois canais de vídeo com baixa latência; publicar `stick_control` continuamente na frequência exigida pela DJI; associar cada piloto a estações/missões autorizadas; executar o watchdog como serviço independente; homologar retorno, pouso e perda de enlace em ambiente controlado; e somente então habilitar as três travas DJI no servidor.
+Os dois players do cockpit já estão ligados às sessões da aeronave e da câmera fixa. No ambiente local continuam como placeholders porque somente sessões `ao_vivo`, com livestream habilitado e reprodução HTTPS configurada, recebem um endereço de player.
+
+Há uma exceção estritamente local para testar os players com MediaMTX e FFmpeg em Docker. Ela requer simultaneamente `DEBUG=True`, `DJI_LIVESTREAM_ALLOW_INSECURE_LOCAL=true` e endereços loopback. Não habilite essa flag no servidor. A base pública de TLS, autenticação HTTP por token temporário, reverse proxy e STUN/TURN está em `infra/compose.producao.yaml`; DNS, certificados, firewall e validação da rede dependem do servidor real.
+
+Pendências para o controle físico: implementar o relay DRC autenticado; adquirir e renovar autoridade de voo e payload; receber os dois canais de vídeo com baixa latência; publicar `stick_control` continuamente na frequência exigida pela DJI; homologar retorno, pouso e perda de enlace em ambiente controlado; e somente então habilitar as três travas DJI no servidor. A associação de pilotos por estação, com níveis separados de monitoramento e operação, já está implementada e é configurada pelo administrador no detalhe da estação. O watchdog independente também está definido no Docker de homologação.
 
 ## 3. Sincronização automática de logs DJI
 
@@ -102,3 +106,8 @@ Para uma instalação comercial, configure a chave pública Ed25519 do fornecedo
 - [ ] Migrações e `python manage.py check --deploy` foram executados?
 - [ ] O teste foi feito primeiro com operação controlada e curta?
 - [ ] A documentação técnica foi atualizada no mesmo commit?
+## Segurança local — atualização de 04/09/2026
+
+Mosquitto local testado, sem acesso anônimo e limitado a loopback. ClamAV local instalado e testado, com inspeção obrigatória configurada no `.env` desta máquina; reiniciar processos Django existentes para aplicar. Essas credenciais/configurações locais não são enviadas ao Git. Outras instalações devem seguir `docs/ANTIVIRUS_UPLOADS.md`.
+
+MFA está disponível, mas a obrigatoriedade administrativa não foi ativada automaticamente. A configuração/verificação pode ser concluída com licença expirada. Antivírus, MFA e auditoria não equivalem a certificação corporativa; consultar `docs/PENDENCIAS_SEGURANCA_MQTT.md` e as ressalvas de implantação de produção.
